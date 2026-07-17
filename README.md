@@ -1,5 +1,7 @@
 # Genomic Selection in Papaya with Bayesian Regression, GBLUP, and RR-BLUP / Seleção Genômica em Mamoeiro com Regressão Bayesiana, GBLUP e RR-BLUP
 
+[![Validate workflowr project](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/actions/workflows/validate-workflowr.yml/badge.svg)](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/actions/workflows/validate-workflowr.yml)
+
 [English](#english) | [Português](#português)
 
 ---
@@ -144,6 +146,11 @@ Rscript code/run_workflowr_pipeline.R full
 
 The full profile is intentionally explicit because the Bayesian cross-
 validation requires many MCMC fits.
+
+GitHub Actions validates the data contract, runs the method smoke tests, and
+builds the `site` profile on every push and pull request. The `smoke` and
+`full` profiles can also be selected through the manual workflow dispatcher;
+generated site, lockfile, and analytical outputs are retained as run artifacts.
 
 ### Selection scope
 
@@ -309,6 +316,11 @@ Rscript code/run_workflowr_pipeline.R full
 
 O perfil completo é explícito porque a validação cruzada Bayesiana exige muitos
 ajustes MCMC.
+
+O GitHub Actions valida o contrato dos dados, executa testes mínimos dos
+métodos e constrói o perfil `site` a cada push e pull request. Os perfis
+`smoke` e `full` também podem ser selecionados pelo disparador manual; site,
+lockfile e resultados analíticos são preservados como artefatos da execução.
 
 ### Escopo da seleção
 

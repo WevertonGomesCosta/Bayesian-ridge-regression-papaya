@@ -7,7 +7,7 @@ testthat::test_that("dosagens alélicas somam dois em chamadas diploides", {
     ]
     chamado <- !is.na(objeto_teste$codigos_ssr[, loco])
     soma <- rowSums(codificacao$dosagens[chamado, colunas, drop = FALSE])
-    testthat::expect_equal(soma, rep(2, sum(chamado)))
+    testthat::expect_equal(unname(soma), rep(2, sum(chamado)))
   }
 })
 

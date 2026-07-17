@@ -7,6 +7,27 @@ if (!requireNamespace("renv", quietly = TRUE)) {
 }
 
 renv::activate()
+renv::load(project = getwd())
+
+biblioteca_projeto <- normalizePath(
+  renv::paths$library(project = getwd()),
+  winslash = "/",
+  mustWork = FALSE
+)
+biblioteca_ativa <- normalizePath(
+  .libPaths()[1L],
+  winslash = "/",
+  mustWork = FALSE
+)
+
+if (!identical(biblioteca_ativa, biblioteca_projeto)) {
+  stop(
+    "A biblioteca renv do projeto não está ativa. Esperada: ",
+    biblioteca_projeto,
+    "; observada: ",
+    biblioteca_ativa
+  )
+}
 
 descricao <- read.dcf("DESCRIPTION")
 campos <- c("Depends", "Imports")
