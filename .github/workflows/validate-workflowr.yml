@@ -1,0 +1,71 @@
+name: Validate workflowr project
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Execution profile: site, smoke, or full"
+        required: true
+        default: "site"
+        type: choice
+        options:
+          - site
+          - smoke
+          - full
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      RENV_PATHS_ROOT: ~/.cache/R/renv
+      PAPAYA_RUN_MODE: ${{ github.event.inputs.run_mode || 'site' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.1'
+          use-public-rspm: true
+
+      - name: Set up Pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Cache renv library
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/R/renv
+            renv/library
+          key: ${{ runner.os }}-r-4.5.1-${{ hashFiles('DESCRIPTION', 'renv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-r-4.5.1-
+
+      - name: Install project dependencies
+        run: Rscript code/bootstrap_dependencies.R
+
+      - name: Validate data contract and tests
+        run: Rscript code/check_project.R
+
+      - name: Build workflowr website
+        run: Rscript code/run_workflowr_pipeline.R "$PAPAYA_RUN_MODE"
+
+      - name: Upload generated site and lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflowr-site-and-lockfile
+          path: |
+            docs/
+            renv.lock
+            renv/activate.R
+          if-no-files-found: error
+          retention-days: 14

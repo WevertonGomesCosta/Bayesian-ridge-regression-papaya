@@ -1,0 +1,159 @@
+---
+title: "5. Out-of-fold model comparison"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[Português](05_model_comparison_pt.html) | [Previous](04_gblup_en.html) | [Home](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 7)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "02_model_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+resultado_bayesiano <- carregar_resultado(configuracao$arquivo_bayesiano)
+resultado_rrblup <- carregar_resultado(configuracao$arquivo_rrblup)
+resultado_gblup <- carregar_resultado(configuracao$arquivo_gblup)
+```
+
+## Comparison rule
+
+All eight models are compared from the same 150 out-of-fold predictions per
+trait. Each individual contributes exactly one held-out observation for each
+model. The primary ranking is deterministic: maximize predictive Pearson
+correlation, then minimize RMSE, then minimize MAE. Bias, calibration slope,
+and fold variability remain visible as safeguards rather than being hidden in
+a single score.
+
+DIC is not used in the cross-family ranking because it is available only for
+the Bayesian likelihood/prior framework. Its separate table on page 2 answers
+a different question from held-out predictive performance.
+
+## Build the common result
+
+The common result is generated only when the Bayesian, RR-BLUP, and GBLUP
+objects are all available. The output includes raw predictions, fold metrics,
+metrics recomputed on concatenated out-of-fold predictions, and the selected
+model for every trait.
+
+```{r consolidate-models}
+resultados_disponiveis <- all(vapply(
+  list(resultado_bayesiano, resultado_rrblup, resultado_gblup, objeto),
+  Negate(is.null),
+  logical(1)
+))
+
+if (resultados_disponiveis) {
+  comparacao <- consolidar_comparacao_modelos(
+    objeto,
+    resultado_bayesiano,
+    resultado_rrblup,
+    resultado_gblup,
+    configuracao
+  )
+} else {
+  comparacao <- carregar_resultado(configuracao$arquivo_comparacao)
+}
+```
+
+```{r comparison-status, results='asis', echo=FALSE}
+if (is.null(comparacao)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_comparacao, "en"))
+}
+```
+
+## Common predictive metrics
+
+These metrics are calculated once per trait and model from all concatenated
+held-out predictions. Correlation measures predictive ranking, while RMSE and
+MAE retain the original units. Bias is prediction minus observation. A well-
+calibrated prediction has intercept near zero and slope near one.
+
+```{r common-metrics-table, results='asis'}
+if (!is.null(comparacao)) {
+  metricas <- comparacao$out_of_fold_metrics |>
+    dplyr::arrange(Trait, dplyr::desc(Correlation), RMSE, MAE)
+  print(tabela_relatorio(
+    metricas,
+    "Metrics from concatenated out-of-fold predictions",
+    rolagem = TRUE
+  ))
+}
+```
+
+The correlation plot exposes the model-by-trait pattern; it should be read
+together with the error and calibration columns in the table.
+
+```{r correlation-comparison-plot, echo=FALSE, fig.height=10}
+if (!is.null(comparacao)) {
+  print(
+    ggplot2::ggplot(
+      comparacao$out_of_fold_metrics,
+      ggplot2::aes(x = Model, y = Correlation, fill = Model)
+    ) +
+      ggplot2::geom_hline(yintercept = 0, color = "grey70") +
+      ggplot2::geom_col(show.legend = FALSE) +
+      ggplot2::facet_wrap(~ Trait, scales = "free_y", ncol = 2) +
+      ggplot2::labs(
+        x = NULL,
+        y = "Out-of-fold correlation",
+        title = "Predictive correlation across eight genomic models"
+      ) +
+      tema_relatorio() +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  )
+}
+```
+
+## Selected model by trait
+
+The table records the model selected by the explicit tie-breaking rule. Model
+selection is trait-specific; no assumption is made that one prior or BLUP
+representation must dominate all biological responses.
+
+```{r best-model-table, results='asis'}
+if (!is.null(comparacao)) {
+  melhores <- comparacao$best_models |>
+    dplyr::select(
+      Trait, Model, N, Correlation, Correlation_p_value,
+      RMSE, MAE, Bias, Calibration_intercept, Calibration_slope
+    )
+  print(tabela_relatorio(melhores, "Best predictive model for each trait"))
+}
+```
+
+Predictions from the selected model are displayed below. This is a diagnostic
+of agreement and dispersion, not a replacement for the numerical metrics.
+
+```{r best-model-prediction-plot, echo=FALSE, fig.height=10}
+if (!is.null(comparacao)) {
+  predicoes_melhores <- comparacao$predictions |>
+    dplyr::inner_join(
+      comparacao$best_models |> dplyr::select(Trait, Model),
+      by = c("Trait", "Model")
+    )
+
+  print(
+    ggplot2::ggplot(predicoes_melhores, ggplot2::aes(x = Observed, y = Predicted)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey55") +
+      ggplot2::geom_point(ggplot2::aes(color = Model), alpha = 0.75, size = 1.5) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "Observed",
+        y = "Out-of-fold prediction",
+        color = "Selected model",
+        title = "Out-of-fold predictions from the selected model"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+The next page uses full-data genomic values from these selected trait-specific
+models to form candidate rankings.
+
+[Next: genomic selection](06_genomic_selection_en.html)

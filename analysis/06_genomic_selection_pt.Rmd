@@ -1,0 +1,128 @@
+---
+title: "6. Valores genômicos e classificação dos candidatos"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[English](06_genomic_selection_en.html) | [Anterior](05_model_comparison_pt.html) | [Início](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 8)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+comparacao <- carregar_resultado(configuracao$arquivo_comparacao)
+selecao <- carregar_resultado(configuracao$arquivo_selecao)
+```
+
+## Escopo da seleção
+
+Esta página liga a escolha preditiva aos valores genômicos estimados (GEBVs)
+dos ajustes completos. Para cada característica, são usados os GEBVs do modelo
+selecionado pelo desempenho fora da amostra, junto com bloco e família. São
+mantidas classificações para valores genômicos altos e baixos.
+
+As listas são **classificações de candidatos, não uma recomendação
+multicaracterística final**. Produção de frutos defeituosos e diâmetro da
+cavidade interna podem ter direções opostas às de produção, massa ou sólidos
+solúveis. Tamanho e firmeza também podem possuir faixas-alvo. Por isso, o
+projeto não atribui silenciosamente direções nem pesos econômicos.
+
+```{r selection-status-pt, results='asis', echo=FALSE}
+if (is.null(selecao)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_selecao, "pt"))
+}
+```
+
+## Proveniência do modelo
+
+A tabela identifica o modelo que fornece os GEBVs de cada característica. A
+correlação e os erros vêm exclusivamente das predições retidas; o GEBV vem do
+ajuste final com todos os indivíduos.
+
+```{r selection-model-table-pt, results='asis'}
+if (!is.null(comparacao)) {
+  modelos_selecao <- comparacao$best_models |>
+    dplyr::select(Trait, Model, Correlation, RMSE, MAE, Bias, Calibration_slope)
+  print(tabela_relatorio(modelos_selecao, "Modelo usado na classificação de cada característica"))
+}
+```
+
+## Candidatos com valores altos
+
+A tabela apresenta os 15 maiores GEBVs de cada característica. Ela deve ser
+usada diretamente apenas quando o objetivo for aumentar a característica.
+Para objetivos de redução, use `Rank_low_value` ou os dois extremos exportados.
+
+```{r high-ranking-table-pt, results='asis'}
+if (!is.null(selecao)) {
+  candidatos_altos <- selecao$top_15_by_trait |>
+    dplyr::select(
+      Trait, Rank_high_value, IND, BL, FAM, Model, GEBV, Fitted,
+      Rank_low_value
+    )
+  print(tabela_relatorio(
+    candidatos_altos,
+    "Quinze maiores valores genômicos por característica",
+    rolagem = TRUE,
+    altura = "600px"
+  ))
+}
+```
+
+O gráfico resume os dez maiores GEBVs e o modelo de origem. As magnitudes não
+são comparáveis entre características porque suas escalas são distintas.
+
+```{r high-ranking-plot-pt, echo=FALSE, fig.height=12}
+if (!is.null(selecao)) {
+  top_10 <- selecao$rankings_by_trait |>
+    dplyr::filter(Rank_high_value <= 10L) |>
+    dplyr::mutate(IND = factor(IND, levels = unique(IND[order(GEBV)])))
+  print(
+    ggplot2::ggplot(top_10, ggplot2::aes(x = GEBV, y = IND, color = Model)) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "GEBV", y = "Indivíduo", color = "Modelo selecionado",
+        title = "Dez maiores valores genômicos por característica"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+## Extremos altos e baixos
+
+Os dois extremos são preservados para que o programa aplique posteriormente
+uma direção documentada. O CSV completo contém os 150 indivíduos, ambos os
+ranks, família, bloco, modelo selecionado, GEBV e valor ajustado.
+
+```{r extremes-table-pt, results='asis'}
+if (!is.null(selecao)) {
+  extremos <- selecao$extreme_15_by_trait |>
+    dplyr::select(
+      Trait, Ranking_side, IND, BL, FAM, Model, GEBV,
+      Rank_high_value, Rank_low_value
+    )
+  print(tabela_relatorio(
+    extremos,
+    "Quinze candidatos em cada extremo do valor genômico",
+    rolagem = TRUE,
+    altura = "600px"
+  ))
+}
+```
+
+## Decisão necessária para um índice multicaracterística
+
+Um índice defensável exige direção ou alvo para cada característica e pesos
+econômicos ou ganhos desejados. Quando essas informações forem fornecidas, os
+resultados atuais poderão alimentar índices padronizados, índices restritos ou
+níveis independentes de descarte sem repetir o pré-processamento dos marcadores.
+
+Até lá, as saídas reprodutíveis são as classificações por característica e a
+proveniência validada de seus modelos.
+
+[Voltar ao início](index.html)

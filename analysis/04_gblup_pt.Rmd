@@ -1,0 +1,131 @@
+---
+title: "4. GBLUP"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[English](04_gblup_en.html) | [Anterior](03_rrblup_pt.html) | [Início](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 7)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+resultado_gblup <- carregar_resultado(configuracao$arquivo_gblup)
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+```
+
+## Modelo
+
+O GBLUP modela diretamente os valores genômicos dos indivíduos:
+
+$$
+\mathbf{y}=\mathbf{X}\boldsymbol{\beta}+\mathbf{Z}\boldsymbol{a}+
+\boldsymbol{e},\qquad
+\boldsymbol{a}\sim N(\mathbf{0},\mathbf{G}\sigma_a^2).
+$$
+
+A matriz de relacionamento é a extensão multialélica da primeira construção
+de VanRaden [@vanraden2008efficient]:
+
+$$
+\mathbf{G}=\frac{\mathbf{M}_c\mathbf{M}_c^{\mathsf T}}
+{\sum_j 2p_j(1-p_j)}.
+$$
+
+Em cada fold, frequências, médias de centralização e $\mathbf{G}$ são definidas
+com o treinamento. Os indivíduos de validação permanecem na matriz para que
+seus valores genômicos sejam preditos por relacionamento, mas seus fenótipos
+entram como ausentes.
+
+```{r gblup-status-pt, results='asis', echo=FALSE}
+if (is.null(resultado_gblup)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_gblup, "pt"))
+}
+```
+
+## Diagnósticos da matriz de relacionamento
+
+A matriz completa é verificada quanto à simetria e à semidefinição positiva.
+O resumo dos autovalores quantifica as dimensões genômicas disponíveis e a
+tolerância numérica.
+
+```{r relationship-diagnostics-pt, results='asis'}
+if (!is.null(resultado_gblup)) {
+  autovalores <- eigen(resultado_gblup$relationship_matrix, symmetric = TRUE, only.values = TRUE)$values
+  diagnosticos_g <- data.frame(
+    Diagnostico = c(
+      "Indivíduos", "Assimetria máxima", "Menor autovalor",
+      "Maior autovalor", "Autovalores positivos (> 1e-8)"
+    ),
+    Valor = c(
+      nrow(resultado_gblup$relationship_matrix),
+      max(abs(resultado_gblup$relationship_matrix - t(resultado_gblup$relationship_matrix))),
+      min(autovalores), max(autovalores), sum(autovalores > 1e-8)
+    )
+  )
+  print(tabela_relatorio(diagnosticos_g, "Diagnósticos da matriz genômica"))
+}
+```
+
+O mapa de calor mostra a matriz completa na ordem da tabela fenotípica. É uma
+descrição da estrutura; o desempenho é avaliado apenas com fenótipos retidos.
+
+```{r relationship-heatmap-pt, echo=FALSE, fig.height=8}
+if (!is.null(resultado_gblup) && !is.null(objeto)) {
+  g_long <- as.data.frame(as.table(resultado_gblup$relationship_matrix))
+  names(g_long) <- c("Individuo_1", "Individuo_2", "Relacionamento")
+  g_long$Individuo_1 <- factor(g_long$Individuo_1, levels = objeto$ids)
+  g_long$Individuo_2 <- factor(g_long$Individuo_2, levels = rev(objeto$ids))
+  print(
+    ggplot2::ggplot(g_long, ggplot2::aes(x = Individuo_1, y = Individuo_2, fill = Relacionamento)) +
+      ggplot2::geom_raster() +
+      ggplot2::scale_fill_gradient2(low = "#B2182B", mid = "white", high = "#2166AC") +
+      ggplot2::labs(x = NULL, y = NULL, fill = "G", title = "Matriz de relacionamento genômico") +
+      tema_relatorio() +
+      ggplot2::theme(axis.text = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank())
+  )
+}
+```
+
+## Componentes de variância e predição
+
+Como $\mathbf{G}$ é escalada pela variância de frequência alélica, `Vu` estima
+diretamente a variância genômica aditiva. A herdabilidade genômica é
+$\sigma_a^2/(\sigma_a^2+\sigma_e^2)$.
+
+```{r gblup-variance-table-pt, results='asis'}
+if (!is.null(resultado_gblup)) {
+  print(tabela_relatorio(
+    resultado_gblup$full_model_summary,
+    "Componentes de variância do GBLUP"
+  ))
+}
+```
+
+```{r gblup-metrics-pt, results='asis'}
+if (!is.null(resultado_gblup)) {
+  resumo_gblup <- resumir_metricas_folds(resultado_gblup$fold_metrics)
+  print(tabela_relatorio(resumo_gblup, "Desempenho do GBLUP por fold"))
+}
+```
+
+```{r gblup-prediction-plot-pt, echo=FALSE, fig.height=10}
+if (!is.null(resultado_gblup)) {
+  print(
+    ggplot2::ggplot(resultado_gblup$predictions, ggplot2::aes(x = Observed, y = Predicted)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey55") +
+      ggplot2::geom_point(color = "#2166AC", alpha = 0.7, size = 1.5) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "Observado", y = "Predição fora da amostra",
+        title = "Predições GBLUP fora da amostra"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+[Próxima: comparação dos modelos](05_model_comparison_pt.html)

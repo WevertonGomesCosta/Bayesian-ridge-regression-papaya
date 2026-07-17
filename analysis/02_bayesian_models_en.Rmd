@@ -1,0 +1,170 @@
+---
+title: "2. Bayesian genomic regression"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[Português](02_bayesian_models_pt.html) | [Previous](01_preprocessing_en.html) | [Home](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 6)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "01_data_functions.R"))
+source(file.path("code", "02_model_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+if (is.null(objeto)) objeto <- executar_preprocessamento(configuracao)
+```
+
+## Model specification
+
+The six Bayesian models follow the whole-genome regression framework used in
+the reference study [@silva2021brrguava] and are fitted with BGLR
+[@perez2014bglr]. For one trait at a time,
+
+$$
+\mathbf{y}=\mathbf{1}\mu+\mathbf{X}\boldsymbol{\beta}+
+\mathbf{M}\boldsymbol{g}+\boldsymbol{e},
+$$
+
+where $\mathbf{X}$ contains categorical block and family effects,
+$\mathbf{M}$ contains centered SSR allele dosages, and $\boldsymbol{g}$ is the
+model-specific vector of marker effects. BGLR supplies the intercept, while
+the explicit fixed-effect matrix excludes a redundant intercept column.
+
+```{r bayesian-catalog, results='asis'}
+catalogo_exibicao <- configuracao$catalogo_bayesiano |>
+  dplyr::mutate(
+    Article_zero_effect_probability = dplyr::if_else(
+      Model == "BayesB_pi1e-5", "1e-5", "default"
+    ),
+    BGLR_probIn = dplyr::if_else(
+      Model == "BayesB_pi1e-5", format(probIn, digits = 6), "default"
+    )
+  ) |>
+  dplyr::select(Model, BGLR_model, Article_zero_effect_probability, BGLR_probIn)
+print(tabela_relatorio(catalogo_exibicao, "Bayesian model catalogue"))
+```
+
+Bayesian ridge regression uses a common Gaussian shrinkage variance. BayesA
+uses marker-specific scaled-$t$ effects; BayesB combines marker-specific
+effects with variable selection; BayesC uses a common slab variance with
+variable selection; and Bayesian Lasso uses a double-exponential shrinkage
+prior. The models differ in their priors, not in their validation folds.
+
+## BayesB `pi = 1e-5` convention
+
+The article describes `pi = 1e-5` as the probability of a zero marker effect.
+In BGLR, `probIn` is the probability that an effect is non-zero. The dedicated
+model therefore uses `probIn = 1 - 1e-5` and `counts = 1e6`. This explicit
+translation prevents reversing the prior meaning.
+
+## MCMC profiles
+
+Website builds use the `site` profile and do not start MCMC. The `smoke`
+profile tests the complete integration with short chains. The `full` profile
+uses the 1,000,000 iterations, 200,000 burn-in iterations, and thinning of 4
+reported in the main methods text of Silva et al. [-@silva2021brrguava].
+
+```{r mcmc-configuration, results='asis'}
+perfis <- data.frame(
+  Profile = c("site", "smoke", "full"),
+  Execute = c(FALSE, TRUE, TRUE),
+  Iterations = c(NA, 5000, 1000000),
+  Burn_in = c(NA, 1000, 200000),
+  Thin = c(NA, 5, 4)
+)
+print(tabela_relatorio(perfis, "Controlled execution profiles", digitos = 0))
+```
+
+## Controlled execution
+
+The English page owns the computational step. It runs only when
+`PAPAYA_RUN_MODE` is `smoke` or `full`; otherwise it loads a previously saved
+result. Each model uses exactly the training-specific marker transformation
+created on the preprocessing page.
+
+```{r fit-bayesian-models}
+if (isTRUE(configuracao$mcmc$executar)) {
+  resultado_bayesiano <- executar_modelos_bayesianos(objeto, configuracao)
+} else {
+  resultado_bayesiano <- carregar_resultado(configuracao$arquivo_bayesiano)
+}
+```
+
+```{r bayesian-status, results='asis', echo=FALSE}
+if (is.null(resultado_bayesiano)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_bayesiano, "en"))
+}
+```
+
+## Cross-validated prediction
+
+Predictive correlation, RMSE, MAE, bias, and calibration are calculated in
+each fold. The table summarizes fold-level performance; final cross-model
+ranking is postponed to the common out-of-fold comparison on page 5.
+
+```{r bayesian-prediction-summary, results='asis'}
+if (!is.null(resultado_bayesiano)) {
+  resumo_bayesiano <- resumir_metricas_folds(resultado_bayesiano$fold_metrics) |>
+    dplyr::arrange(Trait, dplyr::desc(Mean_correlation))
+  print(tabela_relatorio(
+    resumo_bayesiano,
+    "Fold-level predictive performance of Bayesian models",
+    rolagem = TRUE
+  ))
+}
+```
+
+When results are available, the plot shows mean predictive correlation across
+the eight common folds for every trait and Bayesian prior.
+
+```{r bayesian-correlation-plot, echo=FALSE}
+if (!is.null(resultado_bayesiano)) {
+  resumo_bayesiano <- resumir_metricas_folds(resultado_bayesiano$fold_metrics)
+  print(
+    ggplot2::ggplot(
+      resumo_bayesiano,
+      ggplot2::aes(x = Model, y = Mean_correlation, color = Model, group = Model)
+    ) +
+      ggplot2::geom_hline(yintercept = 0, color = "grey70") +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_wrap(~ Trait, scales = "free_y", ncol = 2) +
+      ggplot2::labs(
+        x = NULL,
+        y = "Mean fold correlation",
+        title = "Bayesian predictive correlation by trait"
+      ) +
+      tema_relatorio() +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 35, hjust = 1))
+  )
+}
+```
+
+## DIC within the Bayesian family
+
+DIC, effective parameter count, $\Delta$DIC, normalized DIC weights, and
+evidence ratios come from the full-data Bayesian fits. These quantities are
+reported only among Bayesian models and are not treated as a common criterion
+for RR-BLUP or GBLUP.
+
+```{r dic-table, results='asis'}
+if (!is.null(resultado_bayesiano)) {
+  dic <- resultado_bayesiano$full_model_summary |>
+    dplyr::arrange(Trait, DIC) |>
+    dplyr::select(
+      Trait, Model, DIC, Effective_parameters, Delta_DIC,
+      DIC_weight, Evidence_ratio, Residual_variance, H2
+    )
+  print(tabela_relatorio(dic, "Bayesian DIC diagnostics", rolagem = TRUE))
+}
+```
+
+BRR trace files from each full-data trait fit are retained in the saved result
+for convergence inspection. Short `smoke` chains validate software behavior;
+they must not be used for biological inference.
+
+[Next: RR-BLUP](03_rrblup_en.html)

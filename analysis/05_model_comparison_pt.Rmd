@@ -1,0 +1,124 @@
+---
+title: "5. Comparação dos modelos fora da amostra"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[English](05_model_comparison_en.html) | [Anterior](04_gblup_pt.html) | [Início](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 7)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+comparacao <- carregar_resultado(configuracao$arquivo_comparacao)
+```
+
+## Regra de comparação
+
+Os oito modelos são comparados pelas mesmas 150 predições fora da amostra em
+cada característica. Cada indivíduo contribui exatamente uma observação
+retida por modelo. A classificação principal maximiza a correlação preditiva,
+depois minimiza RMSE e, por fim, MAE. Viés, inclinação de calibração e variação
+entre folds permanecem visíveis como salvaguardas.
+
+O DIC não participa da classificação geral, pois pertence somente à estrutura
+Bayesiana de verossimilhança e priori. Ele responde a uma pergunta diferente
+do desempenho preditivo em indivíduos retidos.
+
+```{r comparison-status-pt, results='asis', echo=FALSE}
+if (is.null(comparacao)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_comparacao, "pt"))
+}
+```
+
+## Métricas preditivas comuns
+
+As métricas são calculadas uma vez por característica e modelo com todas as
+predições retidas concatenadas. Correlação mede ordenação preditiva; RMSE e MAE
+preservam as unidades originais. O viés é predito menos observado. Uma predição
+calibrada tem intercepto próximo de zero e inclinação próxima de um.
+
+```{r common-metrics-table-pt, results='asis'}
+if (!is.null(comparacao)) {
+  metricas <- comparacao$out_of_fold_metrics |>
+    dplyr::arrange(Trait, dplyr::desc(Correlation), RMSE, MAE)
+  print(tabela_relatorio(
+    metricas,
+    "Métricas das predições concatenadas fora da amostra",
+    rolagem = TRUE
+  ))
+}
+```
+
+O gráfico expõe o padrão por modelo e característica e deve ser interpretado
+em conjunto com os erros e a calibração da tabela.
+
+```{r correlation-comparison-plot-pt, echo=FALSE, fig.height=10}
+if (!is.null(comparacao)) {
+  print(
+    ggplot2::ggplot(
+      comparacao$out_of_fold_metrics,
+      ggplot2::aes(x = Model, y = Correlation, fill = Model)
+    ) +
+      ggplot2::geom_hline(yintercept = 0, color = "grey70") +
+      ggplot2::geom_col(show.legend = FALSE) +
+      ggplot2::facet_wrap(~ Trait, scales = "free_y", ncol = 2) +
+      ggplot2::labs(
+        x = NULL, y = "Correlação fora da amostra",
+        title = "Correlação preditiva dos oito modelos genômicos"
+      ) +
+      tema_relatorio() +
+      ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+  )
+}
+```
+
+## Modelo selecionado por característica
+
+A tabela registra o modelo escolhido pela regra explícita de desempate. A
+escolha é específica por característica; não se pressupõe que uma única priori
+ou representação BLUP domine todas as respostas.
+
+```{r best-model-table-pt, results='asis'}
+if (!is.null(comparacao)) {
+  melhores <- comparacao$best_models |>
+    dplyr::select(
+      Trait, Model, N, Correlation, Correlation_p_value,
+      RMSE, MAE, Bias, Calibration_intercept, Calibration_slope
+    )
+  print(tabela_relatorio(melhores, "Melhor modelo preditivo por característica"))
+}
+```
+
+As predições dos modelos selecionados são exibidas como diagnóstico de
+concordância e dispersão.
+
+```{r best-model-prediction-plot-pt, echo=FALSE, fig.height=10}
+if (!is.null(comparacao)) {
+  predicoes_melhores <- comparacao$predictions |>
+    dplyr::inner_join(
+      comparacao$best_models |> dplyr::select(Trait, Model),
+      by = c("Trait", "Model")
+    )
+  print(
+    ggplot2::ggplot(predicoes_melhores, ggplot2::aes(x = Observed, y = Predicted)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey55") +
+      ggplot2::geom_point(ggplot2::aes(color = Model), alpha = 0.75, size = 1.5) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "Observado", y = "Predição fora da amostra",
+        color = "Modelo selecionado",
+        title = "Predições fora da amostra dos modelos selecionados"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+A página seguinte usa valores genômicos dos ajustes completos dos modelos
+selecionados para ordenar os candidatos.
+
+[Próxima: seleção genômica](06_genomic_selection_pt.html)

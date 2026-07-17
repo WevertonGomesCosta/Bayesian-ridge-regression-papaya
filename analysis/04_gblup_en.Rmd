@@ -1,0 +1,165 @@
+---
+title: "4. Genomic BLUP"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[Português](04_gblup_pt.html) | [Previous](03_rrblup_en.html) | [Home](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 7)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "01_data_functions.R"))
+source(file.path("code", "02_model_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+if (is.null(objeto)) objeto <- executar_preprocessamento(configuracao)
+```
+
+## Model
+
+GBLUP models individual genomic values directly:
+
+$$
+\mathbf{y}=\mathbf{X}\boldsymbol{\beta}+\mathbf{Z}\boldsymbol{a}+
+\boldsymbol{e},\qquad
+\boldsymbol{a}\sim N(\mathbf{0},\mathbf{G}\sigma_a^2).
+$$
+
+The genomic relationship matrix is the multi-allelic extension of the first
+VanRaden construction [@vanraden2008efficient],
+
+$$
+\mathbf{G}=\frac{\mathbf{M}_c\mathbf{M}_c^{\mathsf T}}
+{\sum_j 2p_j(1-p_j)},
+$$
+
+where $\mathbf{M}_c$ is the centered allele-dosage matrix. Within cross-
+validation, allele frequencies, centering means, and $\mathbf{G}$ are defined
+from the training sample. Validation individuals remain in the relationship
+matrix so their genomic values can be predicted from relationships with the
+training set, but their phenotypes are passed as missing.
+
+## Controlled execution
+
+GBLUP runs under `smoke` and `full` profiles and otherwise loads a saved result.
+The same fixed effects and eight folds are used in every competing model.
+
+```{r fit-gblup}
+if (configuracao$modo %in% c("smoke", "full")) {
+  resultado_gblup <- executar_gblup(objeto, configuracao)
+} else {
+  resultado_gblup <- carregar_resultado(configuracao$arquivo_gblup)
+}
+```
+
+```{r gblup-status, results='asis', echo=FALSE}
+if (is.null(resultado_gblup)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_gblup, "en"))
+}
+```
+
+## Relationship-matrix diagnostics
+
+The complete-data matrix is checked for symmetry and positive semidefiniteness
+before modeling. Its eigenvalue summary gives a compact diagnostic of the
+available genomic dimensions and numerical tolerance.
+
+```{r relationship-diagnostics, results='asis'}
+if (!is.null(resultado_gblup)) {
+  autovalores <- eigen(
+    resultado_gblup$relationship_matrix,
+    symmetric = TRUE,
+    only.values = TRUE
+  )$values
+  diagnosticos_g <- data.frame(
+    Diagnostic = c(
+      "Individuals", "Maximum asymmetry", "Minimum eigenvalue",
+      "Maximum eigenvalue", "Positive eigenvalues (> 1e-8)"
+    ),
+    Value = c(
+      nrow(resultado_gblup$relationship_matrix),
+      max(abs(resultado_gblup$relationship_matrix - t(resultado_gblup$relationship_matrix))),
+      min(autovalores),
+      max(autovalores),
+      sum(autovalores > 1e-8)
+    )
+  )
+  print(tabela_relatorio(diagnosticos_g, "Genomic relationship diagnostics"))
+}
+```
+
+The heatmap displays the complete relationship matrix in phenotype-table
+order. It is descriptive; model performance is assessed only through held-out
+phenotypes.
+
+```{r relationship-heatmap, echo=FALSE, fig.height=8}
+if (!is.null(resultado_gblup)) {
+  g_long <- as.data.frame(as.table(resultado_gblup$relationship_matrix))
+  names(g_long) <- c("Individual_1", "Individual_2", "Relationship")
+  g_long$Individual_1 <- factor(g_long$Individual_1, levels = objeto$ids)
+  g_long$Individual_2 <- factor(g_long$Individual_2, levels = rev(objeto$ids))
+
+  print(
+    ggplot2::ggplot(
+      g_long,
+      ggplot2::aes(x = Individual_1, y = Individual_2, fill = Relationship)
+    ) +
+      ggplot2::geom_raster() +
+      ggplot2::scale_fill_gradient2(low = "#B2182B", mid = "white", high = "#2166AC") +
+      ggplot2::labs(x = NULL, y = NULL, fill = "G", title = "Genomic relationship matrix") +
+      tema_relatorio() +
+      ggplot2::theme(axis.text = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank())
+  )
+}
+```
+
+## Variance components and prediction
+
+Because $\mathbf{G}$ is scaled by allele-frequency variance, `Vu` estimates the
+additive genomic variance directly. Genomic heritability is
+$\sigma_a^2/(\sigma_a^2+\sigma_e^2)$.
+
+```{r gblup-variance-table, results='asis'}
+if (!is.null(resultado_gblup)) {
+  print(tabela_relatorio(
+    resultado_gblup$full_model_summary,
+    "GBLUP full-data variance components"
+  ))
+}
+```
+
+Fold-level metrics provide an initial view; the common concatenated out-of-
+fold comparison is reported on the next page.
+
+```{r gblup-metrics, results='asis'}
+if (!is.null(resultado_gblup)) {
+  resumo_gblup <- resumir_metricas_folds(resultado_gblup$fold_metrics)
+  print(tabela_relatorio(resumo_gblup, "GBLUP fold-level performance"))
+}
+```
+
+```{r gblup-prediction-plot, echo=FALSE, fig.height=10}
+if (!is.null(resultado_gblup)) {
+  print(
+    ggplot2::ggplot(
+      resultado_gblup$predictions,
+      ggplot2::aes(x = Observed, y = Predicted)
+    ) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey55") +
+      ggplot2::geom_point(color = "#2166AC", alpha = 0.7, size = 1.5) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "Observed",
+        y = "Out-of-fold prediction",
+        title = "GBLUP out-of-fold predictions"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+[Next: model comparison](05_model_comparison_en.html)

@@ -1,0 +1,158 @@
+---
+title: "1. Auditoria dos dados e pré-processamento"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[English](01_preprocessing_en.html) | [Início](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 5)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "01_data_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+if (is.null(objeto)) objeto <- executar_preprocessamento(configuracao)
+```
+
+## Objetivo
+
+Esta página estabelece o contrato dos dados antes do ajuste dos modelos. O
+processo lê as planilhas-fonte, liga genótipos e fenótipos pelo identificador da
+planilha `Genealex`, audita as chamadas SSR, expande os genótipos multialélicos
+em dosagens e fixa os oito folds da validação cruzada. O objeto resultante é
+reutilizado por todas as etapas seguintes.
+
+## Inventário auditado
+
+A tabela fenotípica canônica é `Médias_IND_artigo`. Os genótipos possuem 35
+locos SSR; o código `-9` representa chamadas ausentes e é convertido em `NA`.
+Os IDs são mantidos como texto para preservar `144B`.
+
+```{r inventory-table-pt, results='asis'}
+inventario <- data.frame(
+  Item = c(
+    "Indivíduos", "IDs únicos", "Locos SSR", "Chamadas SSR ausentes",
+    "Taxa de ausência", "Características fenotípicas", "Fenótipos ausentes",
+    "Colunas de dosagem alélica mantidas"
+  ),
+  Valor = c(
+    length(objeto$ids),
+    length(unique(objeto$ids)),
+    ncol(objeto$codigos_ssr),
+    sum(is.na(objeto$codigos_ssr)),
+    sprintf("%.2f%%", 100 * mean(is.na(objeto$codigos_ssr))),
+    ncol(objeto$fenotipos),
+    sum(is.na(objeto$fenotipos)),
+    ncol(objeto$dosagens_ssr)
+  )
+)
+print(tabela_relatorio(inventario, "Inventário confirmado dos dados", digitos = 0))
+```
+
+As dez respostas abrangem produção, dimensões do fruto, firmeza e sólidos
+solúveis. Os mesmos códigos e unidades são usados em todo o relatório.
+
+```{r trait-dictionary-pt, results='asis'}
+dicionario_pt <- configuracao$dicionario_caracteristicas |>
+  dplyr::select(Caracteristica = Trait, Descricao = Description_pt, Unidade = Unit)
+print(tabela_relatorio(dicionario_pt, "Características fenotípicas"))
+```
+
+## Codificação SSR e controle de qualidade
+
+Cada código genotípico armazena dois alelos. Para cada loco e alelo observado,
+o pipeline cria uma coluna de dosagem com valores 0, 1 ou 2. Assim, quatro locos
+trialélicos são preservados. Exige-se taxa de chamada de pelo menos 0,90, mais
+de uma classe genotípica, frequência alélica entre 0,05 e 0,95 e variância
+positiva. O loco `P6K1129CC` é removido por possuir uma única classe observada.
+
+```{r marker-qc-table-pt, results='asis'}
+qc_locos <- objeto$auditoria$locos |>
+  dplyr::mutate(Call_rate = round(Call_rate, 3)) |>
+  dplyr::arrange(Keep_locus, Call_rate)
+print(tabela_relatorio(qc_locos, "Controle de qualidade por loco SSR", rolagem = TRUE))
+```
+
+O gráfico mostra a taxa de chamada de cada loco e o limite inclusivo de 0,90.
+
+```{r marker-call-rate-plot-pt, echo=FALSE}
+ggplot2::ggplot(
+  objeto$auditoria$locos,
+  ggplot2::aes(x = stats::reorder(Locus, Call_rate), y = Call_rate, fill = Keep_locus)
+) +
+  ggplot2::geom_col() +
+  ggplot2::geom_hline(yintercept = configuracao$taxa_chamada_minima, linetype = 2) +
+  ggplot2::coord_flip() +
+  ggplot2::scale_fill_manual(values = c("TRUE" = "#2C7FB8", "FALSE" = "#D95F0E")) +
+  ggplot2::labs(
+    x = NULL,
+    y = "Taxa de chamada",
+    fill = "Mantido",
+    title = "Taxa de chamada dos locos SSR"
+  ) +
+  tema_relatorio()
+```
+
+## Visão geral dos fenótipos
+
+A matriz fenotípica canônica é completa. Os resumos abaixo verificam a escala
+de cada variável; os modelos preservam as unidades originais.
+
+```{r phenotype-summary-pt, results='asis'}
+resumo_fenotipos <- data.frame(
+  Caracteristica = colnames(objeto$fenotipos),
+  N = colSums(is.finite(objeto$fenotipos)),
+  Media = colMeans(objeto$fenotipos),
+  DP = apply(objeto$fenotipos, 2L, stats::sd),
+  Minimo = apply(objeto$fenotipos, 2L, min),
+  Maximo = apply(objeto$fenotipos, 2L, max),
+  row.names = NULL
+)
+print(tabela_relatorio(resumo_fenotipos, "Resumo dos fenótipos"))
+```
+
+As distribuições são apresentadas em painéis com escalas livres, pois as
+unidades diferem entre as características.
+
+```{r phenotype-distributions-pt, echo=FALSE, fig.height=8}
+fenotipos_longos <- data.frame(IND = rownames(objeto$fenotipos), objeto$fenotipos) |>
+  tidyr::pivot_longer(-IND, names_to = "Caracteristica", values_to = "Valor")
+
+ggplot2::ggplot(fenotipos_longos, ggplot2::aes(x = Valor)) +
+  ggplot2::geom_histogram(bins = 20, fill = "#2C7FB8", color = "white") +
+  ggplot2::facet_wrap(~ Caracteristica, scales = "free", ncol = 2) +
+  ggplot2::labs(x = "Valor observado", y = "Indivíduos", title = "Distribuições fenotípicas") +
+  tema_relatorio()
+```
+
+## Folds de validação e controle de vazamento
+
+Os folds determinísticos são estratificados pela família fenotípica. Cada
+indivíduo é validado uma vez, os tamanhos diferem no máximo por uma unidade e
+todos os níveis de família permanecem em cada treinamento. Médias dos
+marcadores, imputação, verificação de variância, centralização e matriz de
+relacionamento são recalculadas somente com os indivíduos de treinamento.
+
+```{r fold-summary-pt, results='asis'}
+resumo_folds <- data.frame(
+  Fold = seq_len(configuracao$n_folds),
+  Individuos_validacao = tabulate(objeto$folds, nbins = configuracao$n_folds)
+)
+print(tabela_relatorio(resumo_folds, "Alocação fixa em oito folds", digitos = 0))
+```
+
+O desenho dos efeitos fixos é `bloco + família`. O posto completo é verificado
+em cada conjunto de treinamento antes do ajuste.
+
+## Contrato de saída
+
+As páginas seguintes recebem fenótipos alinhados, matrizes de efeitos fixos,
+dosagens filtradas, folds comuns e transformações específicas de cada treino.
+Assim, as comparações entre modelos usam exatamente os mesmos indivíduos de
+validação.
+
+[Próxima: modelos Bayesianos](02_bayesian_models_pt.html)

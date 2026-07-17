@@ -1,0 +1,85 @@
+---
+title: "Genomic selection in papaya / Seleção genômica em mamoeiro"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "01_data_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+```
+
+[English](#english) | [Português](#português)
+
+## English
+
+This reproducible `workflowr` project compares six Bayesian whole-genome
+regression methods, RR-BLUP, and GBLUP for genomic prediction in papaya. The
+design follows the Bayesian SSR framework of Silva et al. [-@silva2021brrguava]
+and extends it with common out-of-fold prediction metrics for all eight models.
+
+The data comprise 150 individuals, 35 multi-allelic SSR loci, and ten
+production and fruit-quality traits. Individual identity is linked through the
+`Genealex` sheet, preserving the alphanumeric identifier `144B`. Block and
+family are fitted as categorical fixed effects.
+
+```{r overview-en, results='asis'}
+if (is.null(objeto)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_preprocessamento, "en"))
+} else {
+  resumo <- data.frame(
+    Item = c("Individuals", "SSR loci", "Retained allele-dosage columns", "Traits", "CV folds"),
+    Value = c(
+      length(objeto$ids),
+      ncol(objeto$codigos_ssr),
+      ncol(objeto$dosagens_ssr),
+      ncol(objeto$fenotipos),
+      configuracao$n_folds
+    )
+  )
+  print(tabela_relatorio(resumo, "Analysis inventory", digitos = 0))
+}
+```
+
+Start with [data and preprocessing](01_preprocessing_en.html), then follow the
+numbered pages in the navigation bar. The website can be built without running
+the expensive MCMC models; computed results are loaded when available.
+
+## Português
+
+Este projeto reprodutível em `workflowr` compara seis regressões genômicas
+Bayesianas, RR-BLUP e GBLUP para predição genômica em mamoeiro. O desenho segue
+a abordagem Bayesiana com SSR de Silva et al. [-@silva2021brrguava] e a amplia
+com métricas preditivas fora da amostra comuns aos oito modelos.
+
+Os dados reúnem 150 indivíduos, 35 locos SSR multialélicos e dez
+características de produção e qualidade de frutos. A identidade é vinculada
+pela planilha `Genealex`, preservando o identificador alfanumérico `144B`.
+Bloco e família são ajustados como efeitos fixos categóricos.
+
+Comece por [dados e pré-processamento](01_preprocessing_pt.html) e siga as
+páginas numeradas. O site pode ser construído sem executar as cadeias MCMC;
+resultados previamente calculados são carregados quando disponíveis.
+
+## Reproducibility
+
+The repository versions the source workbooks, analysis code, tests, site
+sources, and an `renv` dependency lockfile. The complete Bayesian profile uses
+1,000,000 iterations, 200,000 burn-in iterations, and thinning of 4, matching
+the main methods section of the reference article.
+
+The primary comparison uses deterministic family-stratified eight-fold cross-
+validation. Missing marker calls are imputed and centered using training data
+inside each fold, preventing information leakage.
+
+## Citation
+
+Please cite the reference article and this repository when reusing the
+workflow. See [About](about.html) for the methodological scope and
+[License](license.html) for reuse terms.

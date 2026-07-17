@@ -1,0 +1,114 @@
+---
+title: "3. Ridge-regression BLUP"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[Português](03_rrblup_pt.html) | [Previous](02_bayesian_models_en.html) | [Home](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 7)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "01_data_functions.R"))
+source(file.path("code", "02_model_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+if (is.null(objeto)) objeto <- executar_preprocessamento(configuracao)
+```
+
+## Model
+
+RR-BLUP models all centered allele-dosage effects as exchangeable random
+effects [@endelman2011rrblup]:
+
+$$
+\mathbf{y}=\mathbf{X}\boldsymbol{\beta}+\mathbf{M}\boldsymbol{u}+
+\boldsymbol{e},\qquad
+\boldsymbol{u}\sim N(\mathbf{0},\mathbf{I}\sigma_u^2).
+$$
+
+The fixed design $\mathbf{X}$ includes the intercept, block, and family. The
+same fold-specific dosage matrices used in the Bayesian analysis are supplied
+to `rrBLUP::mixed.solve`, so imputation and centering never use validation
+phenotypes or validation marker summaries.
+
+## Controlled execution
+
+RR-BLUP is fitted under `smoke` and `full` profiles. Under `site`, this page
+loads the saved object if it exists and otherwise remains a methods page.
+
+```{r fit-rrblup}
+if (configuracao$modo %in% c("smoke", "full")) {
+  resultado_rrblup <- executar_rrblup(objeto, configuracao)
+} else {
+  resultado_rrblup <- carregar_resultado(configuracao$arquivo_rrblup)
+}
+```
+
+```{r rrblup-status, results='asis', echo=FALSE}
+if (is.null(resultado_rrblup)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_rrblup, "en"))
+}
+```
+
+## Variance components
+
+For the all-individual fit, the marker-effect variance is converted to an
+additive genomic variance using the multi-allelic denominator
+$\sum_j 2p_j(1-p_j)$. The reported genomic heritability is the ratio of this
+additive variance to additive plus residual variance.
+
+```{r rrblup-variance-table, results='asis'}
+if (!is.null(resultado_rrblup)) {
+  resumo_variancias <- resultado_rrblup$full_model_summary |>
+    dplyr::select(
+      Trait, Marker_effect_variance, Additive_variance,
+      Residual_variance, H2, Log_likelihood, Time_seconds
+    )
+  print(tabela_relatorio(resumo_variancias, "RR-BLUP full-data variance components"))
+}
+```
+
+## Cross-validated performance
+
+The table aggregates the eight fold-level fits. Page 5 recomputes each metric
+once from all 150 concatenated out-of-fold predictions for fair model ranking.
+
+```{r rrblup-metrics, results='asis'}
+if (!is.null(resultado_rrblup)) {
+  resumo_rrblup <- resumir_metricas_folds(resultado_rrblup$fold_metrics)
+  print(tabela_relatorio(resumo_rrblup, "RR-BLUP fold-level performance"))
+}
+```
+
+Observed and predicted values are shown in their original trait units. The
+dashed line represents perfect agreement, not an estimated calibration line.
+
+```{r rrblup-prediction-plot, echo=FALSE, fig.height=10}
+if (!is.null(resultado_rrblup)) {
+  print(
+    ggplot2::ggplot(
+      resultado_rrblup$predictions,
+      ggplot2::aes(x = Observed, y = Predicted)
+    ) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey55") +
+      ggplot2::geom_point(color = "#2C7FB8", alpha = 0.7, size = 1.5) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "Observed",
+        y = "Out-of-fold prediction",
+        title = "RR-BLUP out-of-fold predictions"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+Marker effects and full-data genomic values are retained in the result object.
+Candidate ranking is performed only after the best predictive model has been
+selected separately for each trait.
+
+[Next: GBLUP](04_gblup_en.html)

@@ -1,0 +1,167 @@
+---
+title: "6. Genomic values and candidate rankings"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[Português](06_genomic_selection_pt.html) | [Previous](05_model_comparison_en.html) | [Home](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 8)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "02_model_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+objeto <- carregar_resultado(configuracao$arquivo_preprocessamento)
+resultado_bayesiano <- carregar_resultado(configuracao$arquivo_bayesiano)
+resultado_rrblup <- carregar_resultado(configuracao$arquivo_rrblup)
+resultado_gblup <- carregar_resultado(configuracao$arquivo_gblup)
+comparacao <- carregar_resultado(configuracao$arquivo_comparacao)
+```
+
+## Selection scope
+
+This page links predictive model choice to full-data genomic estimated breeding
+values (GEBVs). For each trait, it extracts GEBVs from the model selected by
+out-of-fold performance and joins block and family metadata. Two rankings are
+retained: high genomic value and low genomic value.
+
+These are **candidate rankings, not a final multi-trait recommendation**.
+Production of defective fruit and internal-cavity diameter may have breeding
+directions different from production, mass, or soluble solids. Fruit size and
+firmness can also have target ranges instead of one-sided optima. The project
+therefore does not silently assign directions or economic weights.
+
+## Build ranking tables
+
+The ranking object is built only after every fitted-model result and the common
+comparison are available. It records the predictive model used for each trait
+so the provenance of every GEBV is explicit.
+
+```{r build-selection-tables}
+resultados_disponiveis <- all(vapply(
+  list(
+    objeto, resultado_bayesiano, resultado_rrblup,
+    resultado_gblup, comparacao
+  ),
+  Negate(is.null),
+  logical(1)
+))
+
+if (resultados_disponiveis) {
+  selecao <- construir_tabelas_selecao(
+    objeto,
+    resultado_bayesiano,
+    resultado_rrblup,
+    resultado_gblup,
+    comparacao,
+    configuracao
+  )
+} else {
+  selecao <- carregar_resultado(configuracao$arquivo_selecao)
+}
+```
+
+```{r selection-status, results='asis', echo=FALSE}
+if (is.null(selecao)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_selecao, "en"))
+}
+```
+
+## Model provenance
+
+The table below identifies the predictive model that supplies the full-data
+GEBVs for each trait. Its correlation and errors come only from held-out
+predictions; the GEBV itself comes from the final fit using all individuals.
+
+```{r selection-model-table, results='asis'}
+if (!is.null(comparacao)) {
+  modelos_selecao <- comparacao$best_models |>
+    dplyr::select(Trait, Model, Correlation, RMSE, MAE, Bias, Calibration_slope)
+  print(tabela_relatorio(modelos_selecao, "Model used for each trait-specific ranking"))
+}
+```
+
+## High-value candidates
+
+The first table reports the 15 highest GEBVs for every trait. Use it directly
+only for traits whose breeding objective is explicitly to increase the trait.
+For objectives requiring a decrease, use `Rank_low_value` in the complete
+ranking or the high-and-low extremes exported by the pipeline.
+
+```{r high-ranking-table, results='asis'}
+if (!is.null(selecao)) {
+  candidatos_altos <- selecao$top_15_by_trait |>
+    dplyr::select(
+      Trait, Rank_high_value, IND, BL, FAM, Model, GEBV, Fitted,
+      Rank_low_value
+    )
+  print(tabela_relatorio(
+    candidatos_altos,
+    "Fifteen highest genomic values per trait",
+    rolagem = TRUE,
+    altura = "600px"
+  ))
+}
+```
+
+The plot provides a compact view of the ten highest GEBVs per trait and the
+model from which they were obtained. GEBV magnitudes are not comparable across
+traits because scales differ.
+
+```{r high-ranking-plot, echo=FALSE, fig.height=12}
+if (!is.null(selecao)) {
+  top_10 <- selecao$rankings_by_trait |>
+    dplyr::filter(Rank_high_value <= 10L) |>
+    dplyr::mutate(IND = factor(IND, levels = unique(IND[order(GEBV)])))
+
+  print(
+    ggplot2::ggplot(top_10, ggplot2::aes(x = GEBV, y = IND, color = Model)) +
+      ggplot2::geom_point(size = 2) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "GEBV",
+        y = "Individual",
+        color = "Selected model",
+        title = "Ten highest genomic values per trait"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+## High and low extremes
+
+Both ends of each trait distribution are retained so the breeding program can
+apply a documented direction later. The full CSV output contains all 150
+individuals, both ranks, family, block, selected model, GEBV, and fitted value.
+
+```{r extremes-table, results='asis'}
+if (!is.null(selecao)) {
+  extremos <- selecao$extreme_15_by_trait |>
+    dplyr::select(
+      Trait, Ranking_side, IND, BL, FAM, Model, GEBV,
+      Rank_high_value, Rank_low_value
+    )
+  print(tabela_relatorio(
+    extremos,
+    "Fifteen candidates at each genomic-value extreme",
+    rolagem = TRUE,
+    altura = "600px"
+  ))
+}
+```
+
+## Required decision for a multi-trait index
+
+A defensible selection index requires, at minimum, a direction or target for
+each trait and either economic weights or desired gains. Once these are
+provided, the current outputs can support standardized indices, restricted
+indices, or independent-culling rules without rerunning marker preprocessing.
+
+Until then, the reproducible deliverables are trait-specific rankings and
+their validated model provenance.
+
+[Back to home](index.html)

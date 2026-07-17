@@ -1,0 +1,98 @@
+---
+title: "3. RR-BLUP"
+author: "Weverton Gomes da Costa"
+date: "`r format(Sys.Date(), '%Y-%m-%d')`"
+bibliography: ../REFERENCES.bib
+link-citations: true
+---
+
+[English](03_rrblup_en.html) | [Anterior](02_bayesian_models_pt.html) | [Início](index.html)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 9, fig.height = 7)
+source(file.path("code", "00_config.R"))
+source(file.path("code", "02_model_functions.R"))
+source(file.path("code", "03_reporting_functions.R"))
+configuracao <- obter_configuracao()
+resultado_rrblup <- carregar_resultado(configuracao$arquivo_rrblup)
+```
+
+## Modelo
+
+O RR-BLUP trata todos os efeitos das dosagens alélicas centralizadas como
+aleatórios e intercambiáveis [@endelman2011rrblup]:
+
+$$
+\mathbf{y}=\mathbf{X}\boldsymbol{\beta}+\mathbf{M}\boldsymbol{u}+
+\boldsymbol{e},\qquad
+\boldsymbol{u}\sim N(\mathbf{0},\mathbf{I}\sigma_u^2).
+$$
+
+A matriz $\mathbf{X}$ inclui intercepto, bloco e família. As matrizes de
+dosagem específicas de cada fold são as mesmas da análise Bayesiana; imputação
+e centralização usam somente o conjunto de treinamento.
+
+```{r rrblup-status-pt, results='asis', echo=FALSE}
+if (is.null(resultado_rrblup)) {
+  cat(mensagem_resultado_ausente(configuracao$arquivo_rrblup, "pt"))
+}
+```
+
+## Componentes de variância
+
+No ajuste com todos os indivíduos, a variância dos efeitos de marcador é
+convertida em variância genômica aditiva pelo denominador multialélico
+$\sum_j 2p_j(1-p_j)$. A herdabilidade genômica é a razão entre essa variância e
+a soma das variâncias aditiva e residual.
+
+```{r rrblup-variance-table-pt, results='asis'}
+if (!is.null(resultado_rrblup)) {
+  resumo_variancias <- resultado_rrblup$full_model_summary |>
+    dplyr::select(
+      Trait, Marker_effect_variance, Additive_variance,
+      Residual_variance, H2, Log_likelihood, Time_seconds
+    )
+  print(tabela_relatorio(resumo_variancias, "Componentes de variância do RR-BLUP"))
+}
+```
+
+## Desempenho em validação cruzada
+
+A tabela resume os oito ajustes por fold. Na página 5, as métricas são
+recalculadas com as 150 predições fora da amostra concatenadas.
+
+```{r rrblup-metrics-pt, results='asis'}
+if (!is.null(resultado_rrblup)) {
+  resumo_rrblup <- resumir_metricas_folds(resultado_rrblup$fold_metrics)
+  print(tabela_relatorio(resumo_rrblup, "Desempenho do RR-BLUP por fold"))
+}
+```
+
+Os valores observados e preditos permanecem nas unidades originais. A linha
+tracejada indica concordância perfeita.
+
+```{r rrblup-prediction-plot-pt, echo=FALSE, fig.height=10}
+if (!is.null(resultado_rrblup)) {
+  print(
+    ggplot2::ggplot(
+      resultado_rrblup$predictions,
+      ggplot2::aes(x = Observed, y = Predicted)
+    ) +
+      ggplot2::geom_abline(slope = 1, intercept = 0, linetype = 2, color = "grey55") +
+      ggplot2::geom_point(color = "#2C7FB8", alpha = 0.7, size = 1.5) +
+      ggplot2::facet_wrap(~ Trait, scales = "free", ncol = 2) +
+      ggplot2::labs(
+        x = "Observado",
+        y = "Predição fora da amostra",
+        title = "Predições RR-BLUP fora da amostra"
+      ) +
+      tema_relatorio()
+  )
+}
+```
+
+Os efeitos dos marcadores e valores genômicos do ajuste completo são
+armazenados. A classificação dos candidatos ocorre somente após a escolha do
+melhor modelo preditivo para cada característica.
+
+[Próxima: GBLUP](04_gblup_pt.html)
