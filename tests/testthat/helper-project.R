@@ -1,11 +1,23 @@
-source(file.path("code", "00_config.R"))
-source(file.path("code", "01_data_functions.R"))
-source(file.path("code", "02_model_functions.R"))
+raiz_projeto <- normalizePath(
+  testthat::test_path("..", ".."),
+  winslash = "/",
+  mustWork = TRUE
+)
 
-configuracao_teste <- obter_configuracao("site")
+source(file.path(raiz_projeto, "code", "00_config.R"))
+source(file.path(raiz_projeto, "code", "01_data_functions.R"))
+source(file.path(raiz_projeto, "code", "02_model_functions.R"))
 
-if (!file.exists(configuracao_teste$arquivo_preprocessamento)) {
-  executar_preprocessamento(configuracao_teste)
-}
+diretorio_anterior <- setwd(raiz_projeto)
+tryCatch(
+  {
+    configuracao_teste <- obter_configuracao("site")
 
-objeto_teste <- readRDS(configuracao_teste$arquivo_preprocessamento)
+    if (!file.exists(configuracao_teste$arquivo_preprocessamento)) {
+      executar_preprocessamento(configuracao_teste)
+    }
+
+    objeto_teste <- readRDS(configuracao_teste$arquivo_preprocessamento)
+  },
+  finally = setwd(diretorio_anterior)
+)
