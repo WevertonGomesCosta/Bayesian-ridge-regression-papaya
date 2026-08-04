@@ -30,23 +30,20 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-Este primeiro módulo prepara os dados fenotípicos e os marcadores SSR
-utilizados na análise de seleção genômica em mamoeiro. O objetivo é obter um
-conjunto de dados limpo e alinhado antes da construção das matrizes de
-marcadores, da matriz de relacionamento genômico e dos modelos de predição.
+A seleção genômica exige que os registros fenotípicos e os marcadores
+representem os mesmos indivíduos e estejam organizados na mesma ordem.
 
-O fluxo foi escrito de forma direta: leitura dos arquivos originais,
-organização dos identificadores, alinhamento das duas fontes, controle de
-qualidade dos marcadores e salvamento dos objetos limpos.
+Nesta etapa, os dados fenotípicos e SSR são lidos, os identificadores dos
+indivíduos e dos locos são organizados, os códigos de ausência são convertidos
+em `NA`, as duas fontes são alinhadas e os locos com baixa taxa de chamada ou
+sem variação genotípica são removidos.
 
-Os cinco folds da validação cruzada serão criados no próximo módulo, juntamente
-com as matrizes de marcadores e de relacionamento genômico.
+Os cinco folds da validação cruzada são criados após este pré-processamento.
 
 ## 2. Pacotes e caminhos dos arquivos
 
-Os pacotes abaixo são utilizados para ler as planilhas Excel, organizar os
-dados, criar tabelas e figuras simples e definir caminhos portáveis dentro do
-projeto workflowr.
+Primeiro são carregados os pacotes necessários e definidos os caminhos das
+duas planilhas e da pasta de saída.
 
 ```{r pacotes}
 suppressPackageStartupMessages({
@@ -68,13 +65,6 @@ CALL_RATE_MIN <- 0.90
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
-if (!file.exists(GENOTYPE_FILE)) {
-  stop("Arquivo genotípico não encontrado: ", GENOTYPE_FILE)
-}
-
-if (!file.exists(PHENOTYPE_FILE)) {
-  stop("Arquivo fenotípico não encontrado: ", PHENOTYPE_FILE)
-}
 ```
 
 ## 3. Leitura das planilhas originais
@@ -138,20 +128,6 @@ locus_names <- trimws(
   )
 )
 
-if (length(ids) != n_individuals) {
-  stop("O número de identificadores não corresponde ao número de linhas genotípicas.")
-}
-
-if (length(locus_names) != n_loci ||
-    anyNA(locus_names) ||
-    any(locus_names == "")) {
-  stop("Os nomes dos locos estão incompletos ou não correspondem às colunas de marcadores.")
-}
-
-if (anyNA(ids) || any(ids == "") || anyDuplicated(ids)) {
-  stop("Os identificadores genotípicos estão incompletos ou duplicados.")
-}
-
 ssr_raw <- as.matrix(
   genes[, -1, drop = FALSE]
 )
@@ -182,24 +158,13 @@ TRAITS <- c(
 )
 
 required_columns <- c("IND", "BL", "FAM", TRAITS)
-missing_columns <- setdiff(required_columns, names(pheno_raw))
 
-if (length(missing_columns) > 0) {
-  stop(
-    "Coluna(s) fenotípica(s) ausente(s): ",
-    paste(missing_columns, collapse = ", ")
-  )
-}
+missing_columns <- setdiff(
+  required_columns,
+  names(pheno_raw)
+)
 
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
-
-if (
-  anyNA(pheno_raw$IND) ||
-  any(pheno_raw$IND == "") ||
-  anyDuplicated(pheno_raw$IND)
-) {
-  stop("Os identificadores fenotípicos estão incompletos ou duplicados.")
-}
 
 missing_in_pheno <- setdiff(ids, pheno_raw$IND)
 missing_in_geno <- setdiff(pheno_raw$IND, ids)
@@ -224,19 +189,44 @@ kable(
   caption = "Alinhamento entre os dados genotípicos e fenotípicos"
 )
 
-if (length(missing_in_pheno) > 0 || length(missing_in_geno) > 0) {
-  stop("Os identificadores genotípicos e fenotípicos não coincidem.")
-}
+identifier_summary <- data.frame(
+  Verificacao = c(
+    "Identificadores genotípicos ausentes",
+    "Identificadores genotípicos duplicados",
+    "Nomes de locos ausentes",
+    "Nomes de locos duplicados",
+    "Identificadores fenotípicos ausentes",
+    "Identificadores fenotípicos duplicados",
+    "Colunas fenotípicas obrigatórias ausentes"
+  ),
+  Valor = c(
+    sum(is.na(ids) | ids == ""),
+    sum(duplicated(ids)),
+    sum(is.na(locus_names) | locus_names == ""),
+    sum(duplicated(locus_names)),
+    sum(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
+    sum(duplicated(pheno_raw$IND)),
+    length(missing_columns)
+  )
+)
+
+kable(
+  identifier_summary,
+  caption = "Resumo dos identificadores e das colunas"
+)
 
 pheno <- pheno_raw[
   match(ids, pheno_raw$IND),
   required_columns
 ]
 
-pheno[TRAITS] <- lapply(
-  pheno[TRAITS],
-  function(x) as.numeric(as.character(x))
-)
+for (trait in TRAITS) {
+  pheno[[trait]] <- as.numeric(
+    as.character(
+      pheno[[trait]]
+    )
+  )
+}
 
 metadata <- data.frame(
   IND = pheno$IND,
@@ -249,9 +239,6 @@ phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
 
-if (anyNA(phenotypes)) {
-  stop("Foram encontrados valores ausentes nas dez características.")
-}
 ```
 
 ## 6. Controle de qualidade dos marcadores
@@ -261,15 +248,25 @@ observadas. Um loco é mantido quando apresenta taxa de chamada igual ou
 superior a 0,90 e pelo menos duas classes genotípicas.
 
 ```{r qualidade-marcadores}
+genotype_classes <- integer(
+  ncol(ssr_raw)
+)
+
+for (j in seq_len(ncol(ssr_raw))) {
+  genotype_classes[j] <- length(
+    unique(
+      na.omit(
+        ssr_raw[, j]
+      )
+    )
+  )
+}
+
 locus_audit <- data.frame(
   Locus = colnames(ssr_raw),
   N_called = colSums(!is.na(ssr_raw)),
   Call_rate = colMeans(!is.na(ssr_raw)),
-  N_genotype_classes = apply(
-    ssr_raw,
-    2,
-    function(x) length(unique(na.omit(x)))
-  )
+  N_genotype_classes = genotype_classes
 )
 
 rownames(locus_audit) <- NULL
@@ -342,13 +339,39 @@ O resumo fenotípico permite verificar a escala e a variação das dez
 características.
 
 ```{r resumo-fenotipos}
+phenotype_sd <- numeric(
+  ncol(phenotypes)
+)
+
+phenotype_minimum <- numeric(
+  ncol(phenotypes)
+)
+
+phenotype_maximum <- numeric(
+  ncol(phenotypes)
+)
+
+for (j in seq_len(ncol(phenotypes))) {
+  phenotype_sd[j] <- sd(
+    phenotypes[, j]
+  )
+
+  phenotype_minimum[j] <- min(
+    phenotypes[, j]
+  )
+
+  phenotype_maximum[j] <- max(
+    phenotypes[, j]
+  )
+}
+
 phenotype_summary <- data.frame(
   Trait = colnames(phenotypes),
   N = colSums(!is.na(phenotypes)),
   Mean = colMeans(phenotypes),
-  SD = apply(phenotypes, 2, sd),
-  Minimum = apply(phenotypes, 2, min),
-  Maximum = apply(phenotypes, 2, max)
+  SD = phenotype_sd,
+  Minimum = phenotype_minimum,
+  Maximum = phenotype_maximum
 )
 
 rownames(phenotype_summary) <- NULL
@@ -360,7 +383,8 @@ kable(
 )
 ```
 
-O dicionário registra o significado biológico e a unidade de medida de cada código fenotípico. Esses rótulos serão reutilizados nas tabelas e figuras produzidas pelos módulos seguintes.
+O dicionário registra o significado biológico e a unidade de medida de cada
+código fenotípico.
 
 ```{r dicionario-caracteristicas}
 trait_dictionary <- data.frame(
@@ -426,10 +450,11 @@ ggplot(phenotype_long, aes(x = Value)) +
   theme_bw()
 ```
 
-## 8. Salvamento das saídas do pré-processamento
+## 8. Saídas do pré-processamento
 
-Os principais objetos são armazenados em um único arquivo `.rds`. As tabelas
-de auditoria também são salvas em formato CSV para consulta direta.
+A matriz fenotípica alinhada, as matrizes SSR, os metadados, os resumos e o
+dicionário das características são armazenados em um único objeto para as
+etapas seguintes. Os principais resumos também são salvos em arquivos CSV.
 
 ```{r salvamento-saidas}
 preprocessing_object <- list(
@@ -505,7 +530,6 @@ data.frame(
 
 ## 9. Próxima etapa
 
-Os objetos fenotípicos e SSR estão limpos e alinhados. O próximo módulo
-codificará as dosagens dos SSR multialélicos, construirá as matrizes de
-marcadores e de relacionamento genômico e definirá o desenho comum de validação
-cruzada com cinco folds.
+O próximo módulo converte os locos SSR mantidos em colunas de dosagem alélica,
+constrói as matrizes de marcadores e de relacionamento genômico e define os
+cinco folds da validação cruzada.

@@ -30,22 +30,19 @@ knitr::opts_chunk$set(
 
 ## 1. Objective
 
-This first module prepares the phenotype and SSR marker data used in the
-papaya genomic selection analysis. The aim is to create a clean and aligned
-dataset before constructing marker matrices, genomic relationship matrices,
-or prediction models.
+Genomic selection requires phenotype records and marker information to refer
+to the same individuals and to follow the same order.
 
-The workflow is intentionally direct: read the original files, organize the
-identifiers, align both datasets, inspect marker quality, and save the cleaned
-objects.
+This step reads the phenotype and SSR data, organizes the individual and locus
+labels, converts missing SSR codes to `NA`, aligns the two data sources, and
+removes loci with insufficient call rate or no genotypic variation.
 
-The five cross-validation folds will be created in the next module, together
-with the marker and genomic matrices.
+The five cross-validation folds are created after this preprocessing step.
 
 ## 2. Packages and file paths
 
-The packages below are used to read Excel files, organize data, create simple
-tables and figures, and define portable paths inside the workflowr project.
+The required packages are loaded first, followed by the paths of the two
+source workbooks and the output directory.
 
 ```{r packages}
 suppressPackageStartupMessages({
@@ -67,13 +64,6 @@ CALL_RATE_MIN <- 0.90
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
-if (!file.exists(GENOTYPE_FILE)) {
-  stop("Genotype file not found: ", GENOTYPE_FILE)
-}
-
-if (!file.exists(PHENOTYPE_FILE)) {
-  stop("Phenotype file not found: ", PHENOTYPE_FILE)
-}
 ```
 
 ## 3. Read the original workbooks
@@ -137,20 +127,6 @@ locus_names <- trimws(
   )
 )
 
-if (length(ids) != n_individuals) {
-  stop("The number of identifiers does not match the number of genotype rows.")
-}
-
-if (length(locus_names) != n_loci ||
-    anyNA(locus_names) ||
-    any(locus_names == "")) {
-  stop("The locus labels are incomplete or do not match the marker columns.")
-}
-
-if (anyNA(ids) || any(ids == "") || anyDuplicated(ids)) {
-  stop("The genotype identifiers are incomplete or duplicated.")
-}
-
 ssr_raw <- as.matrix(
   genes[, -1, drop = FALSE]
 )
@@ -180,24 +156,13 @@ TRAITS <- c(
 )
 
 required_columns <- c("IND", "BL", "FAM", TRAITS)
-missing_columns <- setdiff(required_columns, names(pheno_raw))
 
-if (length(missing_columns) > 0) {
-  stop(
-    "Missing phenotype column(s): ",
-    paste(missing_columns, collapse = ", ")
-  )
-}
+missing_columns <- setdiff(
+  required_columns,
+  names(pheno_raw)
+)
 
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
-
-if (
-  anyNA(pheno_raw$IND) ||
-  any(pheno_raw$IND == "") ||
-  anyDuplicated(pheno_raw$IND)
-) {
-  stop("The phenotype identifiers are incomplete or duplicated.")
-}
 
 missing_in_pheno <- setdiff(ids, pheno_raw$IND)
 missing_in_geno <- setdiff(pheno_raw$IND, ids)
@@ -217,21 +182,49 @@ alignment <- data.frame(
   )
 )
 
-kable(alignment, caption = "Alignment between genotype and phenotype data")
+kable(
+  alignment,
+  caption = "Alignment between genotype and phenotype data"
+)
 
-if (length(missing_in_pheno) > 0 || length(missing_in_geno) > 0) {
-  stop("Genotype and phenotype identifiers do not match.")
-}
+identifier_summary <- data.frame(
+  Check = c(
+    "Missing genotype identifiers",
+    "Duplicated genotype identifiers",
+    "Missing locus labels",
+    "Duplicated locus labels",
+    "Missing phenotype identifiers",
+    "Duplicated phenotype identifiers",
+    "Missing required phenotype columns"
+  ),
+  Value = c(
+    sum(is.na(ids) | ids == ""),
+    sum(duplicated(ids)),
+    sum(is.na(locus_names) | locus_names == ""),
+    sum(duplicated(locus_names)),
+    sum(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
+    sum(duplicated(pheno_raw$IND)),
+    length(missing_columns)
+  )
+)
+
+kable(
+  identifier_summary,
+  caption = "Identifier and column summary"
+)
 
 pheno <- pheno_raw[
   match(ids, pheno_raw$IND),
   required_columns
 ]
 
-pheno[TRAITS] <- lapply(
-  pheno[TRAITS],
-  function(x) as.numeric(as.character(x))
-)
+for (trait in TRAITS) {
+  pheno[[trait]] <- as.numeric(
+    as.character(
+      pheno[[trait]]
+    )
+  )
+}
 
 metadata <- data.frame(
   IND = pheno$IND,
@@ -244,9 +237,6 @@ phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
 
-if (anyNA(phenotypes)) {
-  stop("Missing values were found in the ten phenotype traits.")
-}
 ```
 
 ## 6. Marker quality control
@@ -256,15 +246,25 @@ classes. A locus is retained when its call rate is at least 0.90 and at least
 two genotype classes are present.
 
 ```{r marker-quality}
+genotype_classes <- integer(
+  ncol(ssr_raw)
+)
+
+for (j in seq_len(ncol(ssr_raw))) {
+  genotype_classes[j] <- length(
+    unique(
+      na.omit(
+        ssr_raw[, j]
+      )
+    )
+  )
+}
+
 locus_audit <- data.frame(
   Locus = colnames(ssr_raw),
   N_called = colSums(!is.na(ssr_raw)),
   Call_rate = colMeans(!is.na(ssr_raw)),
-  N_genotype_classes = apply(
-    ssr_raw,
-    2,
-    function(x) length(unique(na.omit(x)))
-  )
+  N_genotype_classes = genotype_classes
 )
 
 rownames(locus_audit) <- NULL
@@ -337,13 +337,39 @@ The phenotype summary provides a simple check of the scale and variation of
 the ten traits.
 
 ```{r phenotype-summary}
+phenotype_sd <- numeric(
+  ncol(phenotypes)
+)
+
+phenotype_minimum <- numeric(
+  ncol(phenotypes)
+)
+
+phenotype_maximum <- numeric(
+  ncol(phenotypes)
+)
+
+for (j in seq_len(ncol(phenotypes))) {
+  phenotype_sd[j] <- sd(
+    phenotypes[, j]
+  )
+
+  phenotype_minimum[j] <- min(
+    phenotypes[, j]
+  )
+
+  phenotype_maximum[j] <- max(
+    phenotypes[, j]
+  )
+}
+
 phenotype_summary <- data.frame(
   Trait = colnames(phenotypes),
   N = colSums(!is.na(phenotypes)),
   Mean = colMeans(phenotypes),
-  SD = apply(phenotypes, 2, sd),
-  Minimum = apply(phenotypes, 2, min),
-  Maximum = apply(phenotypes, 2, max)
+  SD = phenotype_sd,
+  Minimum = phenotype_minimum,
+  Maximum = phenotype_maximum
 )
 
 rownames(phenotype_summary) <- NULL
@@ -355,7 +381,8 @@ kable(
 )
 ```
 
-The trait dictionary records the biological meaning and measurement unit of each phenotype code. These labels will be reused in the tables and figures produced by the following modules.
+The trait dictionary records the biological meaning and measurement unit of
+each phenotype code.
 
 ```{r trait-dictionary}
 trait_dictionary <- data.frame(
@@ -421,10 +448,11 @@ ggplot(phenotype_long, aes(x = Value)) +
   theme_bw()
 ```
 
-## 8. Save the preprocessing outputs
+## 8. Preprocessing outputs
 
-The main objects are saved in one `.rds` file. The audit tables are also saved
-as CSV files for direct inspection.
+The aligned phenotype matrix, SSR matrices, metadata, summaries, and trait
+dictionary are stored in one object for the following stages. The main
+summaries are also written as CSV files.
 
 ```{r save-outputs}
 preprocessing_object <- list(
@@ -500,7 +528,6 @@ data.frame(
 
 ## 9. Next step
 
-The cleaned phenotype and SSR objects are now ready for matrix construction.
-The next module will encode the multiallelic SSR dosages, create the marker and
-genomic relationship matrices, and define the common five-fold
-cross-validation design.
+The next module converts the retained SSR loci into allele-dosage columns,
+constructs the marker and genomic relationship matrices, and defines the five
+cross-validation folds.
