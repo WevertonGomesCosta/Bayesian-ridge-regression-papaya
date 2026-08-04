@@ -33,10 +33,16 @@ knitr::opts_chunk$set(
 Os modelos de predição genômica utilizam matrizes numéricas que representam os
 efeitos fixos e a semelhança genética entre os indivíduos.
 
-Nesta etapa, os genótipos SSR são convertidos em dosagens alélicas, os efeitos
-fixos de bloco e família são representados em uma matriz de delineamento e
-cinco folds de validação cruzada são definidos. O processamento dos marcadores
-é repetido utilizando apenas os indivíduos de treinamento de cada fold.
+Nesta etapa, os genótipos SSR são convertidos em dosagens alélicas, os
+efeitos fixos de bloco e família são representados em uma matriz de
+delineamento, a matriz de relacionamento genômico aditivo é construída e cinco
+folds de validação cruzada são definidos.
+
+As matrizes de efeitos fixos, de marcadores e de relacionamento genômico são
+construídas uma única vez com o conjunto pré-processado completo. Elas
+permanecem inalteradas entre os folds. A validação cruzada será implementada no
+módulo de ajuste dos modelos, substituindo por valores ausentes os fenótipos dos
+indivíduos de validação.
 
 ## 2. Pacotes e objeto de entrada
 
@@ -512,327 +518,37 @@ ggplot(
   theme_bw()
 ```
 
-## 9. Matrizes específicas dos treinamentos
+## 9. Contrato da validação cruzada
 
-Em cada fold, o filtro dos locos, a codificação dos alelos, o controle das
-frequências, a imputação, a centralização e a matriz de relacionamento genômico
-são recalculados com os 120 indivíduos de treinamento.
+A tabela dos folds define quais 30 indivíduos serão utilizados para validação
+em cada rodada. Ela não define matrizes de marcadores ou matrizes genômicas
+específicas por fold.
 
-Os 30 indivíduos de validação são transformados utilizando as médias e a
-estrutura alélica obtidas no treinamento.
+As matrizes utilizadas pelos modelos permanecem fixas:
 
-```{r matrizes-especificas-treinamentos}
-cv_objects <- vector(
-  "list",
-  N_FOLDS
-)
+- `X` contém os efeitos de bloco e família;
+- `M` contém as colunas centralizadas de dosagens alélicas;
+- `G` contém os relacionamentos genômicos aditivos.
 
-fold_diagnostics <- vector(
-  "list",
-  N_FOLDS
-)
+No próximo módulo, uma cópia do vetor fenotípico será criada para cada
+característica e fold. Os 30 fenótipos de validação serão substituídos por
+`NA`, enquanto `X`, `M` e `G` permanecerão inalteradas.
 
-for (fold in seq_len(N_FOLDS)) {
-  validation_index <- which(
-    folds == fold
-  )
-
-  training_index <- which(
-    folds != fold
-  )
-
-  ssr_training <- ssr_raw[
-    training_index,
-    ,
-    drop = FALSE
-  ]
-
-  genotype_classes <- integer(
-    ncol(ssr_training)
-  )
-
-  for (j in seq_len(ncol(ssr_training))) {
-    genotype_classes[j] <- length(
-      unique(
-        na.omit(
-          ssr_training[, j]
-        )
-      )
-    )
-  }
-
-  locus_audit <- data.frame(
-    Locus = colnames(ssr_training),
-    N_called = colSums(!is.na(ssr_training)),
-    Call_rate = colMeans(!is.na(ssr_training)),
-    N_genotype_classes = genotype_classes
-  )
-
-  locus_audit$Keep_locus <-
-    locus_audit$Call_rate >= CALL_RATE_MIN &
-    locus_audit$N_genotype_classes >= 2
-
-  retained_loci <- locus_audit$Locus[
-    locus_audit$Keep_locus
-  ]
-
-  ssr_fold <- ssr_raw[
-    ,
-    retained_loci,
-    drop = FALSE
-  ]
-
-  dosage_parts <- list()
-  allele_map_parts <- list()
-  marker_counter <- 0L
-
-  for (j in seq_len(ncol(ssr_fold))) {
-    codes_all <- ssr_fold[, j]
-    codes_training <- ssr_fold[
-      training_index,
-      j
-    ]
-
-    allele_1_training <- floor(
-      codes_training / 10
-    )
-
-    allele_2_training <-
-      codes_training %% 10
-
-    observed_alleles <- sort(
-      unique(
-        c(
-          allele_1_training[
-            !is.na(codes_training)
-          ],
-          allele_2_training[
-            !is.na(codes_training)
-          ]
-        )
-      )
-    )
-
-    allele_1_all <- floor(
-      codes_all / 10
-    )
-
-    allele_2_all <-
-      codes_all %% 10
-
-    for (allele in observed_alleles) {
-      marker_counter <- marker_counter + 1L
-
-      dosage <-
-        as.numeric(
-          allele_1_all == allele
-        ) +
-        as.numeric(
-          allele_2_all == allele
-        )
-
-      dosage[
-        is.na(codes_all)
-      ] <- NA_real_
-
-      marker_name <- paste0(
-        colnames(ssr_fold)[j],
-        "__A",
-        allele
-      )
-
-      dosage_parts[[marker_counter]] <-
-        dosage
-
-      allele_map_parts[[marker_counter]] <-
-        data.frame(
-          Locus = colnames(ssr_fold)[j],
-          Allele = allele,
-          Marker = marker_name
-        )
-    }
-  }
-
-  dosage_raw <- do.call(
-    cbind,
-    dosage_parts
-  )
-
-  allele_audit <- bind_rows(
-    allele_map_parts
-  )
-
-  rownames(dosage_raw) <- ids
-  colnames(dosage_raw) <-
-    allele_audit$Marker
-
-  allele_audit$Allele_frequency <-
-    colMeans(
-      dosage_raw[
-        training_index,
-        ,
-        drop = FALSE
-      ],
-      na.rm = TRUE
-    ) / 2
-
-  dosage_sd <- numeric(
-    ncol(dosage_raw)
-  )
-
-  for (j in seq_len(ncol(dosage_raw))) {
-    dosage_sd[j] <- sd(
-      dosage_raw[
-        training_index,
-        j
-      ],
-      na.rm = TRUE
-    )
-  }
-
-  allele_audit$Dosage_sd <-
-    dosage_sd
-
-  allele_audit$Keep_allele <-
-    is.finite(
-      allele_audit$Allele_frequency
-    ) &
-    allele_audit$Allele_frequency >=
-      ALLELE_FREQUENCY_MIN &
-    allele_audit$Allele_frequency <=
-      (1 - ALLELE_FREQUENCY_MIN) &
-    is.finite(
-      allele_audit$Dosage_sd
-    ) &
-    allele_audit$Dosage_sd > 0
-
-  retained_markers <-
-    allele_audit$Marker[
-      allele_audit$Keep_allele
-    ]
-
-  dosage <- dosage_raw[
-    ,
-    retained_markers,
-    drop = FALSE
-  ]
-
-  marker_means <- colMeans(
-    dosage[
-      training_index,
-      ,
-      drop = FALSE
-    ],
-    na.rm = TRUE
-  )
-
-  dosage_imputed <- dosage
-
-  for (j in seq_len(ncol(dosage_imputed))) {
-    missing_values <- is.na(
-      dosage_imputed[, j]
-    )
-
-    dosage_imputed[
-      missing_values,
-      j
-    ] <- marker_means[j]
-  }
-
-  M <- sweep(
-    dosage_imputed,
-    2,
-    marker_means,
-    FUN = "-"
-  )
-
-  allele_frequencies <-
-    marker_means / 2
-
-  denominator <- sum(
-    2 *
-      allele_frequencies *
-      (1 - allele_frequencies)
-  )
-
-  G <- tcrossprod(
-    M
-  ) / denominator
-
-  G <- (
-    G + t(G)
-  ) / 2
-
-  dimnames(G) <- list(
-    ids,
-    ids
-  )
-
-  eigenvalues_G <- eigen(
-    G,
-    symmetric = TRUE,
-    only.values = TRUE
-  )$values
-
-  cv_objects[[fold]] <- list(
-    training_index = training_index,
-    validation_index = validation_index,
-    training_ids = ids[training_index],
-    validation_ids = ids[validation_index],
-    locus_audit = locus_audit,
-    allele_audit = allele_audit,
-    marker_means = marker_means,
-    allele_frequencies = allele_frequencies,
-    denominator = denominator,
-    M = M,
-    G = G
-  )
-
-  fold_diagnostics[[fold]] <- data.frame(
-    Fold = fold,
-    Training_n = length(training_index),
-    Validation_n = length(validation_index),
-    Retained_loci = length(retained_loci),
-    Retained_alleles = ncol(M),
-    Fixed_effect_rank = qr(
-      X[
-        training_index,
-        ,
-        drop = FALSE
-      ]
-    )$rank,
-    Mean_diagonal_G = mean(
-      diag(G)
-    ),
-    Minimum_eigenvalue_G = min(
-      eigenvalues_G
-    )
-  )
-}
-
-names(cv_objects) <- paste0(
-  "Fold_",
-  seq_len(N_FOLDS)
-)
-
-fold_diagnostics <- bind_rows(
-  fold_diagnostics
+```{r resumo-validacao-cruzada}
+fold_summary <- data.frame(
+  Fold = seq_len(N_FOLDS),
+  Training_n = length(ids) - fold_sizes,
+  Validation_n = fold_sizes
 )
 
 kable(
-  fold_diagnostics,
-  digits = 5,
+  fold_summary,
   col.names = c(
     "Fold",
     "N treinamento",
-    "N validação",
-    "Locos mantidos",
-    "Alelos mantidos",
-    "Posto dos efeitos fixos",
-    "Média da diagonal de G",
-    "Menor autovalor de G"
+    "N validação"
   ),
-  caption = "Diagnóstico das matrizes dos treinamentos"
+  caption = "Tamanhos amostrais da validação cruzada"
 )
 ```
 
@@ -877,13 +593,20 @@ ggplot(
 
 ## 11. Objetos salvos
 
+O objeto de saída contém uma matriz de efeitos fixos, uma matriz de marcadores,
+uma matriz de relacionamento genômico e a tabela de atribuição dos folds.
+Nenhum objeto de matriz específico por fold é criado.
+
 ```{r salvamento-objetos-matriciais}
 matrix_inventory <- data.frame(
   Item = c(
     "Indivíduos",
-    "Colunas de efeitos fixos",
-    "Colunas completas de marcadores",
+    "Linhas da matriz de efeitos fixos",
+    "Colunas da matriz de efeitos fixos",
+    "Linhas da matriz de marcadores",
+    "Colunas da matriz de marcadores",
     "Linhas da matriz genômica",
+    "Colunas da matriz genômica",
     "Folds da validação cruzada",
     "Indivíduos de validação por fold",
     "Média da diagonal de G",
@@ -891,9 +614,12 @@ matrix_inventory <- data.frame(
   ),
   Value = c(
     length(ids),
+    nrow(X),
     ncol(X),
+    nrow(M_full),
     ncol(M_full),
     nrow(G_full),
+    ncol(G_full),
     N_FOLDS,
     unique(fold_sizes),
     mean(diag(G_full)),
@@ -907,18 +633,15 @@ matrices_object <- list(
   phenotypes = phenotypes,
   trait_dictionary = trait_dictionary,
   X = X,
+  M = M_full,
+  G = G_full,
   cv_folds = cv_folds,
-  full = list(
-    locus_audit = locus_audit_full,
-    allele_audit = allele_audit_full,
-    marker_means = marker_means_full,
-    allele_frequencies = allele_frequencies_full,
-    denominator = denominator_full,
-    M = M_full,
-    G = G_full
-  ),
-  cv = cv_objects,
-  fold_diagnostics = fold_diagnostics,
+  fold_summary = fold_summary,
+  locus_audit = locus_audit_full,
+  allele_audit = allele_audit_full,
+  marker_means = marker_means_full,
+  allele_frequencies = allele_frequencies_full,
+  denominator = denominator_full,
   settings = list(
     n_folds = N_FOLDS,
     seed_cv = SEED_CV,
@@ -946,10 +669,10 @@ write.csv(
 )
 
 write.csv(
-  fold_diagnostics,
+  fold_summary,
   file.path(
     OUTPUT_DIR,
-    "fold_diagnostics.csv"
+    "fold_summary.csv"
   ),
   row.names = FALSE
 )
@@ -970,6 +693,13 @@ write.csv(
     "matrix_inventory.csv"
   ),
   row.names = FALSE
+)
+
+unlink(
+  file.path(
+    OUTPUT_DIR,
+    "fold_diagnostics.csv"
+  )
 )
 
 kable(
@@ -1018,5 +748,7 @@ kable(
 
 ## 13. Próxima etapa
 
-A próxima etapa ajusta os modelos de regressão Bayesiana, RR-BLUP e GBLUP
-utilizando os mesmos cinco folds de validação.
+A próxima etapa ajusta BRR, BayesA, BayesB, BayesB com a probabilidade
+especificada de efeito zero, BayesC, Lasso Bayesiano, RR-BLUP e GBLUP
+utilizando os mesmos cinco folds de validação. Em todos os folds, apenas o vetor
+fenotípico será mascarado; `X`, `M` e `G` permanecerão inalteradas.
