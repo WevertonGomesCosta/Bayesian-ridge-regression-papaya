@@ -9,11 +9,11 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="Weverton Gomes da Costa" />
+<meta name="author" content="Costa, W. G." />
 
-<meta name="date" content="2026-07-17" />
+<meta name="date" content="2026-08-04" />
 
-<title>1. Data audit and preprocessing</title>
+<title>Data preprocessing for genomic selection in papaya</title>
 
 <script src="site_libs/header-attrs-2.31/header-attrs.js"></script>
 <script src="site_libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
@@ -36,6 +36,7 @@
 <script src="site_libs/tocify-1.9.1/jquery.tocify.js"></script>
 <script src="site_libs/navigation-1.1/tabsets.js"></script>
 <script src="site_libs/navigation-1.1/codefolding.js"></script>
+<script src="site_libs/navigation-1.1/sourceembed.js"></script>
 <link href="site_libs/highlightjs-9.12.0/textmate.css" rel="stylesheet" />
 <script src="site_libs/highlightjs-9.12.0/highlight.js"></script>
 <link href="site_libs/pagedtable-1.1/css/pagedtable.css" rel="stylesheet" />
@@ -76,29 +77,12 @@ if (window.hljs) {
 
 
 
-
 <style type="text/css">
-/* for pandoc --citeproc since 2.11 */
-div.csl-bib-body { }
-div.csl-entry {
-  clear: both;
-}
-.hanging div.csl-entry {
-  margin-left:2em;
-  text-indent:-2em;
-}
-div.csl-left-margin {
-  min-width:2em;
-  float:left;
-}
-div.csl-right-inline {
-  margin-left:2em;
-  padding-left:1em;
-}
-div.csl-indent {
-  margin-left: 2em;
+#rmd-source-code {
+  display: none;
 }
 </style>
+
 
 
 
@@ -371,22 +355,16 @@ div.tocify {
   </a>
   <ul class="dropdown-menu" role="menu">
     <li>
-      <a href="01_preprocessing_en.html">1. Data and preprocessing</a>
+      <a href="01_preprocessing_en.html">1. Data preprocessing</a>
     </li>
     <li>
-      <a href="02_bayesian_models_en.html">2. Bayesian models</a>
+      <a href="02_matrices_en.html">2. Matrix construction</a>
     </li>
     <li>
-      <a href="03_rrblup_en.html">3. RR-BLUP</a>
+      <a href="03_models_en.html">3. Model fitting</a>
     </li>
     <li>
-      <a href="04_gblup_en.html">4. GBLUP</a>
-    </li>
-    <li>
-      <a href="05_model_comparison_en.html">5. Model comparison</a>
-    </li>
-    <li>
-      <a href="06_genomic_selection_en.html">6. Genomic selection</a>
+      <a href="04_results_en.html">4. Results and comparison</a>
     </li>
   </ul>
 </li>
@@ -398,22 +376,16 @@ div.tocify {
   </a>
   <ul class="dropdown-menu" role="menu">
     <li>
-      <a href="01_preprocessing_pt.html">1. Dados e pré-processamento</a>
+      <a href="01_preprocessing_pt.html">1. Pré-processamento dos dados</a>
     </li>
     <li>
-      <a href="02_bayesian_models_pt.html">2. Modelos Bayesianos</a>
+      <a href="02_matrices_pt.html">2. Construção das matrizes</a>
     </li>
     <li>
-      <a href="03_rrblup_pt.html">3. RR-BLUP</a>
+      <a href="03_models_pt.html">3. Ajuste dos modelos</a>
     </li>
     <li>
-      <a href="04_gblup_pt.html">4. GBLUP</a>
-    </li>
-    <li>
-      <a href="05_model_comparison_pt.html">5. Comparação dos modelos</a>
-    </li>
-    <li>
-      <a href="06_genomic_selection_pt.html">6. Seleção genômica</a>
+      <a href="04_results_pt.html">4. Resultados e comparação</a>
     </li>
   </ul>
 </li>
@@ -429,6 +401,7 @@ div.tocify {
   <a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya">
     <span class="fa fa-github"></span>
      
+    Source code
   </a>
 </li>
       </ul>
@@ -443,14 +416,18 @@ div.tocify {
 <ul class="dropdown-menu dropdown-menu-right" style="min-width: 50px;">
 <li><a id="rmd-show-all-code" href="#">Show All Code</a></li>
 <li><a id="rmd-hide-all-code" href="#">Hide All Code</a></li>
+<li role="separator" class="divider"></li>
+<li><a id="rmd-download-source" href="#">Download Rmd</a></li>
 </ul>
 </div>
 
 
 
-<h1 class="title toc-ignore">1. Data audit and preprocessing</h1>
-<h4 class="author">Weverton Gomes da Costa</h4>
-<h4 class="date">2026-07-17</h4>
+<h1 class="title toc-ignore">Data preprocessing for genomic selection in
+papaya</h1>
+<h4 class="author">Costa, W. G.<a href="#fn1" class="footnote-ref"
+id="fnref1"><sup>1</sup></a></h4>
+<h4 class="date">2026-08-04</h4>
 
 </div>
 
@@ -458,7 +435,7 @@ div.tocify {
 <p>
 <button type="button" class="btn btn-default btn-workflowr btn-workflowr-report" data-toggle="collapse" data-target="#workflowr-report">
 <span class="glyphicon glyphicon-list" aria-hidden="true"></span>
-workflowr <span class="glyphicon glyphicon-ok text-success"
+workflowr <span class="glyphicon glyphicon-exclamation-sign text-danger"
 aria-hidden="true"></span>
 </button>
 </p>
@@ -469,8 +446,8 @@ aria-hidden="true"></span>
 </li>
 <li>
 <a data-toggle="tab" href="#checks"> Checks <span
-class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span>
-</a>
+class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span> </a>
 </li>
 <li>
 <a data-toggle="tab" href="#versions">Past versions</a>
@@ -479,13 +456,13 @@ class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span>
 <div class="tab-content">
 <div id="summary" class="tab-pane fade in active">
 <p>
-<strong>Last updated:</strong> 2026-07-17
+<strong>Last updated:</strong> 2026-08-04
 </p>
 <p>
 <strong>Checks:</strong> <span
-class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> 7
+class="glyphicon glyphicon-ok text-success" aria-hidden="true"></span> 6
 <span class="glyphicon glyphicon-exclamation-sign text-danger"
-aria-hidden="true"></span> 0
+aria-hidden="true"></span> 1
 </p>
 <p>
 <strong>Knit directory:</strong>
@@ -509,18 +486,21 @@ versions</em> tab lists the development history.
 <div class="panel panel-default">
 <div class="panel-heading">
 <p class="panel-title">
-<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRMarkdownfilestronguptodate">
-<span class="glyphicon glyphicon-ok text-success"
-aria-hidden="true"></span> <strong>R Markdown file:</strong> up-to-date
-</a>
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRMarkdownfilestronguncommittedchanges">
+<span class="glyphicon glyphicon-exclamation-sign text-danger"
+aria-hidden="true"></span> <strong>R Markdown file:</strong> uncommitted
+changes </a>
 </p>
 </div>
-<div id="strongRMarkdownfilestronguptodate"
+<div id="strongRMarkdownfilestronguncommittedchanges"
 class="panel-collapse collapse">
 <div class="panel-body">
-<p>Great! Since the R Markdown file has been committed to the Git
-repository, you know the exact version of the code that produced these
-results.</p>
+<p>The R Markdown file has unstaged changes. To know which version of
+the R Markdown file created these results, you’ll want to first commit
+it to the Git repo. If you’re still working on the analysis, you can
+ignore this warning. When you’re finished, you can run
+<code>wflow_publish</code> to commit the R Markdown file and build the
+HTML.</p>
 </div>
 </div>
 </div>
@@ -611,15 +591,15 @@ project makes it easier to run your code on other machines.</p>
 <div class="panel panel-default">
 <div class="panel-heading">
 <p class="panel-title">
-<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomWevertonGomesCostaBayesianridgeregressionpapayatree192b57c1f1f8d8f9c22b360801d5883647c09f76targetblank192b57ca">
+<a data-toggle="collapse" data-parent="#workflowr-checks" href="#strongRepositoryversionstrongahrefhttpsgithubcomWevertonGomesCostaBayesianridgeregressionpapayatreec54495b1560e73775ce8118de80a07dba7f6e029targetblankc54495ba">
 <span class="glyphicon glyphicon-ok text-success"
 aria-hidden="true"></span> <strong>Repository version:</strong>
-<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/tree/192b57c1f1f8d8f9c22b360801d5883647c09f76" target="_blank">192b57c</a>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/tree/c54495b1560e73775ce8118de80a07dba7f6e029" target="_blank">c54495b</a>
 </a>
 </p>
 </div>
 <div
-id="strongRepositoryversionstrongahrefhttpsgithubcomWevertonGomesCostaBayesianridgeregressionpapayatree192b57c1f1f8d8f9c22b360801d5883647c09f76targetblank192b57ca"
+id="strongRepositoryversionstrongahrefhttpsgithubcomWevertonGomesCostaBayesianridgeregressionpapayatreec54495b1560e73775ce8118de80a07dba7f6e029targetblankc54495ba"
 class="panel-collapse collapse">
 <div class="panel-body">
 <p>
@@ -629,7 +609,7 @@ reproducibility.
 </p>
 <p>
 The results in this page were generated with repository version
-<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/tree/192b57c1f1f8d8f9c22b360801d5883647c09f76" target="_blank">192b57c</a>.
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/tree/c54495b1560e73775ce8118de80a07dba7f6e029" target="_blank">c54495b</a>.
 See the <em>Past versions</em> tab to see a history of the changes made
 to the R Markdown and HTML files.
 </p>
@@ -644,18 +624,25 @@ were generated:
 </p>
 <pre><code>
 Ignored files:
-    Ignored:    output/marker_qc_by_allele.csv
-    Ignored:    output/marker_qc_by_individual.csv
-    Ignored:    output/marker_qc_by_locus.csv
-    Ignored:    output/preprocessed_papaya_ssr.rds
+    Ignored:    .Rproj.user/
+    Ignored:    data/Bayesiana goiaba Eileen SReport.pdf
+    Ignored:    output/bglr_runs/
+    Ignored:    output/figures/
+    Ignored:    output/matrices/
+    Ignored:    output/models/
+    Ignored:    output/preprocessing/
+    Ignored:    output/tables/
+    Ignored:    papaya_workflowr_preprocessing_v2.zip
+    Ignored:    papaya_workflowr_preprocessing_v3.zip
     Ignored:    renv/library/
     Ignored:    renv/staging/
-    Ignored:    tests/testthat/_snaps/
 
-Untracked files:
-    Untracked:  renv.lock
-    Untracked:  renv/.gitignore
-    Untracked:  renv/activate.R
+Unstaged changes:
+    Modified:   .gitignore
+    Modified:   README.md
+    Modified:   analysis/01_preprocessing_en.Rmd
+    Modified:   analysis/01_preprocessing_pt.Rmd
+    Modified:   analysis/_site.yml
 
 </code></pre>
 <p>
@@ -705,17 +692,16 @@ Message
 Rmd
 </td>
 <td>
-<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/192b57c1f1f8d8f9c22b360801d5883647c09f76/analysis/01_preprocessing_en.Rmd" target="_blank">192b57c</a>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/c54495b1560e73775ce8118de80a07dba7f6e029/analysis/01_preprocessing_en.Rmd" target="_blank">c54495b</a>
 </td>
 <td>
-GitHub
+WevertonGomesCosta
 </td>
 <td>
-2026-07-17
+2026-07-23
 </td>
 <td>
-Merge aa93f5f9de8bc79cc5d8a7dc07e0449fade1afdf into
-7fab957450821a444f053b588a49ec49392bd017
+refactor: simplify workflowr tutorial structure
 </td>
 </tr>
 <tr>
@@ -723,7 +709,7 @@ Merge aa93f5f9de8bc79cc5d8a7dc07e0449fade1afdf into
 html
 </td>
 <td>
-<a href="https://rawcdn.githack.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/192b57c1f1f8d8f9c22b360801d5883647c09f76/docs/01_preprocessing_en.html" target="_blank">192b57c</a>
+<a href="https://rawcdn.githack.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/e1719e52b84216787ddc4cca4125a0802a64cb5d/docs/01_preprocessing_en.html" target="_blank">e1719e5</a>
 </td>
 <td>
 GitHub
@@ -732,8 +718,24 @@ GitHub
 2026-07-17
 </td>
 <td>
-Merge aa93f5f9de8bc79cc5d8a7dc07e0449fade1afdf into
-7fab957450821a444f053b588a49ec49392bd017
+ci: validate and publish workflowr site
+</td>
+</tr>
+<tr>
+<td>
+Rmd
+</td>
+<td>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/7fab957450821a444f053b588a49ec49392bd017/analysis/01_preprocessing_en.Rmd" target="_blank">7fab957</a>
+</td>
+<td>
+Weverton Gomes da Costa
+</td>
+<td>
+2026-07-17
+</td>
+<td>
+feat: add reproducible papaya genomic selection workflow
 </td>
 </tr>
 </tbody>
@@ -743,1766 +745,1014 @@ Merge aa93f5f9de8bc79cc5d8a7dc07e0449fade1afdf into
 </div>
 </div>
 </div>
-<p><a href="01_preprocessing_pt.html">Português</a> | <a
-href="index.html">Home</a></p>
-<div id="purpose" class="section level2">
-<h2>Purpose</h2>
-<p>This page establishes the data contract before any model is fitted.
-It reads the source workbooks, links genotype and phenotype rows by the
-<code>Genealex</code> individual identifier, audits SSR calls, expands
-multi-allelic genotypes into allele dosages, and fixes the eight
-cross-validation folds. The object is written to
-<code>output/preprocessed_papaya_ssr.rds</code> for all downstream
-pages.</p>
-<pre class="r"><code>objeto &lt;- executar_preprocessamento(configuracao)</code></pre>
+<div id="objective" class="section level2">
+<h2>1. Objective</h2>
+<p>This first module prepares the phenotype and SSR marker data used in
+the papaya genomic selection analysis. The aim is to create a clean and
+aligned dataset before constructing marker matrices, genomic
+relationship matrices, or prediction models.</p>
+<p>The workflow is intentionally direct: read the original files,
+organize the identifiers, align both datasets, inspect marker quality,
+and save the cleaned objects.</p>
+<p>The five cross-validation folds will be created in the next module,
+together with the marker and genomic matrices.</p>
 </div>
-<div id="source-data-inventory" class="section level2">
-<h2>Source-data inventory</h2>
-<p>The canonical phenotype table is <code>Médias_IND_artigo</code>. The
-genotype table has 35 SSR loci; missing calls are encoded as
-<code>-9</code> in the source and converted to <code>NA</code>. IDs are
-held as character values so that <code>144B</code> is never coerced or
-discarded.</p>
-<pre class="r"><code>inventario &lt;- data.frame(
-  Item = c(
-    &quot;Individuals&quot;, &quot;Unique IDs&quot;, &quot;SSR loci&quot;, &quot;Missing SSR calls&quot;,
-    &quot;Missing-call rate&quot;, &quot;Phenotypic traits&quot;, &quot;Missing phenotypes&quot;,
-    &quot;Retained allele-dosage columns&quot;
-  ),
-  Value = c(
-    length(objeto$ids),
-    length(unique(objeto$ids)),
-    ncol(objeto$codigos_ssr),
-    sum(is.na(objeto$codigos_ssr)),
-    sprintf(&quot;%.2f%%&quot;, 100 * mean(is.na(objeto$codigos_ssr))),
-    ncol(objeto$fenotipos),
-    sum(is.na(objeto$fenotipos)),
-    ncol(objeto$dosagens_ssr)
+<div id="packages-and-file-paths" class="section level2">
+<h2>2. Packages and file paths</h2>
+<p>The packages below are used to read Excel files, organize data,
+create simple tables and figures, and define portable paths inside the
+workflowr project.</p>
+<pre class="r"><code>suppressPackageStartupMessages({
+  library(readxl)
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(knitr)
+  library(here)
+})</code></pre>
+<pre class="r"><code>GENOTYPE_FILE &lt;- here(&quot;data&quot;, &quot;papaya_ssr_genotypes.xlsx&quot;)
+PHENOTYPE_FILE &lt;- here(&quot;data&quot;, &quot;papaya_phenotypes_2024_2025.xlsx&quot;)
+OUTPUT_DIR &lt;- here(&quot;output&quot;, &quot;preprocessing&quot;)
+
+CALL_RATE_MIN &lt;- 0.90
+
+dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
+
+if (!file.exists(GENOTYPE_FILE)) {
+  stop(&quot;Genotype file not found: &quot;, GENOTYPE_FILE)
+}
+
+if (!file.exists(PHENOTYPE_FILE)) {
+  stop(&quot;Phenotype file not found: &quot;, PHENOTYPE_FILE)
+}</code></pre>
+</div>
+<div id="read-the-original-workbooks" class="section level2">
+<h2>3. Read the original workbooks</h2>
+<p>The genotype workbook uses the <code>Genes</code> sheet for the
+numerical SSR codes and the <code>Genealex</code> sheet for individual
+and locus labels. Phenotypes are read from the
+<code>Médias_IND_artigo</code> sheet.</p>
+<pre class="r"><code>genes &lt;- read_excel(
+  GENOTYPE_FILE,
+  sheet = &quot;Genes&quot;,
+  col_names = FALSE,
+  na = c(&quot;&quot;, &quot;NA&quot;)
+)
+
+genealex &lt;- read_excel(
+  GENOTYPE_FILE,
+  sheet = &quot;Genealex&quot;,
+  col_names = FALSE,
+  na = c(&quot;&quot;, &quot;NA&quot;)
+)
+
+pheno_raw &lt;- read_excel(
+  PHENOTYPE_FILE,
+  sheet = &quot;Médias_IND_artigo&quot;,
+  na = c(&quot;&quot;, &quot;NA&quot;)
+)
+
+data.frame(
+  Source = c(&quot;Genes&quot;, &quot;Genealex&quot;, &quot;Médias_IND_artigo&quot;),
+  Rows = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
+  Columns = c(ncol(genes), ncol(genealex), ncol(pheno_raw))
+) |&gt;
+  kable(caption = &quot;Dimensions of the original data&quot;)</code></pre>
+<table>
+<caption>Dimensions of the original data</caption>
+<thead>
+<tr class="header">
+<th align="left">Source</th>
+<th align="right">Rows</th>
+<th align="right">Columns</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Genes</td>
+<td align="right">150</td>
+<td align="right">36</td>
+</tr>
+<tr class="even">
+<td align="left">Genealex</td>
+<td align="right">153</td>
+<td align="right">72</td>
+</tr>
+<tr class="odd">
+<td align="left">Médias_IND_artigo</td>
+<td align="right">150</td>
+<td align="right">13</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="organize-the-ssr-data" class="section level2">
+<h2>4. Organize the SSR data</h2>
+<p>The first column of <code>Genes</code> identifies population groups.
+The remaining columns contain the 35 SSR loci.</p>
+<p>Individual identifiers are obtained from <code>Genealex</code> and
+kept as character values so that labels such as <code>144B</code> are
+preserved. Missing SSR calls coded as <code>-9</code> are converted to
+<code>NA</code>.</p>
+<pre class="r"><code>n_individuals &lt;- nrow(genes)
+n_loci &lt;- ncol(genes) - 1
+
+individual_rows &lt;- 4:(3 + n_individuals)
+locus_columns &lt;- seq(3, 2 + 2 * n_loci, by = 2)
+
+ids &lt;- trimws(
+  as.character(genealex[[2]][individual_rows])
+)
+
+locus_names &lt;- trimws(
+  as.character(
+    unlist(genealex[3, locus_columns], use.names = FALSE)
   )
 )
-print(tabela_relatorio(inventario, &quot;Verified source-data inventory&quot;, digitos = 0))</code></pre>
-<table class="table table-striped table-hover table-condensed table-responsive" style="width: auto !important; ">
-<caption>
-Verified source-data inventory
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Item
-</th>
-<th style="text-align:left;">
-Value
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-Individuals
-</td>
-<td style="text-align:left;">
-150
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Unique IDs
-</td>
-<td style="text-align:left;">
-150
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-SSR loci
-</td>
-<td style="text-align:left;">
-35
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Missing SSR calls
-</td>
-<td style="text-align:left;">
-126
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Missing-call rate
-</td>
-<td style="text-align:left;">
-2.40%
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Phenotypic traits
-</td>
-<td style="text-align:left;">
-10
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Missing phenotypes
-</td>
-<td style="text-align:left;">
-0
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Retained allele-dosage columns
-</td>
-<td style="text-align:left;">
-72
-</td>
-</tr>
-</tbody>
-</table>
-<p>The ten responses cover production, fruit dimensions, firmness, and
-soluble solids. These codes and units are used consistently throughout
-the website.</p>
-<pre class="r"><code>dicionario_en &lt;- configuracao$dicionario_caracteristicas |&gt;
-  dplyr::select(Trait, Description = Description_en, Unit)
-print(tabela_relatorio(dicionario_en, &quot;Phenotypic traits&quot;))</code></pre>
-<table class="table table-striped table-hover table-condensed table-responsive" style="width: auto !important; ">
-<caption>
-Phenotypic traits
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Trait
-</th>
-<th style="text-align:left;">
-Description
-</th>
-<th style="text-align:left;">
-Unit
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-MMCOM
-</td>
-<td style="text-align:left;">
-Mean mass of commercial fruit
-</td>
-<td style="text-align:left;">
-kg
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-PRODCOM
-</td>
-<td style="text-align:left;">
-Production of commercial fruit
-</td>
-<td style="text-align:left;">
-kg
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-PRODEF
-</td>
-<td style="text-align:left;">
-Production of defective fruit
-</td>
-<td style="text-align:left;">
-kg
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CF
-</td>
-<td style="text-align:left;">
-Fruit length
-</td>
-<td style="text-align:left;">
-cm
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-DF
-</td>
-<td style="text-align:left;">
-Fruit diameter
-</td>
-<td style="text-align:left;">
-cm
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-DCI
-</td>
-<td style="text-align:left;">
-Internal-cavity diameter
-</td>
-<td style="text-align:left;">
-cm
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-EP
-</td>
-<td style="text-align:left;">
-Mean pulp thickness
-</td>
-<td style="text-align:left;">
-cm
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-FFC
-</td>
-<td style="text-align:left;">
-External fruit firmness
-</td>
-<td style="text-align:left;">
-N
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-FFP
-</td>
-<td style="text-align:left;">
-Internal pulp firmness
-</td>
-<td style="text-align:left;">
-N
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-SS
-</td>
-<td style="text-align:left;">
-Soluble solids
-</td>
-<td style="text-align:left;">
-°Brix
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div id="ssr-encoding-and-quality-control" class="section level2">
-<h2>SSR encoding and quality control</h2>
-<p>Each genotype code stores two allele labels. For every locus and
-observed allele, the pipeline creates a dosage column with values 0, 1,
-or 2. This preserves four triallelic loci and avoids treating SSRs as
-biallelic SNPs. Loci must have at least 90% calls and more than one
-observed genotype class; allele columns must have frequencies between
-0.05 and 0.95 and non-zero variance. <code>P6K1129CC</code> is removed
-because it contains one genotype class.</p>
-<pre class="r"><code>qc_locos &lt;- objeto$auditoria$locos |&gt;
-  dplyr::mutate(Call_rate = round(Call_rate, 3)) |&gt;
-  dplyr::arrange(Keep_locus, Call_rate)
-print(tabela_relatorio(qc_locos, &quot;Quality control by SSR locus&quot;, rolagem = TRUE))</code></pre>
-<div
-style="border: 1px solid #ddd; padding: 0px; overflow-y: scroll; height:420px; overflow-x: scroll; width:100%; ">
-<table class="table table-striped table-hover table-condensed table-responsive" style="width: auto !important; ">
-<caption>
-Quality control by SSR locus
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-Locus
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-N_individuals
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-N_called
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-Call_rate
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-N_genotype_classes
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-Pass_call_rate
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-Polymorphic
-</th>
-<th style="text-align:left;position: sticky; top:0; background-color: #FFFFFF;">
-Keep_locus
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-P6K1129CC
-</td>
-<td style="text-align:left;">
-P6K1129CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-1
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-<td style="text-align:left;">
-FALSE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K7484
-</td>
-<td style="text-align:left;">
-P3K7484
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-135
-</td>
-<td style="text-align:left;">
-0.900
-</td>
-<td style="text-align:left;">
-2
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K4813A0
-</td>
-<td style="text-align:left;">
-P3K4813A0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-137
-</td>
-<td style="text-align:left;">
-0.913
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K1433CC
-</td>
-<td style="text-align:left;">
-P3K1433CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-138
-</td>
-<td style="text-align:left;">
-0.920
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-ctg706CC
-</td>
-<td style="text-align:left;">
-ctg706CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-138
-</td>
-<td style="text-align:left;">
-0.920
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-ctg718CC
-</td>
-<td style="text-align:left;">
-ctg718CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-139
-</td>
-<td style="text-align:left;">
-0.927
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K3473CC
-</td>
-<td style="text-align:left;">
-P3K3473CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-140
-</td>
-<td style="text-align:left;">
-0.933
-</td>
-<td style="text-align:left;">
-2
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K7483A5
-</td>
-<td style="text-align:left;">
-P3K7483A5
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-141
-</td>
-<td style="text-align:left;">
-0.940
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P6K128CC
-</td>
-<td style="text-align:left;">
-P6K128CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-144
-</td>
-<td style="text-align:left;">
-0.960
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K2937CC
-</td>
-<td style="text-align:left;">
-P3K2937CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-145
-</td>
-<td style="text-align:left;">
-0.967
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM1814A5
-</td>
-<td style="text-align:left;">
-CPM1814A5
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-146
-</td>
-<td style="text-align:left;">
-0.973
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM1598CC
-</td>
-<td style="text-align:left;">
-CPM1598CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-147
-</td>
-<td style="text-align:left;">
-0.980
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K5593C0
-</td>
-<td style="text-align:left;">
-P3K5593C0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-147
-</td>
-<td style="text-align:left;">
-0.980
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM746LCC
-</td>
-<td style="text-align:left;">
-CPM746LCC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-147
-</td>
-<td style="text-align:left;">
-0.980
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K6372CC
-</td>
-<td style="text-align:left;">
-P3K6372CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-147
-</td>
-<td style="text-align:left;">
-0.980
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM2197CC
-</td>
-<td style="text-align:left;">
-CPM2197CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-147
-</td>
-<td style="text-align:left;">
-0.980
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K2426CC
-</td>
-<td style="text-align:left;">
-P3K2426CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-147
-</td>
-<td style="text-align:left;">
-0.980
-</td>
-<td style="text-align:left;">
-2
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K3511CC
-</td>
-<td style="text-align:left;">
-P3K3511CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-148
-</td>
-<td style="text-align:left;">
-0.987
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-ctg64CC
-</td>
-<td style="text-align:left;">
-ctg64CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-148
-</td>
-<td style="text-align:left;">
-0.987
-</td>
-<td style="text-align:left;">
-2
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM710CC
-</td>
-<td style="text-align:left;">
-CPM710CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-148
-</td>
-<td style="text-align:left;">
-0.987
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K3256CC
-</td>
-<td style="text-align:left;">
-P3K3256CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-149
-</td>
-<td style="text-align:left;">
-0.993
-</td>
-<td style="text-align:left;">
-5
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K149C0
-</td>
-<td style="text-align:left;">
-P3K149C0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-149
-</td>
-<td style="text-align:left;">
-0.993
-</td>
-<td style="text-align:left;">
-5
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P6K673C0
-</td>
-<td style="text-align:left;">
-P6K673C0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-149
-</td>
-<td style="text-align:left;">
-0.993
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K6568CC
-</td>
-<td style="text-align:left;">
-P3K6568CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-149
-</td>
-<td style="text-align:left;">
-0.993
-</td>
-<td style="text-align:left;">
-4
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-ctg32A0
-</td>
-<td style="text-align:left;">
-ctg32A0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-149
-</td>
-<td style="text-align:left;">
-0.993
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P6K900CC
-</td>
-<td style="text-align:left;">
-P6K900CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-ctg395CC
-</td>
-<td style="text-align:left;">
-ctg395CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-2
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM1125LCC
-</td>
-<td style="text-align:left;">
-CPM1125LCC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K3317CC
-</td>
-<td style="text-align:left;">
-P3K3317CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K2152CC
-</td>
-<td style="text-align:left;">
-P3K2152CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CPM1747CC
-</td>
-<td style="text-align:left;">
-CPM1747CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K896CC
-</td>
-<td style="text-align:left;">
-P3K896CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-ctg407S0
-</td>
-<td style="text-align:left;">
-ctg407S0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K4426C0
-</td>
-<td style="text-align:left;">
-P3K4426C0
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-4
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-P3K178CC
-</td>
-<td style="text-align:left;">
-P3K178CC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.000
-</td>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-<td style="text-align:left;">
-TRUE
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Call rate is inspected across every locus. The horizontal reference
-line is the inclusive 0.90 threshold used by the code.</p>
-<p><img src="figure/01_preprocessing_en.Rmd/marker-call-rate-plot-1.png" alt="" width="864" style="display: block; margin: auto;" /></p>
-<p>
-<button type="button" class="btn btn-default btn-xs btn-workflowr btn-workflowr-fig" data-toggle="collapse" data-target="#fig-marker-call-rate-plot-1">
-Past versions of marker-call-rate-plot-1.png
-</button>
-</p>
-<div id="fig-marker-call-rate-plot-1" class="collapse">
-<div class="table-responsive">
-<table class="table table-condensed table-hover">
-<thead>
-<tr>
-<th>
-Version
-</th>
-<th>
-Author
-</th>
-<th>
-Date
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/192b57c1f1f8d8f9c22b360801d5883647c09f76/docs/figure/01_preprocessing_en.Rmd/marker-call-rate-plot-1.png" target="_blank">192b57c</a>
-</td>
-<td>
-GitHub
-</td>
-<td>
-2026-07-17
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</div>
-<div id="phenotype-overview" class="section level2">
-<h2>Phenotype overview</h2>
-<p>The canonical phenotype matrix has no missing observations. The table
-below provides a scale check before model fitting; no trait is
-standardized because performance metrics are reported in each trait’s
-original unit.</p>
-<pre class="r"><code>resumo_fenotipos &lt;- data.frame(
-  Trait = colnames(objeto$fenotipos),
-  N = colSums(is.finite(objeto$fenotipos)),
-  Mean = colMeans(objeto$fenotipos),
-  SD = apply(objeto$fenotipos, 2L, stats::sd),
-  Minimum = apply(objeto$fenotipos, 2L, min),
-  Maximum = apply(objeto$fenotipos, 2L, max),
-  row.names = NULL
-)
-print(tabela_relatorio(resumo_fenotipos, &quot;Phenotype summary&quot;))</code></pre>
-<table class="table table-striped table-hover table-condensed table-responsive" style="width: auto !important; ">
-<caption>
-Phenotype summary
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Trait
-</th>
-<th style="text-align:left;">
-N
-</th>
-<th style="text-align:left;">
-Mean
-</th>
-<th style="text-align:left;">
-SD
-</th>
-<th style="text-align:left;">
-Minimum
-</th>
-<th style="text-align:left;">
-Maximum
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-MMCOM
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.181
-</td>
-<td style="text-align:left;">
-0.266
-</td>
-<td style="text-align:left;">
-0.620
-</td>
-<td style="text-align:left;">
-1.943
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-PRODCOM
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-63.510
-</td>
-<td style="text-align:left;">
-21.518
-</td>
-<td style="text-align:left;">
-24.225
-</td>
-<td style="text-align:left;">
-121.609
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-PRODEF
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-7.150
-</td>
-<td style="text-align:left;">
-5.005
-</td>
-<td style="text-align:left;">
-0.200
-</td>
-<td style="text-align:left;">
-30.073
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CF
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-23.247
-</td>
-<td style="text-align:left;">
-2.665
-</td>
-<td style="text-align:left;">
-17.140
-</td>
-<td style="text-align:left;">
-31.580
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-DF
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-10.143
-</td>
-<td style="text-align:left;">
-1.108
-</td>
-<td style="text-align:left;">
-7.049
-</td>
-<td style="text-align:left;">
-13.129
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-DCI
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-4.825
-</td>
-<td style="text-align:left;">
-0.815
-</td>
-<td style="text-align:left;">
-2.998
-</td>
-<td style="text-align:left;">
-7.719
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-EP
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-2.887
-</td>
-<td style="text-align:left;">
-0.462
-</td>
-<td style="text-align:left;">
-2.080
-</td>
-<td style="text-align:left;">
-5.523
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-FFC
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-4.150
-</td>
-<td style="text-align:left;">
-1.147
-</td>
-<td style="text-align:left;">
-1.720
-</td>
-<td style="text-align:left;">
-8.020
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-FFP
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-1.057
-</td>
-<td style="text-align:left;">
-0.561
-</td>
-<td style="text-align:left;">
-0.380
-</td>
-<td style="text-align:left;">
-6.740
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-SS
-</td>
-<td style="text-align:left;">
-150
-</td>
-<td style="text-align:left;">
-13.731
-</td>
-<td style="text-align:left;">
-1.171
-</td>
-<td style="text-align:left;">
-9.900
-</td>
-<td style="text-align:left;">
-19.100
-</td>
-</tr>
-</tbody>
-</table>
-<p>Distributions are displayed separately because their measurement
-scales differ substantially.</p>
-<p><img src="figure/01_preprocessing_en.Rmd/phenotype-distributions-1.png" alt="" width="864" style="display: block; margin: auto;" /></p>
-<p>
-<button type="button" class="btn btn-default btn-xs btn-workflowr btn-workflowr-fig" data-toggle="collapse" data-target="#fig-phenotype-distributions-1">
-Past versions of phenotype-distributions-1.png
-</button>
-</p>
-<div id="fig-phenotype-distributions-1" class="collapse">
-<div class="table-responsive">
-<table class="table table-condensed table-hover">
-<thead>
-<tr>
-<th>
-Version
-</th>
-<th>
-Author
-</th>
-<th>
-Date
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>
-<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/192b57c1f1f8d8f9c22b360801d5883647c09f76/docs/figure/01_preprocessing_en.Rmd/phenotype-distributions-1.png" target="_blank">192b57c</a>
-</td>
-<td>
-GitHub
-</td>
-<td>
-2026-07-17
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</div>
-<div id="validation-folds-and-leakage-control" class="section level2">
-<h2>Validation folds and leakage control</h2>
-<p>The deterministic folds are stratified by phenotypic family. Every
-individual is held out once, fold sizes differ by at most one, and every
-training split retains all family levels. Marker means, missing-value
-imputation, variable- column checks, centering, and the genomic
-relationship matrix are recalculated using training individuals within
-each fold.</p>
-<pre class="r"><code>resumo_folds &lt;- data.frame(
-  Fold = seq_len(configuracao$n_folds),
-  Validation_individuals = tabulate(objeto$folds, nbins = configuracao$n_folds)
-)
-print(tabela_relatorio(resumo_folds, &quot;Fixed eight-fold allocation&quot;, digitos = 0))</code></pre>
-<table class="table table-striped table-hover table-condensed table-responsive" style="width: auto !important; ">
-<caption>
-Fixed eight-fold allocation
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Fold
-</th>
-<th style="text-align:left;">
-Validation_individuals
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-1
-</td>
-<td style="text-align:left;">
-19
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-2
-</td>
-<td style="text-align:left;">
-19
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-3
-</td>
-<td style="text-align:left;">
-19
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-4
-</td>
-<td style="text-align:left;">
-19
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-5
-</td>
-<td style="text-align:left;">
-19
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6
-</td>
-<td style="text-align:left;">
-19
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-7
-</td>
-<td style="text-align:left;">
-18
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-8
-</td>
-<td style="text-align:left;">
-18
-</td>
-</tr>
-</tbody>
-</table>
-<p>The fixed-effect design is <code>block + family</code>. Its full-rank
-condition is checked inside every training fold before a model is
-fitted.</p>
-</div>
-<div id="output-contract" class="section level2">
-<h2>Output contract</h2>
-<p>Downstream pages receive the aligned phenotypes, fixed-effect
-matrices, quality-controlled allele dosages, common fold labels, and
-fold-specific training transformations. This makes the Bayesian,
-RR-BLUP, and GBLUP comparisons use exactly the same validation
-observations.</p>
-<p><a href="02_bayesian_models_en.html">Next: Bayesian models</a></p>
-<div id="refs">
 
+if (length(ids) != n_individuals) {
+  stop(&quot;The number of identifiers does not match the number of genotype rows.&quot;)
+}
+
+if (length(locus_names) != n_loci ||
+    anyNA(locus_names) ||
+    any(locus_names == &quot;&quot;)) {
+  stop(&quot;The locus labels are incomplete or do not match the marker columns.&quot;)
+}
+
+if (anyNA(ids) || any(ids == &quot;&quot;) || anyDuplicated(ids)) {
+  stop(&quot;The genotype identifiers are incomplete or duplicated.&quot;)
+}
+
+ssr_raw &lt;- as.matrix(
+  genes[, -1, drop = FALSE]
+)
+
+storage.mode(ssr_raw) &lt;- &quot;numeric&quot;
+ssr_raw[ssr_raw == -9] &lt;- NA_real_
+
+rownames(ssr_raw) &lt;- ids
+colnames(ssr_raw) &lt;- locus_names
+
+ssr_raw[1:6, 1:6]</code></pre>
+<pre><code>  P3K4813A0 CPM1598CC CPM1814A5 P3K1433CC P3K5593C0 CPM746LCC
+1        12        12        22        12        22        11
+2        22        22        22        12        12        12
+3        12        12        12        11        22        12
+4        22        12        22        22        22        12
+5        12        12        22        12        22        11
+6        12        12        22        11        22        11</code></pre>
 </div>
+<div id="organize-and-align-the-phenotype-data" class="section level2">
+<h2>5. Organize and align the phenotype data</h2>
+<p>Ten traits are used in the analysis. Block (<code>BL</code>) and
+family (<code>FAM</code>) are kept as categorical variables for later
+use as fixed effects.</p>
+<p>The phenotype table is reordered according to the SSR identifiers.
+This guarantees that each phenotype row refers to the same individual as
+the corresponding marker row.</p>
+<pre class="r"><code>TRAITS &lt;- c(
+  &quot;MMCOM&quot;, &quot;PRODCOM&quot;, &quot;PRODEF&quot;, &quot;CF&quot;, &quot;DF&quot;,
+  &quot;DCI&quot;, &quot;EP&quot;, &quot;FFC&quot;, &quot;FFP&quot;, &quot;SS&quot;
+)
+
+required_columns &lt;- c(&quot;IND&quot;, &quot;BL&quot;, &quot;FAM&quot;, TRAITS)
+missing_columns &lt;- setdiff(required_columns, names(pheno_raw))
+
+if (length(missing_columns) &gt; 0) {
+  stop(
+    &quot;Missing phenotype column(s): &quot;,
+    paste(missing_columns, collapse = &quot;, &quot;)
+  )
+}
+
+pheno_raw$IND &lt;- trimws(as.character(pheno_raw$IND))
+
+if (
+  anyNA(pheno_raw$IND) ||
+  any(pheno_raw$IND == &quot;&quot;) ||
+  anyDuplicated(pheno_raw$IND)
+) {
+  stop(&quot;The phenotype identifiers are incomplete or duplicated.&quot;)
+}
+
+missing_in_pheno &lt;- setdiff(ids, pheno_raw$IND)
+missing_in_geno &lt;- setdiff(pheno_raw$IND, ids)
+
+alignment &lt;- data.frame(
+  Check = c(
+    &quot;Genotyped individuals&quot;,
+    &quot;Phenotyped individuals&quot;,
+    &quot;Missing in phenotype data&quot;,
+    &quot;Missing in genotype data&quot;
+  ),
+  Value = c(
+    length(ids),
+    nrow(pheno_raw),
+    length(missing_in_pheno),
+    length(missing_in_geno)
+  )
+)
+
+kable(alignment, caption = &quot;Alignment between genotype and phenotype data&quot;)</code></pre>
+<table>
+<caption>Alignment between genotype and phenotype data</caption>
+<thead>
+<tr class="header">
+<th align="left">Check</th>
+<th align="right">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Genotyped individuals</td>
+<td align="right">150</td>
+</tr>
+<tr class="even">
+<td align="left">Phenotyped individuals</td>
+<td align="right">150</td>
+</tr>
+<tr class="odd">
+<td align="left">Missing in phenotype data</td>
+<td align="right">0</td>
+</tr>
+<tr class="even">
+<td align="left">Missing in genotype data</td>
+<td align="right">0</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>if (length(missing_in_pheno) &gt; 0 || length(missing_in_geno) &gt; 0) {
+  stop(&quot;Genotype and phenotype identifiers do not match.&quot;)
+}
+
+pheno &lt;- pheno_raw[
+  match(ids, pheno_raw$IND),
+  required_columns
+]
+
+pheno[TRAITS] &lt;- lapply(
+  pheno[TRAITS],
+  function(x) as.numeric(as.character(x))
+)
+
+metadata &lt;- data.frame(
+  IND = pheno$IND,
+  BL = factor(pheno$BL),
+  FAM = factor(pheno$FAM),
+  row.names = pheno$IND
+)
+
+phenotypes &lt;- as.matrix(pheno[, TRAITS])
+storage.mode(phenotypes) &lt;- &quot;numeric&quot;
+rownames(phenotypes) &lt;- pheno$IND
+
+if (anyNA(phenotypes)) {
+  stop(&quot;Missing values were found in the ten phenotype traits.&quot;)
+}</code></pre>
+</div>
+<div id="marker-quality-control" class="section level2">
+<h2>6. Marker quality control</h2>
+<p>For each locus, we calculate the call rate and the number of observed
+genotype classes. A locus is retained when its call rate is at least
+0.90 and at least two genotype classes are present.</p>
+<pre class="r"><code>locus_audit &lt;- data.frame(
+  Locus = colnames(ssr_raw),
+  N_called = colSums(!is.na(ssr_raw)),
+  Call_rate = colMeans(!is.na(ssr_raw)),
+  N_genotype_classes = apply(
+    ssr_raw,
+    2,
+    function(x) length(unique(na.omit(x)))
+  )
+)
+
+rownames(locus_audit) &lt;- NULL
+
+locus_audit$Keep_locus &lt;-
+  locus_audit$Call_rate &gt;= CALL_RATE_MIN &amp;
+  locus_audit$N_genotype_classes &gt;= 2
+
+ssr &lt;- ssr_raw[
+  ,
+  locus_audit$Keep_locus,
+  drop = FALSE
+]
+
+kable(
+  locus_audit,
+  digits = 3,
+  caption = &quot;Quality control of the SSR loci&quot;
+)</code></pre>
+<table>
+<caption>Quality control of the SSR loci</caption>
+<thead>
+<tr class="header">
+<th align="left">Locus</th>
+<th align="right">N_called</th>
+<th align="right">Call_rate</th>
+<th align="right">N_genotype_classes</th>
+<th align="left">Keep_locus</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">P3K4813A0</td>
+<td align="right">137</td>
+<td align="right">0.913</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">CPM1598CC</td>
+<td align="right">147</td>
+<td align="right">0.980</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">CPM1814A5</td>
+<td align="right">146</td>
+<td align="right">0.973</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K1433CC</td>
+<td align="right">138</td>
+<td align="right">0.920</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K5593C0</td>
+<td align="right">147</td>
+<td align="right">0.980</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">CPM746LCC</td>
+<td align="right">147</td>
+<td align="right">0.980</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P6K128CC</td>
+<td align="right">144</td>
+<td align="right">0.960</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K3256CC</td>
+<td align="right">149</td>
+<td align="right">0.993</td>
+<td align="right">5</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K3511CC</td>
+<td align="right">148</td>
+<td align="right">0.987</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">ctg64CC</td>
+<td align="right">148</td>
+<td align="right">0.987</td>
+<td align="right">2</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P6K900CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K7484</td>
+<td align="right">135</td>
+<td align="right">0.900</td>
+<td align="right">2</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K149C0</td>
+<td align="right">149</td>
+<td align="right">0.993</td>
+<td align="right">5</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">ctg718CC</td>
+<td align="right">139</td>
+<td align="right">0.927</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P6K1129CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">1</td>
+<td align="left">FALSE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K6372CC</td>
+<td align="right">147</td>
+<td align="right">0.980</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">CPM2197CC</td>
+<td align="right">147</td>
+<td align="right">0.980</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">ctg395CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">2</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K2937CC</td>
+<td align="right">145</td>
+<td align="right">0.967</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">CPM1125LCC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K3317CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K2152CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P6K673C0</td>
+<td align="right">149</td>
+<td align="right">0.993</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">CPM710CC</td>
+<td align="right">148</td>
+<td align="right">0.987</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">CPM1747CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K896CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K2426CC</td>
+<td align="right">147</td>
+<td align="right">0.980</td>
+<td align="right">2</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K3473CC</td>
+<td align="right">140</td>
+<td align="right">0.933</td>
+<td align="right">2</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">ctg706CC</td>
+<td align="right">138</td>
+<td align="right">0.920</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K7483A5</td>
+<td align="right">141</td>
+<td align="right">0.940</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">ctg407S0</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K4426C0</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">4</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">P3K178CC</td>
+<td align="right">150</td>
+<td align="right">1.000</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="even">
+<td align="left">P3K6568CC</td>
+<td align="right">149</td>
+<td align="right">0.993</td>
+<td align="right">4</td>
+<td align="left">TRUE</td>
+</tr>
+<tr class="odd">
+<td align="left">ctg32A0</td>
+<td align="right">149</td>
+<td align="right">0.993</td>
+<td align="right">3</td>
+<td align="left">TRUE</td>
+</tr>
+</tbody>
+</table>
+<p>The figure shows the call rate of each locus and the minimum accepted
+value.</p>
+<pre class="r"><code>ggplot(
+  locus_audit,
+  aes(
+    x = reorder(Locus, Call_rate),
+    y = Call_rate,
+    fill = Keep_locus
+  )
+) +
+  geom_col() +
+  geom_hline(
+    yintercept = CALL_RATE_MIN,
+    linetype = 2
+  ) +
+  coord_flip() +
+  labs(
+    x = NULL,
+    y = &quot;Call rate&quot;,
+    fill = &quot;Retained&quot;,
+    title = &quot;SSR call rate by locus&quot;
+  ) +
+  theme_bw()</code></pre>
+<p><img src="figure/01_preprocessing_en.Rmd/marker-quality-plot-1.png" alt="" width="100%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="data-summaries" class="section level2">
+<h2>7. Data summaries</h2>
+<p>The individual audit summarizes the amount of available SSR
+information for each plant.</p>
+<pre class="r"><code>individual_audit &lt;- data.frame(
+  IND = rownames(ssr_raw),
+  N_called = rowSums(!is.na(ssr_raw)),
+  Call_rate = rowMeans(!is.na(ssr_raw))
+)
+
+rownames(individual_audit) &lt;- NULL
+
+head(individual_audit, 10) |&gt;
+  kable(
+    digits = 3,
+    caption = &quot;Marker summary for the first ten individuals&quot;
+  )</code></pre>
+<table>
+<caption>Marker summary for the first ten individuals</caption>
+<thead>
+<tr class="header">
+<th align="left">IND</th>
+<th align="right">N_called</th>
+<th align="right">Call_rate</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">1</td>
+<td align="right">34</td>
+<td align="right">0.971</td>
+</tr>
+<tr class="even">
+<td align="left">2</td>
+<td align="right">33</td>
+<td align="right">0.943</td>
+</tr>
+<tr class="odd">
+<td align="left">3</td>
+<td align="right">35</td>
+<td align="right">1.000</td>
+</tr>
+<tr class="even">
+<td align="left">4</td>
+<td align="right">34</td>
+<td align="right">0.971</td>
+</tr>
+<tr class="odd">
+<td align="left">5</td>
+<td align="right">34</td>
+<td align="right">0.971</td>
+</tr>
+<tr class="even">
+<td align="left">6</td>
+<td align="right">34</td>
+<td align="right">0.971</td>
+</tr>
+<tr class="odd">
+<td align="left">7</td>
+<td align="right">33</td>
+<td align="right">0.943</td>
+</tr>
+<tr class="even">
+<td align="left">8</td>
+<td align="right">32</td>
+<td align="right">0.914</td>
+</tr>
+<tr class="odd">
+<td align="left">9</td>
+<td align="right">34</td>
+<td align="right">0.971</td>
+</tr>
+<tr class="even">
+<td align="left">10</td>
+<td align="right">34</td>
+<td align="right">0.971</td>
+</tr>
+</tbody>
+</table>
+<p>The phenotype summary provides a simple check of the scale and
+variation of the ten traits.</p>
+<pre class="r"><code>phenotype_summary &lt;- data.frame(
+  Trait = colnames(phenotypes),
+  N = colSums(!is.na(phenotypes)),
+  Mean = colMeans(phenotypes),
+  SD = apply(phenotypes, 2, sd),
+  Minimum = apply(phenotypes, 2, min),
+  Maximum = apply(phenotypes, 2, max)
+)
+
+rownames(phenotype_summary) &lt;- NULL
+
+kable(
+  phenotype_summary,
+  digits = 3,
+  caption = &quot;Summary of the phenotype traits&quot;
+)</code></pre>
+<table>
+<caption>Summary of the phenotype traits</caption>
+<thead>
+<tr class="header">
+<th align="left">Trait</th>
+<th align="right">N</th>
+<th align="right">Mean</th>
+<th align="right">SD</th>
+<th align="right">Minimum</th>
+<th align="right">Maximum</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">MMCOM</td>
+<td align="right">150</td>
+<td align="right">1.181</td>
+<td align="right">0.266</td>
+<td align="right">0.620</td>
+<td align="right">1.943</td>
+</tr>
+<tr class="even">
+<td align="left">PRODCOM</td>
+<td align="right">150</td>
+<td align="right">63.510</td>
+<td align="right">21.518</td>
+<td align="right">24.225</td>
+<td align="right">121.609</td>
+</tr>
+<tr class="odd">
+<td align="left">PRODEF</td>
+<td align="right">150</td>
+<td align="right">7.150</td>
+<td align="right">5.005</td>
+<td align="right">0.200</td>
+<td align="right">30.073</td>
+</tr>
+<tr class="even">
+<td align="left">CF</td>
+<td align="right">150</td>
+<td align="right">23.247</td>
+<td align="right">2.665</td>
+<td align="right">17.140</td>
+<td align="right">31.580</td>
+</tr>
+<tr class="odd">
+<td align="left">DF</td>
+<td align="right">150</td>
+<td align="right">10.143</td>
+<td align="right">1.108</td>
+<td align="right">7.049</td>
+<td align="right">13.129</td>
+</tr>
+<tr class="even">
+<td align="left">DCI</td>
+<td align="right">150</td>
+<td align="right">4.825</td>
+<td align="right">0.815</td>
+<td align="right">2.998</td>
+<td align="right">7.719</td>
+</tr>
+<tr class="odd">
+<td align="left">EP</td>
+<td align="right">150</td>
+<td align="right">2.887</td>
+<td align="right">0.462</td>
+<td align="right">2.080</td>
+<td align="right">5.523</td>
+</tr>
+<tr class="even">
+<td align="left">FFC</td>
+<td align="right">150</td>
+<td align="right">4.150</td>
+<td align="right">1.147</td>
+<td align="right">1.720</td>
+<td align="right">8.020</td>
+</tr>
+<tr class="odd">
+<td align="left">FFP</td>
+<td align="right">150</td>
+<td align="right">1.057</td>
+<td align="right">0.561</td>
+<td align="right">0.380</td>
+<td align="right">6.740</td>
+</tr>
+<tr class="even">
+<td align="left">SS</td>
+<td align="right">150</td>
+<td align="right">13.731</td>
+<td align="right">1.171</td>
+<td align="right">9.900</td>
+<td align="right">19.100</td>
+</tr>
+</tbody>
+</table>
+<p>The trait dictionary records the biological meaning and measurement
+unit of each phenotype code. These labels will be reused in the tables
+and figures produced by the following modules.</p>
+<pre class="r"><code>trait_dictionary &lt;- data.frame(
+  Trait = TRAITS,
+  Description_en = c(
+    &quot;Mean mass of commercial fruit&quot;,
+    &quot;Production of commercial fruit&quot;,
+    &quot;Production of defective fruit&quot;,
+    &quot;Fruit length&quot;,
+    &quot;Fruit diameter&quot;,
+    &quot;Internal-cavity diameter&quot;,
+    &quot;Mean pulp thickness&quot;,
+    &quot;External fruit firmness&quot;,
+    &quot;Internal pulp firmness&quot;,
+    &quot;Soluble solids&quot;
+  ),
+  Description_pt = c(
+    &quot;Massa média de frutos comerciais&quot;,
+    &quot;Produção de frutos comerciais&quot;,
+    &quot;Produção de frutos defeituosos&quot;,
+    &quot;Comprimento do fruto&quot;,
+    &quot;Diâmetro do fruto&quot;,
+    &quot;Diâmetro da cavidade interna&quot;,
+    &quot;Espessura média da polpa&quot;,
+    &quot;Firmeza externa do fruto&quot;,
+    &quot;Firmeza interna da polpa&quot;,
+    &quot;Sólidos solúveis&quot;
+  ),
+  Unit = c(
+    &quot;kg&quot;, &quot;kg&quot;, &quot;kg&quot;, &quot;cm&quot;, &quot;cm&quot;,
+    &quot;cm&quot;, &quot;cm&quot;, &quot;N&quot;, &quot;N&quot;, &quot;°Brix&quot;
+  )
+)
+
+rownames(trait_dictionary) &lt;- NULL
+
+kable(
+  trait_dictionary[, c(&quot;Trait&quot;, &quot;Description_en&quot;, &quot;Unit&quot;)],
+  caption = &quot;Dictionary of the phenotype traits&quot;
+)</code></pre>
+<table>
+<caption>Dictionary of the phenotype traits</caption>
+<thead>
+<tr class="header">
+<th align="left">Trait</th>
+<th align="left">Description_en</th>
+<th align="left">Unit</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">MMCOM</td>
+<td align="left">Mean mass of commercial fruit</td>
+<td align="left">kg</td>
+</tr>
+<tr class="even">
+<td align="left">PRODCOM</td>
+<td align="left">Production of commercial fruit</td>
+<td align="left">kg</td>
+</tr>
+<tr class="odd">
+<td align="left">PRODEF</td>
+<td align="left">Production of defective fruit</td>
+<td align="left">kg</td>
+</tr>
+<tr class="even">
+<td align="left">CF</td>
+<td align="left">Fruit length</td>
+<td align="left">cm</td>
+</tr>
+<tr class="odd">
+<td align="left">DF</td>
+<td align="left">Fruit diameter</td>
+<td align="left">cm</td>
+</tr>
+<tr class="even">
+<td align="left">DCI</td>
+<td align="left">Internal-cavity diameter</td>
+<td align="left">cm</td>
+</tr>
+<tr class="odd">
+<td align="left">EP</td>
+<td align="left">Mean pulp thickness</td>
+<td align="left">cm</td>
+</tr>
+<tr class="even">
+<td align="left">FFC</td>
+<td align="left">External fruit firmness</td>
+<td align="left">N</td>
+</tr>
+<tr class="odd">
+<td align="left">FFP</td>
+<td align="left">Internal pulp firmness</td>
+<td align="left">N</td>
+</tr>
+<tr class="even">
+<td align="left">SS</td>
+<td align="left">Soluble solids</td>
+<td align="left">°Brix</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>phenotype_long &lt;- data.frame(
+  IND = rownames(phenotypes),
+  phenotypes,
+  check.names = FALSE
+) |&gt;
+  pivot_longer(
+    cols = -IND,
+    names_to = &quot;Trait&quot;,
+    values_to = &quot;Value&quot;
+  )
+
+ggplot(phenotype_long, aes(x = Value)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~ Trait, scales = &quot;free&quot;, ncol = 2) +
+  labs(
+    x = &quot;Observed value&quot;,
+    y = &quot;Number of individuals&quot;,
+    title = &quot;Phenotypic distributions&quot;
+  ) +
+  theme_bw()</code></pre>
+<p><img src="figure/01_preprocessing_en.Rmd/phenotype-plot-1.png" alt="" width="100%" style="display: block; margin: auto;" /></p>
+</div>
+<div id="save-the-preprocessing-outputs" class="section level2">
+<h2>8. Save the preprocessing outputs</h2>
+<p>The main objects are saved in one <code>.rds</code> file. The audit
+tables are also saved as CSV files for direct inspection.</p>
+<pre class="r"><code>preprocessing_object &lt;- list(
+  ids = ids,
+  metadata = metadata,
+  phenotypes = phenotypes,
+  ssr_raw = ssr_raw,
+  ssr = ssr,
+  locus_audit = locus_audit,
+  individual_audit = individual_audit,
+  phenotype_summary = phenotype_summary,
+  trait_dictionary = trait_dictionary,
+  settings = list(
+    call_rate_min = CALL_RATE_MIN
+  )
+)
+
+saveRDS(
+  preprocessing_object,
+  file.path(OUTPUT_DIR, &quot;preprocessing_object.rds&quot;)
+)
+
+write.csv(
+  alignment,
+  file.path(OUTPUT_DIR, &quot;alignment_summary.csv&quot;),
+  row.names = FALSE
+)
+
+write.csv(
+  locus_audit,
+  file.path(OUTPUT_DIR, &quot;locus_audit.csv&quot;),
+  row.names = FALSE
+)
+
+write.csv(
+  individual_audit,
+  file.path(OUTPUT_DIR, &quot;individual_audit.csv&quot;),
+  row.names = FALSE
+)
+
+write.csv(
+  phenotype_summary,
+  file.path(OUTPUT_DIR, &quot;phenotype_summary.csv&quot;),
+  row.names = FALSE
+)
+
+write.csv(
+  trait_dictionary,
+  file.path(OUTPUT_DIR, &quot;trait_dictionary.csv&quot;),
+  row.names = FALSE
+)</code></pre>
+<pre class="r"><code>data.frame(
+  Item = c(
+    &quot;Individuals&quot;,
+    &quot;Phenotype traits&quot;,
+    &quot;Original SSR loci&quot;,
+    &quot;Retained SSR loci&quot;,
+    &quot;Missing SSR calls&quot;
+  ),
+  Value = c(
+    length(ids),
+    ncol(phenotypes),
+    ncol(ssr_raw),
+    ncol(ssr),
+    sum(is.na(ssr_raw))
+  )
+) |&gt;
+  kable(caption = &quot;Final preprocessing inventory&quot;)</code></pre>
+<table>
+<caption>Final preprocessing inventory</caption>
+<thead>
+<tr class="header">
+<th align="left">Item</th>
+<th align="right">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Individuals</td>
+<td align="right">150</td>
+</tr>
+<tr class="even">
+<td align="left">Phenotype traits</td>
+<td align="right">10</td>
+</tr>
+<tr class="odd">
+<td align="left">Original SSR loci</td>
+<td align="right">35</td>
+</tr>
+<tr class="even">
+<td align="left">Retained SSR loci</td>
+<td align="right">34</td>
+</tr>
+<tr class="odd">
+<td align="left">Missing SSR calls</td>
+<td align="right">126</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="next-step" class="section level2">
+<h2>9. Next step</h2>
+<p>The cleaned phenotype and SSR objects are now ready for matrix
+construction. The next module will encode the multiallelic SSR dosages,
+create the marker and genomic relationship matrices, and define the
+common five-fold cross-validation design.</p>
 <br>
 <p>
 <button type="button" class="btn btn-default btn-workflowr btn-workflowr-sessioninfo" data-toggle="collapse" data-target="#workflowr-sessioninfo" style="display: block;">
@@ -2512,55 +1762,62 @@ Session information
 </p>
 <div id="workflowr-sessioninfo" class="collapse">
 <pre class="r"><code>sessionInfo()</code></pre>
-<pre><code>R version 4.5.1 (2025-06-13)
-Platform: x86_64-pc-linux-gnu
-Running under: Ubuntu 24.04.4 LTS
+<pre><code>R version 4.5.1 (2025-06-13 ucrt)
+Platform: x86_64-w64-mingw32/x64
+Running under: Windows 11 x64 (build 26200)
 
 Matrix products: default
-BLAS:   /usr/lib/x86_64-linux-gnu/openblas-pthread/libblas.so.3 
-LAPACK: /usr/lib/x86_64-linux-gnu/openblas-pthread/libopenblasp-r0.3.26.so;  LAPACK version 3.12.0
+  LAPACK version 3.12.1
 
 locale:
- [1] LC_CTYPE=C.UTF-8       LC_NUMERIC=C           LC_TIME=C.UTF-8       
- [4] LC_COLLATE=C.UTF-8     LC_MONETARY=C.UTF-8    LC_MESSAGES=C.UTF-8   
- [7] LC_PAPER=C.UTF-8       LC_NAME=C              LC_ADDRESS=C          
-[10] LC_TELEPHONE=C         LC_MEASUREMENT=C.UTF-8 LC_IDENTIFICATION=C   
+[1] LC_COLLATE=Portuguese_Brazil.utf8  LC_CTYPE=Portuguese_Brazil.utf8   
+[3] LC_MONETARY=Portuguese_Brazil.utf8 LC_NUMERIC=C                      
+[5] LC_TIME=Portuguese_Brazil.utf8    
 
-time zone: UTC
-tzcode source: system (glibc)
+time zone: America/Sao_Paulo
+tzcode source: internal
 
 attached base packages:
 [1] stats     graphics  grDevices datasets  utils     methods   base     
 
 other attached packages:
-[1] workflowr_1.7.2
+[1] here_1.0.2      knitr_1.51      ggplot2_4.0.3   tidyr_1.3.2    
+[5] dplyr_1.2.1     readxl_1.5.0    workflowr_1.7.2
 
 loaded via a namespace (and not attached):
- [1] tidyr_1.3.2        sass_0.4.10        generics_0.1.4     renv_1.2.3        
- [5] xml2_1.6.0         stringi_1.8.7      digest_0.6.39      magrittr_2.0.5    
- [9] grid_4.5.1         evaluate_1.0.5     RColorBrewer_1.1-3 fastmap_1.2.0     
-[13] cellranger_1.1.0   rprojroot_2.1.1    jsonlite_2.0.0     processx_3.9.0    
-[17] whisker_0.4.1      ggthemes_5.2.0     ps_1.9.3           promises_1.5.0    
-[21] httr_1.4.8         purrr_1.2.2        viridisLite_0.4.3  scales_1.4.0      
-[25] textshaping_1.0.5  jquerylib_0.1.4    cli_3.6.6          rlang_1.3.0       
-[29] withr_3.0.3        cachem_1.1.0       yaml_2.3.12        otel_0.2.0        
-[33] tools_4.5.1        dplyr_1.2.1        ggplot2_4.0.3      httpuv_1.6.17     
-[37] kableExtra_1.4.1   vctrs_0.7.3        R6_2.6.1           lifecycle_1.0.5   
-[41] git2r_0.36.2       stringr_1.6.0      fs_2.1.0           pkgconfig_2.0.3   
-[45] callr_3.8.0        gtable_0.3.6       pillar_1.11.1      bslib_0.11.0      
-[49] later_1.4.8        glue_1.8.1         Rcpp_1.1.2         systemfonts_1.3.2 
-[53] xfun_0.60          tibble_3.3.1       tidyselect_1.2.1   rstudioapi_0.19.0 
-[57] knitr_1.51         farver_2.1.2       htmltools_0.5.9    labeling_0.4.3    
-[61] rmarkdown_2.31     svglite_2.2.2      compiler_4.5.1     S7_0.2.2          
-[65] getPass_0.2-4      readxl_1.5.0      </code></pre>
+ [1] sass_0.4.10        generics_0.1.4     renv_1.2.3         stringi_1.8.7     
+ [5] digest_0.6.39      magrittr_2.0.5     evaluate_1.0.5     grid_4.5.1        
+ [9] RColorBrewer_1.1-3 fastmap_1.2.0      cellranger_1.1.0   rprojroot_2.1.1   
+[13] jsonlite_2.0.0     processx_3.9.0     whisker_0.4.1      promises_1.5.0    
+[17] httr_1.4.8         purrr_1.2.2        scales_1.4.0       jquerylib_0.1.4   
+[21] cli_3.6.6          rlang_1.3.0        withr_3.0.3        cachem_1.1.0      
+[25] yaml_2.3.12        otel_0.2.0         tools_4.5.1        httpuv_1.6.17     
+[29] vctrs_0.7.3        R6_2.6.1           lifecycle_1.0.5    git2r_0.36.2      
+[33] stringr_1.6.0      fs_2.1.0           pkgconfig_2.0.3    callr_3.8.0       
+[37] pillar_1.11.1      bslib_0.11.0       later_1.4.8        gtable_0.3.6      
+[41] glue_1.8.1         Rcpp_1.1.2         xfun_0.60          tibble_3.3.1      
+[45] tidyselect_1.2.1   rstudioapi_0.19.0  farver_2.1.2       htmltools_0.5.9   
+[49] rmarkdown_2.31     labeling_0.4.3     compiler_4.5.1     getPass_0.2-4     
+[53] S7_0.2.2          </code></pre>
 </div>
 </div>
 </div>
 </div>
 </div>
 </div>
+</div>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>Weverton Gomes da Costa, Postdoctoral Researcher,
+Department of Statistics - Federal University of Viçosa, <a
+href="mailto:weverton.costa@ufv.br"
+class="email">weverton.costa@ufv.br</a><a href="#fnref1"
+class="footnote-back">↩︎</a></p></li>
+</ol>
 </div>
 
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiRGF0YSBwcmVwcm9jZXNzaW5nIGZvciBnZW5vbWljIHNlbGVjdGlvbiBpbiBwYXBheWEiCmF1dGhvcjoKICAtIENvc3RhLCBXLiBHLl5bV2V2ZXJ0b24gR29tZXMgZGEgQ29zdGEsIFBvc3Rkb2N0b3JhbCBSZXNlYXJjaGVyLCBEZXBhcnRtZW50IG9mIFN0YXRpc3RpY3MgLSBGZWRlcmFsIFVuaXZlcnNpdHkgb2YgVmnDp29zYSwgd2V2ZXJ0b24uY29zdGFAdWZ2LmJyXQpkYXRlOiAiYHIgU3lzLkRhdGUoKWAiCnNpdGU6IHdvcmtmbG93cjo6d2Zsb3dfc2l0ZQp1cmw6IGh0dHBzOi8vd2V2ZXJ0b25nb21lc2Nvc3RhLmdpdGh1Yi5pby9CYXllc2lhbi1yaWRnZS1yZWdyZXNzaW9uLXBhcGF5YS8Kb3V0cHV0OgogIHdvcmtmbG93cjo6d2Zsb3dfaHRtbDoKICAgIHRvYzogdHJ1ZQogICAgdG9jX2RlcHRoOiAzCiAgICB0b2NfZmxvYXQ6IHRydWUKICAgIGNvZGVfZG93bmxvYWQ6IHRydWUKICAgIGNvZGVfZm9sZGluZzogc2hvdwplZGl0b3Jfb3B0aW9uczoKICBjaHVua19vdXRwdXRfdHlwZTogY29uc29sZQpnaXRodWItcmVwbzogV2V2ZXJ0b25Hb21lc0Nvc3RhL0JheWVzaWFuLXJpZGdlLXJlZ3Jlc3Npb24tcGFwYXlhCi0tLQoKYGBge3Igc2V0dXAsIGluY2x1ZGU9RkFMU0V9CmtuaXRyOjpvcHRzX2NodW5rJHNldCgKICBlY2hvID0gVFJVRSwKICB3YXJuaW5nID0gRkFMU0UsCiAgbWVzc2FnZSA9IEZBTFNFLAogIGNhY2hlID0gRkFMU0UsCiAgZmlnLmFsaWduID0gImNlbnRlciIsCiAgb3V0LndpZHRoID0gIjEwMCUiCikKYGBgCgojIyAxLiBPYmplY3RpdmUKClRoaXMgZmlyc3QgbW9kdWxlIHByZXBhcmVzIHRoZSBwaGVub3R5cGUgYW5kIFNTUiBtYXJrZXIgZGF0YSB1c2VkIGluIHRoZQpwYXBheWEgZ2Vub21pYyBzZWxlY3Rpb24gYW5hbHlzaXMuIFRoZSBhaW0gaXMgdG8gY3JlYXRlIGEgY2xlYW4gYW5kIGFsaWduZWQKZGF0YXNldCBiZWZvcmUgY29uc3RydWN0aW5nIG1hcmtlciBtYXRyaWNlcywgZ2Vub21pYyByZWxhdGlvbnNoaXAgbWF0cmljZXMsCm9yIHByZWRpY3Rpb24gbW9kZWxzLgoKVGhlIHdvcmtmbG93IGlzIGludGVudGlvbmFsbHkgZGlyZWN0OiByZWFkIHRoZSBvcmlnaW5hbCBmaWxlcywgb3JnYW5pemUgdGhlCmlkZW50aWZpZXJzLCBhbGlnbiBib3RoIGRhdGFzZXRzLCBpbnNwZWN0IG1hcmtlciBxdWFsaXR5LCBhbmQgc2F2ZSB0aGUgY2xlYW5lZApvYmplY3RzLgoKVGhlIGZpdmUgY3Jvc3MtdmFsaWRhdGlvbiBmb2xkcyB3aWxsIGJlIGNyZWF0ZWQgaW4gdGhlIG5leHQgbW9kdWxlLCB0b2dldGhlcgp3aXRoIHRoZSBtYXJrZXIgYW5kIGdlbm9taWMgbWF0cmljZXMuCgojIyAyLiBQYWNrYWdlcyBhbmQgZmlsZSBwYXRocwoKVGhlIHBhY2thZ2VzIGJlbG93IGFyZSB1c2VkIHRvIHJlYWQgRXhjZWwgZmlsZXMsIG9yZ2FuaXplIGRhdGEsIGNyZWF0ZSBzaW1wbGUKdGFibGVzIGFuZCBmaWd1cmVzLCBhbmQgZGVmaW5lIHBvcnRhYmxlIHBhdGhzIGluc2lkZSB0aGUgd29ya2Zsb3dyIHByb2plY3QuCgpgYGB7ciBwYWNrYWdlc30Kc3VwcHJlc3NQYWNrYWdlU3RhcnR1cE1lc3NhZ2VzKHsKICBsaWJyYXJ5KHJlYWR4bCkKICBsaWJyYXJ5KGRwbHlyKQogIGxpYnJhcnkodGlkeXIpCiAgbGlicmFyeShnZ3Bsb3QyKQogIGxpYnJhcnkoa25pdHIpCiAgbGlicmFyeShoZXJlKQp9KQpgYGAKCmBgYHtyIHBhdGhzfQpHRU5PVFlQRV9GSUxFIDwtIGhlcmUoImRhdGEiLCAicGFwYXlhX3Nzcl9nZW5vdHlwZXMueGxzeCIpClBIRU5PVFlQRV9GSUxFIDwtIGhlcmUoImRhdGEiLCAicGFwYXlhX3BoZW5vdHlwZXNfMjAyNF8yMDI1Lnhsc3giKQpPVVRQVVRfRElSIDwtIGhlcmUoIm91dHB1dCIsICJwcmVwcm9jZXNzaW5nIikKCkNBTExfUkFURV9NSU4gPC0gMC45MAoKZGlyLmNyZWF0ZShPVVRQVVRfRElSLCByZWN1cnNpdmUgPSBUUlVFLCBzaG93V2FybmluZ3MgPSBGQUxTRSkKCmlmICghZmlsZS5leGlzdHMoR0VOT1RZUEVfRklMRSkpIHsKICBzdG9wKCJHZW5vdHlwZSBmaWxlIG5vdCBmb3VuZDogIiwgR0VOT1RZUEVfRklMRSkKfQoKaWYgKCFmaWxlLmV4aXN0cyhQSEVOT1RZUEVfRklMRSkpIHsKICBzdG9wKCJQaGVub3R5cGUgZmlsZSBub3QgZm91bmQ6ICIsIFBIRU5PVFlQRV9GSUxFKQp9CmBgYAoKIyMgMy4gUmVhZCB0aGUgb3JpZ2luYWwgd29ya2Jvb2tzCgpUaGUgZ2Vub3R5cGUgd29ya2Jvb2sgdXNlcyB0aGUgYEdlbmVzYCBzaGVldCBmb3IgdGhlIG51bWVyaWNhbCBTU1IgY29kZXMgYW5kCnRoZSBgR2VuZWFsZXhgIHNoZWV0IGZvciBpbmRpdmlkdWFsIGFuZCBsb2N1cyBsYWJlbHMuIFBoZW5vdHlwZXMgYXJlIHJlYWQgZnJvbQp0aGUgYE3DqWRpYXNfSU5EX2FydGlnb2Agc2hlZXQuCgpgYGB7ciByZWFkLWRhdGF9CmdlbmVzIDwtIHJlYWRfZXhjZWwoCiAgR0VOT1RZUEVfRklMRSwKICBzaGVldCA9ICJHZW5lcyIsCiAgY29sX25hbWVzID0gRkFMU0UsCiAgbmEgPSBjKCIiLCAiTkEiKQopCgpnZW5lYWxleCA8LSByZWFkX2V4Y2VsKAogIEdFTk9UWVBFX0ZJTEUsCiAgc2hlZXQgPSAiR2VuZWFsZXgiLAogIGNvbF9uYW1lcyA9IEZBTFNFLAogIG5hID0gYygiIiwgIk5BIikKKQoKcGhlbm9fcmF3IDwtIHJlYWRfZXhjZWwoCiAgUEhFTk9UWVBFX0ZJTEUsCiAgc2hlZXQgPSAiTcOpZGlhc19JTkRfYXJ0aWdvIiwKICBuYSA9IGMoIiIsICJOQSIpCikKCmRhdGEuZnJhbWUoCiAgU291cmNlID0gYygiR2VuZXMiLCAiR2VuZWFsZXgiLCAiTcOpZGlhc19JTkRfYXJ0aWdvIiksCiAgUm93cyA9IGMobnJvdyhnZW5lcyksIG5yb3coZ2VuZWFsZXgpLCBucm93KHBoZW5vX3JhdykpLAogIENvbHVtbnMgPSBjKG5jb2woZ2VuZXMpLCBuY29sKGdlbmVhbGV4KSwgbmNvbChwaGVub19yYXcpKQopIHw+CiAga2FibGUoY2FwdGlvbiA9ICJEaW1lbnNpb25zIG9mIHRoZSBvcmlnaW5hbCBkYXRhIikKYGBgCgojIyA0LiBPcmdhbml6ZSB0aGUgU1NSIGRhdGEKClRoZSBmaXJzdCBjb2x1bW4gb2YgYEdlbmVzYCBpZGVudGlmaWVzIHBvcHVsYXRpb24gZ3JvdXBzLiBUaGUgcmVtYWluaW5nCmNvbHVtbnMgY29udGFpbiB0aGUgMzUgU1NSIGxvY2kuCgpJbmRpdmlkdWFsIGlkZW50aWZpZXJzIGFyZSBvYnRhaW5lZCBmcm9tIGBHZW5lYWxleGAgYW5kIGtlcHQgYXMgY2hhcmFjdGVyCnZhbHVlcyBzbyB0aGF0IGxhYmVscyBzdWNoIGFzIGAxNDRCYCBhcmUgcHJlc2VydmVkLiBNaXNzaW5nIFNTUiBjYWxscyBjb2RlZCBhcwpgLTlgIGFyZSBjb252ZXJ0ZWQgdG8gYE5BYC4KCmBgYHtyIG9yZ2FuaXplLXNzcn0Kbl9pbmRpdmlkdWFscyA8LSBucm93KGdlbmVzKQpuX2xvY2kgPC0gbmNvbChnZW5lcykgLSAxCgppbmRpdmlkdWFsX3Jvd3MgPC0gNDooMyArIG5faW5kaXZpZHVhbHMpCmxvY3VzX2NvbHVtbnMgPC0gc2VxKDMsIDIgKyAyICogbl9sb2NpLCBieSA9IDIpCgppZHMgPC0gdHJpbXdzKAogIGFzLmNoYXJhY3RlcihnZW5lYWxleFtbMl1dW2luZGl2aWR1YWxfcm93c10pCikKCmxvY3VzX25hbWVzIDwtIHRyaW13cygKICBhcy5jaGFyYWN0ZXIoCiAgICB1bmxpc3QoZ2VuZWFsZXhbMywgbG9jdXNfY29sdW1uc10sIHVzZS5uYW1lcyA9IEZBTFNFKQogICkKKQoKaWYgKGxlbmd0aChpZHMpICE9IG5faW5kaXZpZHVhbHMpIHsKICBzdG9wKCJUaGUgbnVtYmVyIG9mIGlkZW50aWZpZXJzIGRvZXMgbm90IG1hdGNoIHRoZSBudW1iZXIgb2YgZ2Vub3R5cGUgcm93cy4iKQp9CgppZiAobGVuZ3RoKGxvY3VzX25hbWVzKSAhPSBuX2xvY2kgfHwKICAgIGFueU5BKGxvY3VzX25hbWVzKSB8fAogICAgYW55KGxvY3VzX25hbWVzID09ICIiKSkgewogIHN0b3AoIlRoZSBsb2N1cyBsYWJlbHMgYXJlIGluY29tcGxldGUgb3IgZG8gbm90IG1hdGNoIHRoZSBtYXJrZXIgY29sdW1ucy4iKQp9CgppZiAoYW55TkEoaWRzKSB8fCBhbnkoaWRzID09ICIiKSB8fCBhbnlEdXBsaWNhdGVkKGlkcykpIHsKICBzdG9wKCJUaGUgZ2Vub3R5cGUgaWRlbnRpZmllcnMgYXJlIGluY29tcGxldGUgb3IgZHVwbGljYXRlZC4iKQp9Cgpzc3JfcmF3IDwtIGFzLm1hdHJpeCgKICBnZW5lc1ssIC0xLCBkcm9wID0gRkFMU0VdCikKCnN0b3JhZ2UubW9kZShzc3JfcmF3KSA8LSAibnVtZXJpYyIKc3NyX3Jhd1tzc3JfcmF3ID09IC05XSA8LSBOQV9yZWFsXwoKcm93bmFtZXMoc3NyX3JhdykgPC0gaWRzCmNvbG5hbWVzKHNzcl9yYXcpIDwtIGxvY3VzX25hbWVzCgpzc3JfcmF3WzE6NiwgMTo2XQpgYGAKCiMjIDUuIE9yZ2FuaXplIGFuZCBhbGlnbiB0aGUgcGhlbm90eXBlIGRhdGEKClRlbiB0cmFpdHMgYXJlIHVzZWQgaW4gdGhlIGFuYWx5c2lzLiBCbG9jayAoYEJMYCkgYW5kIGZhbWlseSAoYEZBTWApIGFyZSBrZXB0CmFzIGNhdGVnb3JpY2FsIHZhcmlhYmxlcyBmb3IgbGF0ZXIgdXNlIGFzIGZpeGVkIGVmZmVjdHMuCgpUaGUgcGhlbm90eXBlIHRhYmxlIGlzIHJlb3JkZXJlZCBhY2NvcmRpbmcgdG8gdGhlIFNTUiBpZGVudGlmaWVycy4gVGhpcwpndWFyYW50ZWVzIHRoYXQgZWFjaCBwaGVub3R5cGUgcm93IHJlZmVycyB0byB0aGUgc2FtZSBpbmRpdmlkdWFsIGFzIHRoZQpjb3JyZXNwb25kaW5nIG1hcmtlciByb3cuCgpgYGB7ciBvcmdhbml6ZS1waGVub3R5cGVzfQpUUkFJVFMgPC0gYygKICAiTU1DT00iLCAiUFJPRENPTSIsICJQUk9ERUYiLCAiQ0YiLCAiREYiLAogICJEQ0kiLCAiRVAiLCAiRkZDIiwgIkZGUCIsICJTUyIKKQoKcmVxdWlyZWRfY29sdW1ucyA8LSBjKCJJTkQiLCAiQkwiLCAiRkFNIiwgVFJBSVRTKQptaXNzaW5nX2NvbHVtbnMgPC0gc2V0ZGlmZihyZXF1aXJlZF9jb2x1bW5zLCBuYW1lcyhwaGVub19yYXcpKQoKaWYgKGxlbmd0aChtaXNzaW5nX2NvbHVtbnMpID4gMCkgewogIHN0b3AoCiAgICAiTWlzc2luZyBwaGVub3R5cGUgY29sdW1uKHMpOiAiLAogICAgcGFzdGUobWlzc2luZ19jb2x1bW5zLCBjb2xsYXBzZSA9ICIsICIpCiAgKQp9CgpwaGVub19yYXckSU5EIDwtIHRyaW13cyhhcy5jaGFyYWN0ZXIocGhlbm9fcmF3JElORCkpCgppZiAoCiAgYW55TkEocGhlbm9fcmF3JElORCkgfHwKICBhbnkocGhlbm9fcmF3JElORCA9PSAiIikgfHwKICBhbnlEdXBsaWNhdGVkKHBoZW5vX3JhdyRJTkQpCikgewogIHN0b3AoIlRoZSBwaGVub3R5cGUgaWRlbnRpZmllcnMgYXJlIGluY29tcGxldGUgb3IgZHVwbGljYXRlZC4iKQp9CgptaXNzaW5nX2luX3BoZW5vIDwtIHNldGRpZmYoaWRzLCBwaGVub19yYXckSU5EKQptaXNzaW5nX2luX2dlbm8gPC0gc2V0ZGlmZihwaGVub19yYXckSU5ELCBpZHMpCgphbGlnbm1lbnQgPC0gZGF0YS5mcmFtZSgKICBDaGVjayA9IGMoCiAgICAiR2Vub3R5cGVkIGluZGl2aWR1YWxzIiwKICAgICJQaGVub3R5cGVkIGluZGl2aWR1YWxzIiwKICAgICJNaXNzaW5nIGluIHBoZW5vdHlwZSBkYXRhIiwKICAgICJNaXNzaW5nIGluIGdlbm90eXBlIGRhdGEiCiAgKSwKICBWYWx1ZSA9IGMoCiAgICBsZW5ndGgoaWRzKSwKICAgIG5yb3cocGhlbm9fcmF3KSwKICAgIGxlbmd0aChtaXNzaW5nX2luX3BoZW5vKSwKICAgIGxlbmd0aChtaXNzaW5nX2luX2dlbm8pCiAgKQopCgprYWJsZShhbGlnbm1lbnQsIGNhcHRpb24gPSAiQWxpZ25tZW50IGJldHdlZW4gZ2Vub3R5cGUgYW5kIHBoZW5vdHlwZSBkYXRhIikKCmlmIChsZW5ndGgobWlzc2luZ19pbl9waGVubykgPiAwIHx8IGxlbmd0aChtaXNzaW5nX2luX2dlbm8pID4gMCkgewogIHN0b3AoIkdlbm90eXBlIGFuZCBwaGVub3R5cGUgaWRlbnRpZmllcnMgZG8gbm90IG1hdGNoLiIpCn0KCnBoZW5vIDwtIHBoZW5vX3Jhd1sKICBtYXRjaChpZHMsIHBoZW5vX3JhdyRJTkQpLAogIHJlcXVpcmVkX2NvbHVtbnMKXQoKcGhlbm9bVFJBSVRTXSA8LSBsYXBwbHkoCiAgcGhlbm9bVFJBSVRTXSwKICBmdW5jdGlvbih4KSBhcy5udW1lcmljKGFzLmNoYXJhY3Rlcih4KSkKKQoKbWV0YWRhdGEgPC0gZGF0YS5mcmFtZSgKICBJTkQgPSBwaGVubyRJTkQsCiAgQkwgPSBmYWN0b3IocGhlbm8kQkwpLAogIEZBTSA9IGZhY3RvcihwaGVubyRGQU0pLAogIHJvdy5uYW1lcyA9IHBoZW5vJElORAopCgpwaGVub3R5cGVzIDwtIGFzLm1hdHJpeChwaGVub1ssIFRSQUlUU10pCnN0b3JhZ2UubW9kZShwaGVub3R5cGVzKSA8LSAibnVtZXJpYyIKcm93bmFtZXMocGhlbm90eXBlcykgPC0gcGhlbm8kSU5ECgppZiAoYW55TkEocGhlbm90eXBlcykpIHsKICBzdG9wKCJNaXNzaW5nIHZhbHVlcyB3ZXJlIGZvdW5kIGluIHRoZSB0ZW4gcGhlbm90eXBlIHRyYWl0cy4iKQp9CmBgYAoKIyMgNi4gTWFya2VyIHF1YWxpdHkgY29udHJvbAoKRm9yIGVhY2ggbG9jdXMsIHdlIGNhbGN1bGF0ZSB0aGUgY2FsbCByYXRlIGFuZCB0aGUgbnVtYmVyIG9mIG9ic2VydmVkIGdlbm90eXBlCmNsYXNzZXMuIEEgbG9jdXMgaXMgcmV0YWluZWQgd2hlbiBpdHMgY2FsbCByYXRlIGlzIGF0IGxlYXN0IDAuOTAgYW5kIGF0IGxlYXN0CnR3byBnZW5vdHlwZSBjbGFzc2VzIGFyZSBwcmVzZW50LgoKYGBge3IgbWFya2VyLXF1YWxpdHl9CmxvY3VzX2F1ZGl0IDwtIGRhdGEuZnJhbWUoCiAgTG9jdXMgPSBjb2xuYW1lcyhzc3JfcmF3KSwKICBOX2NhbGxlZCA9IGNvbFN1bXMoIWlzLm5hKHNzcl9yYXcpKSwKICBDYWxsX3JhdGUgPSBjb2xNZWFucyghaXMubmEoc3NyX3JhdykpLAogIE5fZ2Vub3R5cGVfY2xhc3NlcyA9IGFwcGx5KAogICAgc3NyX3JhdywKICAgIDIsCiAgICBmdW5jdGlvbih4KSBsZW5ndGgodW5pcXVlKG5hLm9taXQoeCkpKQogICkKKQoKcm93bmFtZXMobG9jdXNfYXVkaXQpIDwtIE5VTEwKCmxvY3VzX2F1ZGl0JEtlZXBfbG9jdXMgPC0KICBsb2N1c19hdWRpdCRDYWxsX3JhdGUgPj0gQ0FMTF9SQVRFX01JTiAmCiAgbG9jdXNfYXVkaXQkTl9nZW5vdHlwZV9jbGFzc2VzID49IDIKCnNzciA8LSBzc3JfcmF3WwogICwKICBsb2N1c19hdWRpdCRLZWVwX2xvY3VzLAogIGRyb3AgPSBGQUxTRQpdCgprYWJsZSgKICBsb2N1c19hdWRpdCwKICBkaWdpdHMgPSAzLAogIGNhcHRpb24gPSAiUXVhbGl0eSBjb250cm9sIG9mIHRoZSBTU1IgbG9jaSIKKQpgYGAKClRoZSBmaWd1cmUgc2hvd3MgdGhlIGNhbGwgcmF0ZSBvZiBlYWNoIGxvY3VzIGFuZCB0aGUgbWluaW11bSBhY2NlcHRlZCB2YWx1ZS4KCmBgYHtyIG1hcmtlci1xdWFsaXR5LXBsb3QsIGZpZy5oZWlnaHQ9N30KZ2dwbG90KAogIGxvY3VzX2F1ZGl0LAogIGFlcygKICAgIHggPSByZW9yZGVyKExvY3VzLCBDYWxsX3JhdGUpLAogICAgeSA9IENhbGxfcmF0ZSwKICAgIGZpbGwgPSBLZWVwX2xvY3VzCiAgKQopICsKICBnZW9tX2NvbCgpICsKICBnZW9tX2hsaW5lKAogICAgeWludGVyY2VwdCA9IENBTExfUkFURV9NSU4sCiAgICBsaW5ldHlwZSA9IDIKICApICsKICBjb29yZF9mbGlwKCkgKwogIGxhYnMoCiAgICB4ID0gTlVMTCwKICAgIHkgPSAiQ2FsbCByYXRlIiwKICAgIGZpbGwgPSAiUmV0YWluZWQiLAogICAgdGl0bGUgPSAiU1NSIGNhbGwgcmF0ZSBieSBsb2N1cyIKICApICsKICB0aGVtZV9idygpCmBgYAoKIyMgNy4gRGF0YSBzdW1tYXJpZXMKClRoZSBpbmRpdmlkdWFsIGF1ZGl0IHN1bW1hcml6ZXMgdGhlIGFtb3VudCBvZiBhdmFpbGFibGUgU1NSIGluZm9ybWF0aW9uIGZvcgplYWNoIHBsYW50LgoKYGBge3IgaW5kaXZpZHVhbC1zdW1tYXJ5fQppbmRpdmlkdWFsX2F1ZGl0IDwtIGRhdGEuZnJhbWUoCiAgSU5EID0gcm93bmFtZXMoc3NyX3JhdyksCiAgTl9jYWxsZWQgPSByb3dTdW1zKCFpcy5uYShzc3JfcmF3KSksCiAgQ2FsbF9yYXRlID0gcm93TWVhbnMoIWlzLm5hKHNzcl9yYXcpKQopCgpyb3duYW1lcyhpbmRpdmlkdWFsX2F1ZGl0KSA8LSBOVUxMCgpoZWFkKGluZGl2aWR1YWxfYXVkaXQsIDEwKSB8PgogIGthYmxlKAogICAgZGlnaXRzID0gMywKICAgIGNhcHRpb24gPSAiTWFya2VyIHN1bW1hcnkgZm9yIHRoZSBmaXJzdCB0ZW4gaW5kaXZpZHVhbHMiCiAgKQpgYGAKClRoZSBwaGVub3R5cGUgc3VtbWFyeSBwcm92aWRlcyBhIHNpbXBsZSBjaGVjayBvZiB0aGUgc2NhbGUgYW5kIHZhcmlhdGlvbiBvZgp0aGUgdGVuIHRyYWl0cy4KCmBgYHtyIHBoZW5vdHlwZS1zdW1tYXJ5fQpwaGVub3R5cGVfc3VtbWFyeSA8LSBkYXRhLmZyYW1lKAogIFRyYWl0ID0gY29sbmFtZXMocGhlbm90eXBlcyksCiAgTiA9IGNvbFN1bXMoIWlzLm5hKHBoZW5vdHlwZXMpKSwKICBNZWFuID0gY29sTWVhbnMocGhlbm90eXBlcyksCiAgU0QgPSBhcHBseShwaGVub3R5cGVzLCAyLCBzZCksCiAgTWluaW11bSA9IGFwcGx5KHBoZW5vdHlwZXMsIDIsIG1pbiksCiAgTWF4aW11bSA9IGFwcGx5KHBoZW5vdHlwZXMsIDIsIG1heCkKKQoKcm93bmFtZXMocGhlbm90eXBlX3N1bW1hcnkpIDwtIE5VTEwKCmthYmxlKAogIHBoZW5vdHlwZV9zdW1tYXJ5LAogIGRpZ2l0cyA9IDMsCiAgY2FwdGlvbiA9ICJTdW1tYXJ5IG9mIHRoZSBwaGVub3R5cGUgdHJhaXRzIgopCmBgYAoKVGhlIHRyYWl0IGRpY3Rpb25hcnkgcmVjb3JkcyB0aGUgYmlvbG9naWNhbCBtZWFuaW5nIGFuZCBtZWFzdXJlbWVudCB1bml0IG9mIGVhY2ggcGhlbm90eXBlIGNvZGUuIFRoZXNlIGxhYmVscyB3aWxsIGJlIHJldXNlZCBpbiB0aGUgdGFibGVzIGFuZCBmaWd1cmVzIHByb2R1Y2VkIGJ5IHRoZSBmb2xsb3dpbmcgbW9kdWxlcy4KCmBgYHtyIHRyYWl0LWRpY3Rpb25hcnl9CnRyYWl0X2RpY3Rpb25hcnkgPC0gZGF0YS5mcmFtZSgKICBUcmFpdCA9IFRSQUlUUywKICBEZXNjcmlwdGlvbl9lbiA9IGMoCiAgICAiTWVhbiBtYXNzIG9mIGNvbW1lcmNpYWwgZnJ1aXQiLAogICAgIlByb2R1Y3Rpb24gb2YgY29tbWVyY2lhbCBmcnVpdCIsCiAgICAiUHJvZHVjdGlvbiBvZiBkZWZlY3RpdmUgZnJ1aXQiLAogICAgIkZydWl0IGxlbmd0aCIsCiAgICAiRnJ1aXQgZGlhbWV0ZXIiLAogICAgIkludGVybmFsLWNhdml0eSBkaWFtZXRlciIsCiAgICAiTWVhbiBwdWxwIHRoaWNrbmVzcyIsCiAgICAiRXh0ZXJuYWwgZnJ1aXQgZmlybW5lc3MiLAogICAgIkludGVybmFsIHB1bHAgZmlybW5lc3MiLAogICAgIlNvbHVibGUgc29saWRzIgogICksCiAgRGVzY3JpcHRpb25fcHQgPSBjKAogICAgIk1hc3NhIG3DqWRpYSBkZSBmcnV0b3MgY29tZXJjaWFpcyIsCiAgICAiUHJvZHXDp8OjbyBkZSBmcnV0b3MgY29tZXJjaWFpcyIsCiAgICAiUHJvZHXDp8OjbyBkZSBmcnV0b3MgZGVmZWl0dW9zb3MiLAogICAgIkNvbXByaW1lbnRvIGRvIGZydXRvIiwKICAgICJEacOibWV0cm8gZG8gZnJ1dG8iLAogICAgIkRpw6JtZXRybyBkYSBjYXZpZGFkZSBpbnRlcm5hIiwKICAgICJFc3Blc3N1cmEgbcOpZGlhIGRhIHBvbHBhIiwKICAgICJGaXJtZXphIGV4dGVybmEgZG8gZnJ1dG8iLAogICAgIkZpcm1lemEgaW50ZXJuYSBkYSBwb2xwYSIsCiAgICAiU8OzbGlkb3Mgc29sw7p2ZWlzIgogICksCiAgVW5pdCA9IGMoCiAgICAia2ciLCAia2ciLCAia2ciLCAiY20iLCAiY20iLAogICAgImNtIiwgImNtIiwgIk4iLCAiTiIsICLCsEJyaXgiCiAgKQopCgpyb3duYW1lcyh0cmFpdF9kaWN0aW9uYXJ5KSA8LSBOVUxMCgprYWJsZSgKICB0cmFpdF9kaWN0aW9uYXJ5WywgYygiVHJhaXQiLCAiRGVzY3JpcHRpb25fZW4iLCAiVW5pdCIpXSwKICBjYXB0aW9uID0gIkRpY3Rpb25hcnkgb2YgdGhlIHBoZW5vdHlwZSB0cmFpdHMiCikKYGBgCgpgYGB7ciBwaGVub3R5cGUtcGxvdCwgZmlnLmhlaWdodD04fQpwaGVub3R5cGVfbG9uZyA8LSBkYXRhLmZyYW1lKAogIElORCA9IHJvd25hbWVzKHBoZW5vdHlwZXMpLAogIHBoZW5vdHlwZXMsCiAgY2hlY2submFtZXMgPSBGQUxTRQopIHw+CiAgcGl2b3RfbG9uZ2VyKAogICAgY29scyA9IC1JTkQsCiAgICBuYW1lc190byA9ICJUcmFpdCIsCiAgICB2YWx1ZXNfdG8gPSAiVmFsdWUiCiAgKQoKZ2dwbG90KHBoZW5vdHlwZV9sb25nLCBhZXMoeCA9IFZhbHVlKSkgKwogIGdlb21faGlzdG9ncmFtKGJpbnMgPSAyMCkgKwogIGZhY2V0X3dyYXAofiBUcmFpdCwgc2NhbGVzID0gImZyZWUiLCBuY29sID0gMikgKwogIGxhYnMoCiAgICB4ID0gIk9ic2VydmVkIHZhbHVlIiwKICAgIHkgPSAiTnVtYmVyIG9mIGluZGl2aWR1YWxzIiwKICAgIHRpdGxlID0gIlBoZW5vdHlwaWMgZGlzdHJpYnV0aW9ucyIKICApICsKICB0aGVtZV9idygpCmBgYAoKIyMgOC4gU2F2ZSB0aGUgcHJlcHJvY2Vzc2luZyBvdXRwdXRzCgpUaGUgbWFpbiBvYmplY3RzIGFyZSBzYXZlZCBpbiBvbmUgYC5yZHNgIGZpbGUuIFRoZSBhdWRpdCB0YWJsZXMgYXJlIGFsc28gc2F2ZWQKYXMgQ1NWIGZpbGVzIGZvciBkaXJlY3QgaW5zcGVjdGlvbi4KCmBgYHtyIHNhdmUtb3V0cHV0c30KcHJlcHJvY2Vzc2luZ19vYmplY3QgPC0gbGlzdCgKICBpZHMgPSBpZHMsCiAgbWV0YWRhdGEgPSBtZXRhZGF0YSwKICBwaGVub3R5cGVzID0gcGhlbm90eXBlcywKICBzc3JfcmF3ID0gc3NyX3JhdywKICBzc3IgPSBzc3IsCiAgbG9jdXNfYXVkaXQgPSBsb2N1c19hdWRpdCwKICBpbmRpdmlkdWFsX2F1ZGl0ID0gaW5kaXZpZHVhbF9hdWRpdCwKICBwaGVub3R5cGVfc3VtbWFyeSA9IHBoZW5vdHlwZV9zdW1tYXJ5LAogIHRyYWl0X2RpY3Rpb25hcnkgPSB0cmFpdF9kaWN0aW9uYXJ5LAogIHNldHRpbmdzID0gbGlzdCgKICAgIGNhbGxfcmF0ZV9taW4gPSBDQUxMX1JBVEVfTUlOCiAgKQopCgpzYXZlUkRTKAogIHByZXByb2Nlc3Npbmdfb2JqZWN0LAogIGZpbGUucGF0aChPVVRQVVRfRElSLCAicHJlcHJvY2Vzc2luZ19vYmplY3QucmRzIikKKQoKd3JpdGUuY3N2KAogIGFsaWdubWVudCwKICBmaWxlLnBhdGgoT1VUUFVUX0RJUiwgImFsaWdubWVudF9zdW1tYXJ5LmNzdiIpLAogIHJvdy5uYW1lcyA9IEZBTFNFCikKCndyaXRlLmNzdigKICBsb2N1c19hdWRpdCwKICBmaWxlLnBhdGgoT1VUUFVUX0RJUiwgImxvY3VzX2F1ZGl0LmNzdiIpLAogIHJvdy5uYW1lcyA9IEZBTFNFCikKCndyaXRlLmNzdigKICBpbmRpdmlkdWFsX2F1ZGl0LAogIGZpbGUucGF0aChPVVRQVVRfRElSLCAiaW5kaXZpZHVhbF9hdWRpdC5jc3YiKSwKICByb3cubmFtZXMgPSBGQUxTRQopCgp3cml0ZS5jc3YoCiAgcGhlbm90eXBlX3N1bW1hcnksCiAgZmlsZS5wYXRoKE9VVFBVVF9ESVIsICJwaGVub3R5cGVfc3VtbWFyeS5jc3YiKSwKICByb3cubmFtZXMgPSBGQUxTRQopCgp3cml0ZS5jc3YoCiAgdHJhaXRfZGljdGlvbmFyeSwKICBmaWxlLnBhdGgoT1VUUFVUX0RJUiwgInRyYWl0X2RpY3Rpb25hcnkuY3N2IiksCiAgcm93Lm5hbWVzID0gRkFMU0UKKQpgYGAKCmBgYHtyIGZpbmFsLWludmVudG9yeX0KZGF0YS5mcmFtZSgKICBJdGVtID0gYygKICAgICJJbmRpdmlkdWFscyIsCiAgICAiUGhlbm90eXBlIHRyYWl0cyIsCiAgICAiT3JpZ2luYWwgU1NSIGxvY2kiLAogICAgIlJldGFpbmVkIFNTUiBsb2NpIiwKICAgICJNaXNzaW5nIFNTUiBjYWxscyIKICApLAogIFZhbHVlID0gYygKICAgIGxlbmd0aChpZHMpLAogICAgbmNvbChwaGVub3R5cGVzKSwKICAgIG5jb2woc3NyX3JhdyksCiAgICBuY29sKHNzciksCiAgICBzdW0oaXMubmEoc3NyX3JhdykpCiAgKQopIHw+CiAga2FibGUoY2FwdGlvbiA9ICJGaW5hbCBwcmVwcm9jZXNzaW5nIGludmVudG9yeSIpCmBgYAoKIyMgOS4gTmV4dCBzdGVwCgpUaGUgY2xlYW5lZCBwaGVub3R5cGUgYW5kIFNTUiBvYmplY3RzIGFyZSBub3cgcmVhZHkgZm9yIG1hdHJpeCBjb25zdHJ1Y3Rpb24uClRoZSBuZXh0IG1vZHVsZSB3aWxsIGVuY29kZSB0aGUgbXVsdGlhbGxlbGljIFNTUiBkb3NhZ2VzLCBjcmVhdGUgdGhlIG1hcmtlciBhbmQKZ2Vub21pYyByZWxhdGlvbnNoaXAgbWF0cmljZXMsIGFuZCBkZWZpbmUgdGhlIGNvbW1vbiBmaXZlLWZvbGQKY3Jvc3MtdmFsaWRhdGlvbiBkZXNpZ24uCg==</div>
 
 <!-- Adjust MathJax settings so that all math formulae are shown using
 TeX fonts only; see
@@ -2612,6 +1869,7 @@ $(document).ready(function () {
 <!-- code folding -->
 <script>
 $(document).ready(function () {
+  window.initializeSourceEmbed("01_preprocessing_en.Rmd");
   window.initializeCodeFolding("show" === "show");
 });
 </script>
