@@ -1,5 +1,5 @@
 ---
-title: "Ajuste piloto de sete métodos de predição genômica em mamoeiro"
+title: "Ajuste completo de sete métodos de predição genômica em mamoeiro"
 author:
   - Costa, W. G.^[Weverton Gomes da Costa, Pós-Doutorando, Departamento de Estatística - Universidade Federal de Viçosa, weverton.costa@ufv.br]
 date: "`r Sys.Date()`"
@@ -32,53 +32,100 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-Este módulo valida inicialmente o contrato de ajuste dos modelos com uma
-característica e um fold da validação cruzada. O piloto utiliza `MMCOM` e o
-fold 1.
+Este módulo realiza o ajuste completo, com validação cruzada, de sete métodos
+de predição genômica para dez características do mamoeiro. Os mesmos cinco
+folds determinísticos e estratificados por família são utilizados para todos
+os métodos e características.
 
-Sete métodos de predição genômica são ajustados exclusivamente com o BGLR
+A análise completa contém:
+
+\[
+10\ \text{características}
+\times
+5\ \text{folds}
+\times
+7\ \text{métodos}
+=
+350\ \text{ajustes}.
+\]
+
+Todos os métodos são ajustados exclusivamente com o BGLR
 [@perez2014bglr]:
 
 1. RR-BLUP, implementado com o componente `BRR` do BGLR e a matriz completa de
    marcadores `M`;
 2. BayesA com `M`;
 3. BayesB com `M`;
-4. BayesB2 com `M` e a probabilidade de efeito zero mantida operacionalmente
+4. BayesB2 com `M` e probabilidade de efeito zero mantida operacionalmente
    próxima de \(10^{-5}\);
 5. BayesC com `M`;
 6. Lasso Bayesiano com `M`;
 7. GBLUP com a matriz de relacionamento genômico `G` e o componente `RKHS` do
    BGLR.
 
-RR-BLUP e regressão ridge Bayesiana não são ajustados como modelos separados.
-O modelo Gaussiano para os efeitos dos marcadores, implementado por
-`model = "BRR"`, é adotado como a implementação do RR-BLUP.
+RR-BLUP e regressão ridge Bayesiana não são tratados como métodos separados. O
+modelo Gaussiano para os efeitos dos marcadores implementado por
+`model = "BRR"` é a implementação do RR-BLUP adotada neste projeto.
 
-O piloto verifica a execução do código, o mascaramento dos fenótipos, a
-estrutura das saídas, a finitude das predições, as métricas preditivas e o
-parâmetro de probabilidade do BayesB2. Ele não será utilizado para conclusões
-biológicas.
+## 2. Contrato analítico
 
-## 2. Contrato do BGLR
+As matrizes construídas no Módulo 02 são utilizadas sem reconstrução
+específica por fold:
 
-O BGLR inclui um intercepto por padrão e aceita valores ausentes no vetor
-fenotípico. Portanto, a coluna do intercepto é removida de `X` antes que as
-colunas restantes de bloco e família sejam fornecidas como efeitos fixos. Em
-cada fold, apenas os fenótipos de validação são substituídos por `NA`; `X`, `M`
-e `G` permanecem inalteradas.
+- `X` contém intercepto e os efeitos de bloco e família;
+- `M` contém as 72 colunas centralizadas de dosagens alélicas;
+- `G` contém os relacionamentos genômicos aditivos;
+- cada fold identifica 30 indivíduos de validação e 120 de treinamento.
 
-O artigo de referência define o BayesB2 com \(\pi=10^{-5}\) como a
-probabilidade de efeito zero do marcador [@silva2021brrguava]. No BGLR,
-`probIn` é a probabilidade de efeito diferente de zero. Assim, o BayesB2
-utiliza `probIn = 1 - 1e-5`. Como o BGLR amostra essa probabilidade, uma priori
-beta extremamente concentrada (`counts = 1e6`) é utilizada para mantê-la
-operacionalmente fixa no valor de referência.
+O BGLR inclui um intercepto por padrão. Portanto, a coluna do intercepto é
+removida de `X` antes que as colunas de bloco e família sejam fornecidas pelo
+componente `FIXED`.
 
-## 3. Pacotes e configurações do piloto
+Para cada característica e fold, somente uma cópia do vetor fenotípico é
+alterada. As 30 observações de validação são substituídas por `NA`; `X`, `M` e
+`G` permanecem globais e inalteradas.
+
+As configurações de MCMC seguem a seção principal de métodos do artigo de
+referência [@silva2021brrguava]:
+
+- 1.000.000 de iterações;
+- 200.000 iterações de burn-in;
+- thinning igual a 4;
+- 200.000 amostras posteriores mantidas.
+
+O parâmetro padrão do BGLR para a alocação da priori é explicitado como
+`R2 = 0.5`.
+
+## 3. Execução reprodutível e retomável
+
+Cada combinação de característica, fold e método possui:
+
+- uma semente determinística;
+- um identificador único de execução;
+- um resultado RDS compacto e individual;
+- arquivos temporários das cadeias do BGLR;
+- uma linha no manifesto das execuções.
+
+Uma execução é considerada concluída somente quando seu resultado RDS compacto
+existe. Quando o módulo é reconstruído, as execuções concluídas são ignoradas e
+apenas as ausentes são ajustadas. Isso fornece pontos de retomada
+determinísticos sem reconstruir as matrizes ou alterar silenciosamente o
+contrato dos modelos.
+
+Os arquivos temporários do BGLR são lidos imediatamente após cada ajuste. O
+BGLR grava amostras reduzidas pelo thinning durante o burn-in e durante a
+amostragem posterior; por isso, a parte correspondente ao burn-in é removida
+antes do cálculo dos diagnósticos de cadeia única. Depois, os arquivos brutos
+são excluídos. Permanecem somente resumos posteriores compactos, predições,
+valores genômicos, efeitos, diagnósticos e métricas.
+
+## 4. Pacotes e configurações da análise completa
 
 ```{r packages}
 suppressPackageStartupMessages({
   library(BGLR)
+  library(coda)
+  library(digest)
   library(dplyr)
   library(ggplot2)
   library(knitr)
@@ -86,7 +133,7 @@ suppressPackageStartupMessages({
 })
 ```
 
-```{r pilot-settings}
+```{r complete-settings}
 MATRICES_FILE <- here(
   "output",
   "matrices",
@@ -96,46 +143,88 @@ MATRICES_FILE <- here(
 OUTPUT_DIR <- here(
   "output",
   "models",
-  "pilot"
+  "full"
 )
 
-PILOT_TRAIT <- "MMCOM"
-PILOT_FOLD <- 1L
+RUNS_DIR <- file.path(
+  OUTPUT_DIR,
+  "runs"
+)
 
-PILOT_N_ITER <- 12000L
-PILOT_BURN_IN <- 2000L
-PILOT_THIN <- 10L
+TEMP_DIR <- file.path(
+  OUTPUT_DIR,
+  "temporary"
+)
+
+N_ITER <- 1000000L
+BURN_IN <- 200000L
+THIN <- 4L
+R2_PRIOR <- 0.5
+
+RAW_SAVED_SAMPLES <- floor(
+  N_ITER / THIN
+)
+
+BURN_IN_SAVED_SAMPLES <- floor(
+  BURN_IN / THIN
+)
+
+RETAINED_SAMPLES <-
+  RAW_SAVED_SAMPLES -
+  BURN_IN_SAVED_SAMPLES
+
+PIPELINE_VERSION <-
+  "module03-full-v3"
+
+MAX_NEW_RUNS_PER_BUILD <- as.integer(
+  Sys.getenv(
+    "PAPAYA_MAX_NEW_RUNS",
+    unset = "350"
+  )
+)
+
+SEED_BASE <- 202608050L
 
 BAYESB2_ZERO_PROBABILITY <- 1e-5
 BAYESB2_PROB_IN <-
   1 - BAYESB2_ZERO_PROBABILITY
 BAYESB2_COUNTS <- 1e6
 
+ESS_REVIEW_THRESHOLD <- 1000
+GEWEKE_REVIEW_THRESHOLD <- 2
+
 dir.create(
-  OUTPUT_DIR,
+  RUNS_DIR,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+dir.create(
+  TEMP_DIR,
   recursive = TRUE,
   showWarnings = FALSE
 )
 ```
 
-O piloto utiliza menos iterações do que a análise final. Após a aprovação do
-contrato dos modelos, a análise completa utilizará as configurações do artigo
-de referência: 1.000.000 de iterações, 200.000 iterações de burn-in e thinning
-igual a 4 [@silva2021brrguava].
+## 5. Objetos de entrada e matrizes invariantes
 
-## 4. Matrizes de entrada e mascaramento fenotípico
-
-```{r input-object}
+```{r input-objects}
 matrices_object <- readRDS(
   MATRICES_FILE
 )
 
 ids <- matrices_object$ids
+metadata <- matrices_object$metadata
+phenotypes <- matrices_object$phenotypes
+trait_dictionary <- matrices_object$trait_dictionary
 X <- matrices_object$X
 M <- matrices_object$M
 G <- matrices_object$G
-phenotypes <- matrices_object$phenotypes
 cv_folds <- matrices_object$cv_folds
+
+traits <- colnames(
+  phenotypes
+)
 
 X_fixed <- X[
   ,
@@ -143,34 +232,42 @@ X_fixed <- X[
   drop = FALSE
 ]
 
-y_observed <- phenotypes[
-  ,
-  PILOT_TRAIT
-]
-
-validation_index <- which(
-  cv_folds$Fold == PILOT_FOLD
+method_names <- c(
+  "RRBLUP",
+  "BayesA",
+  "BayesB",
+  "BayesB2",
+  "BayesC",
+  "BL",
+  "GBLUP"
 )
 
-training_index <- which(
-  cv_folds$Fold != PILOT_FOLD
+method_labels <- c(
+  RRBLUP = "RR-BLUP",
+  BayesA = "BayesA",
+  BayesB = "BayesB",
+  BayesB2 = "BayesB2",
+  BayesC = "BayesC",
+  BL = "Lasso Bayesiano",
+  GBLUP = "GBLUP"
 )
-
-y_model <- y_observed
-y_model[validation_index] <- NA_real_
 ```
 
 ```{r input-audit}
 input_audit <- data.frame(
   Check = c(
     "Indivíduos",
+    "Características",
+    "Folds",
+    "Métodos",
+    "Ajustes planejados",
+    "Indivíduos de validação por fold",
+    "Indivíduos de treinamento por fold",
     "Colunas de efeitos fixos fornecidas ao BGLR",
     "Colunas de marcadores",
+    "Posto de M",
     "Linhas e colunas de G",
-    "Fenótipos de treinamento observados",
-    "Fenótipos de validação mascarados",
-    "Indivíduos de validação",
-    "Indivíduos de treinamento",
+    "Posto de G",
     "Nomes das linhas de X alinhados aos IDs",
     "Nomes das linhas de M alinhados aos IDs",
     "Nomes das linhas de G alinhados aos IDs",
@@ -178,13 +275,25 @@ input_audit <- data.frame(
   ),
   Value = c(
     length(ids),
+    length(traits),
+    matrices_object$settings$n_folds,
+    length(method_names),
+    length(traits) *
+      matrices_object$settings$n_folds *
+      length(method_names),
+    unique(
+      matrices_object$fold_summary$
+        Validation_n
+    ),
+    unique(
+      matrices_object$fold_summary$
+        Training_n
+    ),
     ncol(X_fixed),
     ncol(M),
+    qr(M)$rank,
     paste(dim(G), collapse = " x "),
-    sum(!is.na(y_model)),
-    sum(is.na(y_model)),
-    length(validation_index),
-    length(training_index),
+    qr(G)$rank,
     identical(rownames(X), ids),
     identical(rownames(M), ids),
     identical(rownames(G), ids),
@@ -194,22 +303,19 @@ input_audit <- data.frame(
 
 kable(
   input_audit,
-  caption = "Auditoria das entradas do piloto"
+  caption = "Auditoria das entradas invariantes para o ajuste completo"
 )
 ```
 
-## 5. Catálogo dos modelos
+## 6. Catálogo dos modelos e especificações do BGLR
 
 ```{r model-catalogue}
 model_catalogue <- data.frame(
-  Method = c(
-    "RR-BLUP",
-    "BayesA",
-    "BayesB",
-    "BayesB2",
-    "BayesC",
-    "Lasso Bayesiano",
-    "GBLUP"
+  Method = method_names,
+  Label = unname(
+    method_labels[
+      method_names
+    ]
   ),
   BGLR_component = c(
     "BRR",
@@ -242,11 +348,9 @@ model_catalogue <- data.frame(
 
 kable(
   model_catalogue,
-  caption = "Sete métodos de predição genômica no piloto"
+  caption = "Sete métodos de predição genômica"
 )
 ```
-
-## 6. Especificações de ETA
 
 ```{r eta-specifications}
 ETA_models <- list(
@@ -325,93 +429,396 @@ ETA_models <- list(
 )
 ```
 
-## 7. Ajuste do piloto
+A implementação oficial do BGLR grava uma cadeia da variância residual para
+cada modelo. O escalar genômico usado na revisão da convergência varia conforme
+o método: variância dos marcadores para RR-BLUP, escala para BayesA e BayesB,
+variância comum dos marcadores para BayesC, parâmetro de contração para o Lasso
+Bayesiano e variância genômica para GBLUP.
 
-Cada método recebe uma semente determinística e um prefixo de arquivo
-distinto. As observações de validação permanecem ausentes de `y_model` durante
-o ajuste.
-
-```{r pilot-fitting}
-model_names <- names(
-  ETA_models
+```{r trace-contract}
+genomic_trace_suffix <- c(
+  RRBLUP = "ETA_genomic_varB.dat",
+  BayesA = "ETA_genomic_ScaleBayesA.dat",
+  BayesB = "ETA_genomic_parBayesB.dat",
+  BayesB2 = "ETA_genomic_parBayesB.dat",
+  BayesC = "ETA_genomic_parBayesC.dat",
+  BL = "ETA_genomic_lambda.dat",
+  GBLUP = "ETA_genomic_varU.dat"
 )
 
-method_seeds <- setNames(
-  202608051L + seq_along(model_names) - 1L,
-  model_names
+genomic_trace_header <- c(
+  RRBLUP = FALSE,
+  BayesA = FALSE,
+  BayesB = TRUE,
+  BayesB2 = TRUE,
+  BayesC = TRUE,
+  BL = FALSE,
+  GBLUP = FALSE
 )
 
-pilot_fits <- vector(
-  mode = "list",
-  length = length(model_names)
+genomic_trace_column <- c(
+  RRBLUP = 1L,
+  BayesA = 1L,
+  BayesB = 2L,
+  BayesB2 = 2L,
+  BayesC = 2L,
+  BL = 1L,
+  GBLUP = 1L
 )
 
-names(pilot_fits) <- model_names
+genomic_trace_parameter <- c(
+  RRBLUP = "Marker_variance",
+  BayesA = "Scale",
+  BayesB = "Scale",
+  BayesB2 = "Scale",
+  BayesC = "Marker_variance",
+  BL = "Lambda",
+  GBLUP = "Genomic_variance"
+)
+```
 
-prediction_parts <- vector(
-  mode = "list",
-  length = length(model_names)
+## 7. Plano das execuções e assinatura analítica
+
+```{r run-design}
+run_design <- expand.grid(
+  Trait = traits,
+  Fold = seq_len(
+    matrices_object$settings$n_folds
+  ),
+  Method = method_names,
+  stringsAsFactors = FALSE
 )
 
-metric_parts <- vector(
-  mode = "list",
-  length = length(model_names)
+run_design <- run_design[
+  order(
+    match(
+      run_design$Trait,
+      traits
+    ),
+    run_design$Fold,
+    match(
+      run_design$Method,
+      method_names
+    )
+  ),
+]
+
+rownames(run_design) <- NULL
+
+run_design$Run_number <- seq_len(
+  nrow(run_design)
 )
 
-for (method_index in seq_along(model_names)) {
-  method_name <- model_names[method_index]
+run_design$Seed <-
+  SEED_BASE +
+  run_design$Run_number
+
+analysis_settings <- list(
+  pipeline_version =
+    PIPELINE_VERSION,
+  n_iter = N_ITER,
+  burn_in = BURN_IN,
+  thin = THIN,
+  R2 = R2_PRIOR,
+  seed_base = SEED_BASE,
+  bayesb2_zero_probability =
+    BAYESB2_ZERO_PROBABILITY,
+  bayesb2_prob_in =
+    BAYESB2_PROB_IN,
+  bayesb2_counts =
+    BAYESB2_COUNTS,
+  traits = traits,
+  folds = seq_len(
+    matrices_object$settings$n_folds
+  ),
+  methods = method_names
+)
+
+analysis_signature <- substr(
+  digest::digest(
+    list(
+      ids = ids,
+      phenotypes = phenotypes,
+      X = X,
+      M = M,
+      G = G,
+      cv_folds = cv_folds,
+      settings = analysis_settings
+    ),
+    algo = "sha256"
+  ),
+  1,
+  16
+)
+
+run_design$Signature <-
+  analysis_signature
+
+run_design$Run_id <- paste(
+  run_design$Trait,
+  paste0(
+    "F",
+    run_design$Fold
+  ),
+  run_design$Method,
+  sep = "_"
+)
+
+run_design$Result_relative_file <- file.path(
+  "output",
+  "models",
+  "full",
+  "runs",
+  paste0(
+    run_design$Run_id,
+    "_",
+    analysis_signature,
+    ".rds"
+  )
+)
+
+result_files <- file.path(
+  here(),
+  run_design$Result_relative_file
+)
+
+run_design$Completed_before_build <-
+  file.exists(
+    result_files
+  )
+
+write.csv(
+  run_design,
+  file.path(
+    OUTPUT_DIR,
+    "run_design.csv"
+  ),
+  row.names = FALSE
+)
+
+kable(
+  head(
+    run_design,
+    14
+  ),
+  caption = paste(
+    "Primeiras quatorze execuções planejadas; assinatura analítica",
+    analysis_signature
+  )
+)
+```
+
+## 8. Ajuste completo com pontos de retomada
+
+O loop abaixo ajusta somente as execuções cujo arquivo compacto de resultado
+está ausente. Uma execução concluída nunca é recalculada durante uma
+reconstrução comum deste módulo. A variável de ambiente opcional
+`PAPAYA_MAX_NEW_RUNS` limita quantos novos ajustes são realizados em uma
+construção. O valor padrão é 350, de modo que uma construção comum ajusta todas
+as execuções restantes. O valor 7 permite validar um bloco completo de
+característica e fold com todos os métodos antes de iniciar o restante da
+análise.
+
+As cadeias temporárias mantidas para o cálculo dos diagnósticos são:
+
+- variância residual;
+- um parâmetro de escala ou variância genômica específico do método.
+
+Para cada cadeia, o tamanho efetivo da amostra e o diagnóstico de Geweke são
+calculados com o `coda`. Os limites abaixo são indicadores para revisão e não
+regras automáticas de exclusão dos modelos:
+
+- ESS inferior a 1.000;
+- valor absoluto da estatística de Geweke superior a 2.
+
+```{r complete-fitting, results="hide"}
+pending_indices <- head(
+  which(
+    !file.exists(
+      result_files
+    )
+  ),
+  n = MAX_NEW_RUNS_PER_BUILD
+)
+
+for (run_index in pending_indices) {
+  trait_name <-
+    run_design$Trait[
+      run_index
+    ]
+
+  fold_number <-
+    run_design$Fold[
+      run_index
+    ]
+
+  method_name <-
+    run_design$Method[
+      run_index
+    ]
+
+  run_id <-
+    run_design$Run_id[
+      run_index
+    ]
+
+  run_seed <-
+    run_design$Seed[
+      run_index
+    ]
+
+  result_file <-
+    result_files[
+      run_index
+    ]
+
+  temporary_result_file <- paste0(
+    result_file,
+    ".tmp"
+  )
+
+  save_prefix <- file.path(
+    TEMP_DIR,
+    paste0(
+      run_id,
+      "_",
+      analysis_signature,
+      "_"
+    )
+  )
+
+  unlink(
+    Sys.glob(
+      paste0(
+        save_prefix,
+        "*"
+      )
+    )
+  )
+
+  y_observed <- phenotypes[
+    ,
+    trait_name
+  ]
+
+  names(y_observed) <- ids
+
+  validation_index <- which(
+    cv_folds$Fold == fold_number
+  )
+
+  training_index <- which(
+    cv_folds$Fold != fold_number
+  )
+
+  y_model <- y_observed
+  y_model[validation_index] <- NA_real_
 
   set.seed(
-    method_seeds[method_name]
+    run_seed
   )
 
   fit_start <- proc.time()[["elapsed"]]
 
-  pilot_fits[[method_name]] <- BGLR::BGLR(
+  fit <- BGLR::BGLR(
     y = y_model,
     ETA = ETA_models[[method_name]],
     response_type = "gaussian",
-    nIter = PILOT_N_ITER,
-    burnIn = PILOT_BURN_IN,
-    thin = PILOT_THIN,
-    saveAt = file.path(
-      OUTPUT_DIR,
-      paste0(
-        "pilot_",
-        method_name,
-        "_"
-      )
-    ),
+    nIter = N_ITER,
+    burnIn = BURN_IN,
+    thin = THIN,
+    R2 = R2_PRIOR,
+    saveAt = save_prefix,
     verbose = FALSE,
     rmExistingFiles = TRUE
   )
 
   fit_end <- proc.time()[["elapsed"]]
 
-  predicted_validation <-
-    pilot_fits[[method_name]]$yHat[
-      validation_index
-    ]
+  predicted_validation <- fit$yHat[
+    validation_index
+  ]
 
-  observed_validation <-
-    y_observed[
-      validation_index
-    ]
+  observed_validation <- y_observed[
+    validation_index
+  ]
 
-  prediction_parts[[method_index]] <- data.frame(
-    IND = ids[validation_index],
-    Trait = PILOT_TRAIT,
-    Fold = PILOT_FOLD,
-    Method = method_name,
-    Observed = observed_validation,
-    Predicted = predicted_validation
+  fixed_component <- as.vector(
+    X_fixed %*%
+      fit$ETA$fixed$b
   )
 
-  metric_parts[[method_index]] <- data.frame(
-    Trait = PILOT_TRAIT,
-    Fold = PILOT_FOLD,
+  genomic_component <- as.vector(
+    fit$yHat -
+      fit$mu -
+      fixed_component
+  )
+
+  genomic_value_table <- data.frame(
+    Run_id = rep(
+      run_id,
+      length(ids)
+    ),
+    Signature = rep(
+      analysis_signature,
+      length(ids)
+    ),
+    IND = ids,
+    Trait = rep(
+      trait_name,
+      length(ids)
+    ),
+    Fold = rep(
+      fold_number,
+      length(ids)
+    ),
+    Method = rep(
+      method_name,
+      length(ids)
+    ),
+    Genomic_value =
+      genomic_component
+  )
+
+  prediction_table <- data.frame(
+    Run_id = run_id,
+    Signature = analysis_signature,
+    IND = ids[
+      validation_index
+    ],
+    Trait = trait_name,
+    Fold = fold_number,
     Method = method_name,
-    Validation_n = length(validation_index),
+    Observed = observed_validation,
+    Predicted = predicted_validation,
+    Fixed_component =
+      fixed_component[
+        validation_index
+      ],
+    Genomic_component =
+      genomic_component[
+        validation_index
+      ]
+  )
+
+  posterior_prob_in <- c(
+    fit$ETA$genomic$probIn,
+    NA_real_
+  )[1]
+
+  metric_table <- data.frame(
+    Run_id = run_id,
+    Signature = analysis_signature,
+    Trait = trait_name,
+    Fold = fold_number,
+    Method = method_name,
+    Seed = run_seed,
+    Training_n = length(
+      training_index
+    ),
+    Validation_n = length(
+      validation_index
+    ),
     Correlation = cor(
       observed_validation,
       predicted_validation
@@ -430,15 +837,38 @@ for (method_index in seq_along(model_names)) {
           predicted_validation
       )
     ),
-    DIC =
-      pilot_fits[[method_name]]$fit$DIC,
+    Prediction_bias = mean(
+      predicted_validation -
+        observed_validation
+    ),
+    Regression_slope =
+      cov(
+        observed_validation,
+        predicted_validation
+      ) /
+      var(
+        predicted_validation
+      ),
+    DIC = fit$fit$DIC,
     Effective_parameters =
-      pilot_fits[[method_name]]$fit$pD,
+      fit$fit$pD,
     Log_likelihood_at_posterior_mean =
-      pilot_fits[[method_name]]$fit$
+      fit$fit$
         logLikAtPostMean,
+    Posterior_mean =
+      fit$mu,
+    Posterior_mean_SD = c(
+      fit$SD.mu,
+      NA_real_
+    )[1],
     Residual_variance =
-      pilot_fits[[method_name]]$varE,
+      fit$varE,
+    Residual_variance_SD = c(
+      fit$SD.varE,
+      NA_real_
+    )[1],
+    Posterior_probIn =
+      posterior_prob_in,
     Elapsed_seconds =
       fit_end - fit_start,
     Finite_predictions = all(
@@ -447,140 +877,1003 @@ for (method_index in seq_along(model_names)) {
       )
     )
   )
+
+  metric_table$Finite_metrics <- all(
+    is.finite(
+      as.numeric(
+        metric_table[
+          ,
+          c(
+            "Correlation",
+            "RMSE",
+            "MAE",
+            "Prediction_bias",
+            "Regression_slope",
+            "DIC",
+            "Effective_parameters",
+            "Log_likelihood_at_posterior_mean",
+            "Posterior_mean",
+            "Residual_variance",
+            "Elapsed_seconds"
+          )
+        ]
+      )
+    )
+  )
+
+  fixed_effect_table <- data.frame(
+    Run_id = rep(
+      run_id,
+      length(
+        fit$ETA$fixed$b
+      )
+    ),
+    Signature = rep(
+      analysis_signature,
+      length(
+        fit$ETA$fixed$b
+      )
+    ),
+    Trait = rep(
+      trait_name,
+      length(
+        fit$ETA$fixed$b
+      )
+    ),
+    Fold = rep(
+      fold_number,
+      length(
+        fit$ETA$fixed$b
+      )
+    ),
+    Method = rep(
+      method_name,
+      length(
+        fit$ETA$fixed$b
+      )
+    ),
+    Effect = names(
+      fit$ETA$fixed$b
+    ),
+    Posterior_mean = as.numeric(
+      fit$ETA$fixed$b
+    ),
+    Posterior_SD = as.numeric(
+      fit$ETA$fixed$SD.b
+    )
+  )
+
+  marker_count <-
+    as.integer(
+      method_name != "GBLUP"
+    ) *
+    ncol(M)
+
+  marker_indices <- seq_len(
+    marker_count
+  )
+
+  marker_effect_values <-
+    c(
+      fit$ETA$genomic$b
+    )[
+      marker_indices
+    ]
+
+  marker_effect_sds <-
+    c(
+      fit$ETA$genomic$SD.b
+    )[
+      marker_indices
+    ]
+
+  marker_effect_table <- data.frame(
+    Run_id = rep(
+      run_id,
+      marker_count
+    ),
+    Signature = rep(
+      analysis_signature,
+      marker_count
+    ),
+    Trait = rep(
+      trait_name,
+      marker_count
+    ),
+    Fold = rep(
+      fold_number,
+      marker_count
+    ),
+    Method = rep(
+      method_name,
+      marker_count
+    ),
+    Marker = colnames(M)[
+      marker_indices
+    ],
+    Posterior_mean = as.numeric(
+      marker_effect_values
+    ),
+    Posterior_SD = as.numeric(
+      marker_effect_sds
+    )
+  )
+
+  residual_trace_full <- scan(
+    paste0(
+      save_prefix,
+      "varE.dat"
+    ),
+    quiet = TRUE
+  )
+
+  genomic_trace_table_full <- read.table(
+    paste0(
+      save_prefix,
+      genomic_trace_suffix[
+        method_name
+      ]
+    ),
+    header =
+      genomic_trace_header[
+        method_name
+      ],
+    check.names = FALSE
+  )
+
+  genomic_trace_full <-
+    genomic_trace_table_full[
+      ,
+      genomic_trace_column[
+        method_name
+      ]
+    ]
+
+  posterior_sample_indices <- seq.int(
+    from =
+      BURN_IN_SAVED_SAMPLES +
+      1L,
+    to = length(
+      residual_trace_full
+    )
+  )
+
+  residual_trace <-
+    residual_trace_full[
+      posterior_sample_indices
+    ]
+
+  genomic_trace <-
+    genomic_trace_full[
+      posterior_sample_indices
+    ]
+
+  trace_matrix <- cbind(
+    Residual_variance =
+      residual_trace,
+    Genomic_parameter =
+      genomic_trace
+  )
+
+  trace_object <- coda::mcmc(
+    trace_matrix,
+    start = BURN_IN + THIN,
+    thin = THIN
+  )
+
+  trace_ess <- coda::effectiveSize(
+    trace_object
+  )
+
+  trace_geweke <- coda::geweke.diag(
+    trace_object
+  )$z
+
+  trace_parameter_names <- c(
+    "Residual_variance",
+    unname(
+      genomic_trace_parameter[
+        method_name
+      ]
+    )
+  )
+
+  convergence_table <- data.frame(
+    Run_id = rep(
+      run_id,
+      length(
+        trace_parameter_names
+      )
+    ),
+    Signature = rep(
+      analysis_signature,
+      length(
+        trace_parameter_names
+      )
+    ),
+    Trait = rep(
+      trait_name,
+      length(
+        trace_parameter_names
+      )
+    ),
+    Fold = rep(
+      fold_number,
+      length(
+        trace_parameter_names
+      )
+    ),
+    Method = rep(
+      method_name,
+      length(
+        trace_parameter_names
+      )
+    ),
+    Parameter =
+      trace_parameter_names,
+    Retained_samples = rep(
+      nrow(
+        trace_matrix
+      ),
+      length(
+        trace_parameter_names
+      )
+    ),
+    Posterior_mean = colMeans(
+      trace_matrix
+    ),
+    Posterior_SD = apply(
+      trace_matrix,
+      2,
+      sd
+    ),
+    Effective_sample_size = as.numeric(
+      trace_ess
+    ),
+    Geweke_Z = as.numeric(
+      trace_geweke
+    )
+  )
+
+  convergence_table$Review_flag <-
+    !is.finite(
+      convergence_table$
+        Effective_sample_size
+    ) |
+    convergence_table$
+      Effective_sample_size <
+      ESS_REVIEW_THRESHOLD |
+    !is.finite(
+      convergence_table$
+        Geweke_Z
+    ) |
+    abs(
+      convergence_table$
+        Geweke_Z
+    ) >
+      GEWEKE_REVIEW_THRESHOLD
+
+  run_audit <- data.frame(
+    Run_id = run_id,
+    Signature = analysis_signature,
+    Trait = trait_name,
+    Fold = fold_number,
+    Method = method_name,
+    Seed = run_seed,
+    Expected_raw_saved_samples =
+      RAW_SAVED_SAMPLES,
+    Observed_raw_saved_samples =
+      length(
+        residual_trace_full
+      ),
+    Expected_retained_samples =
+      RETAINED_SAMPLES,
+    Observed_retained_samples =
+      length(
+        residual_trace
+      ),
+    Finite_predictions = all(
+      is.finite(
+        predicted_validation
+      )
+    ),
+    Minimum_effective_sample_size =
+      min(
+        convergence_table$
+          Effective_sample_size,
+        na.rm = TRUE
+      ),
+    Maximum_absolute_Geweke =
+      max(
+        abs(
+          convergence_table$
+            Geweke_Z
+        ),
+        na.rm = TRUE
+      ),
+    Parameters_flagged_for_review =
+      sum(
+        convergence_table$
+          Review_flag
+      ),
+    Elapsed_seconds =
+      fit_end - fit_start
+  )
+
+  compact_result <- list(
+    run = run_design[
+      run_index,
+      ,
+      drop = FALSE
+    ],
+    metrics = metric_table,
+    predictions = prediction_table,
+    genomic_values =
+      genomic_value_table,
+    fixed_effects = fixed_effect_table,
+    marker_effects = marker_effect_table,
+    convergence = convergence_table,
+    run_audit = run_audit,
+    settings = analysis_settings
+  )
+
+  saveRDS(
+    compact_result,
+    temporary_result_file
+  )
+
+  file.rename(
+    temporary_result_file,
+    result_file
+  )
+
+  progress_table <- run_design
+  progress_table$Completed <-
+    file.exists(
+      result_files
+    )
+
+  write.csv(
+    progress_table,
+    file.path(
+      OUTPUT_DIR,
+      "run_progress.csv"
+    ),
+    row.names = FALSE
+  )
+
+  progress_summary <- data.frame(
+    Signature =
+      analysis_signature,
+    Completed_runs = sum(
+      progress_table$Completed
+    ),
+    Total_runs = nrow(
+      progress_table
+    ),
+    Remaining_runs = sum(
+      !progress_table$Completed
+    ),
+    Last_completed_run =
+      run_id,
+    Updated_at = format(
+      Sys.time(),
+      "%Y-%m-%d %H:%M:%S %Z"
+    )
+  )
+
+  write.csv(
+    progress_summary,
+    file.path(
+      OUTPUT_DIR,
+      "progress_summary.csv"
+    ),
+    row.names = FALSE
+  )
+
+  unlink(
+    Sys.glob(
+      paste0(
+        save_prefix,
+        "*"
+      )
+    )
+  )
+
+  fit <- NULL
+  compact_result <- NULL
+  trace_object <- NULL
+
+  gc(
+    verbose = FALSE
+  )
 }
 ```
 
-## 8. Saídas consolidadas do piloto
+## 9. Consolidação dos 350 resultados compactos
 
-```{r consolidate-pilot}
-pilot_predictions <- do.call(
-  rbind,
-  prediction_parts
+```{r consolidate-results}
+completed_after_build <- file.exists(
+  result_files
 )
 
-pilot_metrics <- do.call(
-  rbind,
+completed_indices <- which(
+  completed_after_build
+)
+
+result_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+metric_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+prediction_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+genomic_value_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+fixed_effect_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+marker_effect_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+convergence_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+run_audit_parts <- vector(
+  mode = "list",
+  length = length(
+    completed_indices
+  )
+)
+
+for (part_index in seq_along(
+  completed_indices
+)) {
+  run_index <- completed_indices[
+    part_index
+  ]
+
+  result_parts[[part_index]] <- readRDS(
+    result_files[
+      run_index
+    ]
+  )
+
+  metric_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      metrics
+
+  prediction_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      predictions
+
+  genomic_value_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      genomic_values
+
+  fixed_effect_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      fixed_effects
+
+  marker_effect_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      marker_effects
+
+  convergence_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      convergence
+
+  run_audit_parts[[part_index]] <-
+    result_parts[[part_index]]$
+      run_audit
+}
+
+cv_metrics_by_fold <- bind_rows(
   metric_parts
 )
 
-rownames(pilot_predictions) <- NULL
-rownames(pilot_metrics) <- NULL
+cv_predictions <- bind_rows(
+  prediction_parts
+)
 
-bayesb_probability_audit <- data.frame(
-  Method = c(
-    "BayesB",
-    "BayesB2",
-    "BayesC"
-  ),
-  Prior_nonzero_probability = c(
-    NA_real_,
-    BAYESB2_PROB_IN,
-    NA_real_
-  ),
-  Posterior_nonzero_probability = c(
-    pilot_fits[["BayesB"]]$ETA$
-      genomic$probIn,
-    pilot_fits[["BayesB2"]]$ETA$
-      genomic$probIn,
-    pilot_fits[["BayesC"]]$ETA$
-      genomic$probIn
+genomic_values_by_fold <- bind_rows(
+  genomic_value_parts
+)
+
+fixed_effects_by_fold <- bind_rows(
+  fixed_effect_parts
+)
+
+marker_effects_by_fold <- bind_rows(
+  marker_effect_parts
+)
+
+convergence_diagnostics <- bind_rows(
+  convergence_parts
+)
+
+run_audit <- bind_rows(
+  run_audit_parts
+)
+
+cv_fold_summary <- cv_metrics_by_fold |>
+  group_by(
+    Trait,
+    Method
+  ) |>
+  summarise(
+    Mean_fold_correlation = mean(
+      Correlation
+    ),
+    SD_fold_correlation = sd(
+      Correlation
+    ),
+    Mean_fold_RMSE = mean(
+      RMSE
+    ),
+    SD_fold_RMSE = sd(
+      RMSE
+    ),
+    Mean_fold_MAE = mean(
+      MAE
+    ),
+    SD_fold_MAE = sd(
+      MAE
+    ),
+    Mean_fold_bias = mean(
+      Prediction_bias
+    ),
+    Mean_fold_slope = mean(
+      Regression_slope
+    ),
+    Mean_DIC = mean(
+      DIC
+    ),
+    Mean_elapsed_seconds = mean(
+      Elapsed_seconds
+    ),
+    .groups = "drop"
+  )
+
+cv_pooled_summary <- cv_predictions |>
+  group_by(
+    Trait,
+    Method
+  ) |>
+  summarise(
+    Validation_n = n(),
+    Correlation = cor(
+      Observed,
+      Predicted
+    ),
+    RMSE = sqrt(
+      mean(
+        (
+          Observed -
+            Predicted
+        )^2
+      )
+    ),
+    MAE = mean(
+      abs(
+        Observed -
+          Predicted
+      )
+    ),
+    Prediction_bias = mean(
+      Predicted -
+        Observed
+    ),
+    Regression_slope =
+      cov(
+        Observed,
+        Predicted
+      ) /
+      var(
+        Predicted
+      ),
+    .groups = "drop"
+  )
+
+cv_metrics_summary <- left_join(
+  cv_pooled_summary,
+  cv_fold_summary,
+  by = c(
+    "Trait",
+    "Method"
   )
 )
 
-rrblup_predictions <- pilot_predictions$Predicted[
-  pilot_predictions$Method == "RRBLUP"
-]
-
-gblup_predictions <- pilot_predictions$Predicted[
-  pilot_predictions$Method == "GBLUP"
-]
-
-rrblup_gblup_audit <- data.frame(
-  Comparison = "RR-BLUP versus GBLUP",
-  Prediction_correlation = cor(
-    rrblup_predictions,
-    gblup_predictions
-  ),
-  Maximum_absolute_difference = max(
-    abs(
-      rrblup_predictions -
-        gblup_predictions
-    )
-  ),
-  Mean_absolute_difference = mean(
-    abs(
-      rrblup_predictions -
-        gblup_predictions
-    )
-  )
+cv_metrics_summary <- left_join(
+  cv_metrics_summary,
+  trait_dictionary,
+  by = "Característica"
 )
 
-pilot_audit <- data.frame(
+cv_metrics_summary$Method_label <-
+  unname(
+    method_labels[
+      cv_metrics_summary$Method
+    ]
+  )
+
+convergence_summary <- convergence_diagnostics |>
+  group_by(
+    Method
+  ) |>
+  summarise(
+    Runs = n_distinct(
+      Run_id
+    ),
+    Parameters_reviewed = n(),
+    Parameters_flagged = sum(
+      Review_flag
+    ),
+    Runs_with_flags = n_distinct(
+      Run_id[
+        Review_flag
+      ]
+    ),
+    Minimum_ESS = min(
+      Effective_sample_size,
+      na.rm = TRUE
+    ),
+    Median_ESS = median(
+      Effective_sample_size,
+      na.rm = TRUE
+    ),
+    Maximum_absolute_Geweke = max(
+      abs(
+        Geweke_Z
+      ),
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+
+convergence_summary$Method_label <-
+  unname(
+    method_labels[
+      convergence_summary$Method
+    ]
+  )
+
+runtime_summary <- cv_metrics_by_fold |>
+  group_by(
+    Method
+  ) |>
+  summarise(
+    Fits = n(),
+    Total_seconds = sum(
+      Elapsed_seconds
+    ),
+    Mean_seconds = mean(
+      Elapsed_seconds
+    ),
+    Median_seconds = median(
+      Elapsed_seconds
+    ),
+    Maximum_seconds = max(
+      Elapsed_seconds
+    ),
+    .groups = "drop"
+  )
+
+runtime_summary$Method_label <-
+  unname(
+    method_labels[
+      runtime_summary$Method
+    ]
+  )
+
+bayesb2_audit <- cv_metrics_by_fold |>
+  filter(
+    Method == "BayesB2"
+  ) |>
+  summarise(
+    Runs = n(),
+    Target_probIn =
+      BAYESB2_PROB_IN,
+    Minimum_posterior_probIn = min(
+      Posterior_probIn
+    ),
+    Maximum_posterior_probIn = max(
+      Posterior_probIn
+    ),
+    Mean_posterior_probIn = mean(
+      Posterior_probIn
+    ),
+    Maximum_absolute_deviation = max(
+      abs(
+        Posterior_probIn -
+          BAYESB2_PROB_IN
+      )
+    )
+  )
+
+rrblup_predictions <- cv_predictions |>
+  filter(
+    Method == "RRBLUP"
+  ) |>
+  select(
+    IND,
+    Trait,
+    Fold,
+    RRBLUP_prediction = Predicted
+  )
+
+gblup_predictions <- cv_predictions |>
+  filter(
+    Method == "GBLUP"
+  ) |>
+  select(
+    IND,
+    Trait,
+    Fold,
+    GBLUP_prediction = Predicted
+  )
+
+rrblup_gblup_audit <- inner_join(
+  rrblup_predictions,
+  gblup_predictions,
+  by = c(
+    "IND",
+    "Trait",
+    "Fold"
+  )
+) |>
+  group_by(
+    Trait,
+    Fold
+  ) |>
+  summarise(
+    Prediction_correlation = cor(
+      RRBLUP_prediction,
+      GBLUP_prediction
+    ),
+    Maximum_absolute_difference = max(
+      abs(
+        RRBLUP_prediction -
+          GBLUP_prediction
+      )
+    ),
+    Mean_absolute_difference = mean(
+      abs(
+        RRBLUP_prediction -
+          GBLUP_prediction
+      )
+    ),
+    .groups = "drop"
+  )
+
+completion_audit <- data.frame(
   Check = c(
-    "Métodos ajustados",
-    "Indivíduos de validação por método",
-    "Total de linhas de predição",
-    "Predições finitas",
-    "Linhas completas de métricas",
-    "probIn posterior do BayesB2",
-    "Desvio absoluto de probIn do BayesB2"
+    "Analytical signature",
+    "Ajustes planejados",
+    "Completed fits",
+    "Missing fits",
+    "Expected prediction rows",
+    "Observed prediction rows",
+    "Expected genomic-value rows",
+    "Observed genomic-value rows",
+    "Expected validation predictions per trait and method",
+    "Observed validation predictions per trait and method",
+    "All predictions finite",
+    "All primary metrics finite",
+    "Expected raw saved samples per run",
+    "Minimum raw saved samples observed",
+    "Expected retained samples per run",
+    "Minimum retained samples observed"
   ),
   Expected = c(
-    "7",
-    "30",
-    "210",
-    "TRUE",
-    "7",
-    format(BAYESB2_PROB_IN, digits = 8),
-    "próximo de 0"
+    analysis_signature,
+    nrow(
+      run_design
+    ),
+    nrow(
+      run_design
+    ),
+    0,
+    nrow(
+      run_design
+    ) * 30,
+    nrow(
+      run_design
+    ) * 30,
+    nrow(
+      run_design
+    ) *
+      length(ids),
+    nrow(
+      run_design
+    ) *
+      length(ids),
+    length(ids),
+    length(ids),
+    TRUE,
+    TRUE,
+    RAW_SAVED_SAMPLES,
+    RAW_SAVED_SAMPLES,
+    RETAINED_SAMPLES,
+    RETAINED_SAMPLES
   ),
   Observed = c(
-    length(model_names),
-    unique(pilot_metrics$Validation_n),
-    nrow(pilot_predictions),
-    all(pilot_metrics$Finite_predictions),
-    nrow(pilot_metrics),
-    format(
-      pilot_fits[["BayesB2"]]$ETA$
-        genomic$probIn,
-      digits = 8
+    analysis_signature,
+    nrow(
+      run_design
     ),
-    format(
-      abs(
-        pilot_fits[["BayesB2"]]$ETA$
-          genomic$probIn -
-          BAYESB2_PROB_IN
+    sum(
+      completed_after_build
+    ),
+    sum(
+      !completed_after_build
+    ),
+    nrow(
+      run_design
+    ) * 30,
+    nrow(
+      cv_predictions
+    ),
+    nrow(
+      run_design
+    ) *
+      length(ids),
+    nrow(
+      genomic_values_by_fold
+    ),
+    length(ids),
+    paste(
+      range(
+        table(
+          cv_predictions$Trait,
+          cv_predictions$Method
+        )
       ),
-      scientific = TRUE
+      collapse = " to "
+    ),
+    all(
+      is.finite(
+        cv_predictions$Predicted
+      )
+    ),
+    all(
+      cv_metrics_by_fold$
+        Finite_metrics
+    ),
+    RAW_SAVED_SAMPLES,
+    min(
+      run_audit$
+        Observed_raw_saved_samples
+    ),
+    RETAINED_SAMPLES,
+    min(
+      run_audit$
+        Observed_retained_samples
     )
   )
 )
 ```
 
-```{r save-pilot-outputs}
+## 10. Saídas salvas da análise completa
+
+```{r save-complete-outputs}
 write.csv(
-  pilot_predictions,
+  cv_predictions,
   file.path(
     OUTPUT_DIR,
-    "pilot_predictions.csv"
+    "cv_predictions.csv"
   ),
   row.names = FALSE
 )
 
 write.csv(
-  pilot_metrics,
+  genomic_values_by_fold,
   file.path(
     OUTPUT_DIR,
-    "pilot_metrics.csv"
+    "genomic_values_by_fold.csv"
   ),
   row.names = FALSE
 )
 
 write.csv(
-  bayesb_probability_audit,
+  cv_metrics_by_fold,
   file.path(
     OUTPUT_DIR,
-    "pilot_bayesb_probability_audit.csv"
+    "cv_metrics_by_fold.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  cv_metrics_summary,
+  file.path(
+    OUTPUT_DIR,
+    "cv_metrics_summary.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  fixed_effects_by_fold,
+  file.path(
+    OUTPUT_DIR,
+    "fixed_effects_by_fold.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  marker_effects_by_fold,
+  file.path(
+    OUTPUT_DIR,
+    "marker_effects_by_fold.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  convergence_diagnostics,
+  file.path(
+    OUTPUT_DIR,
+    "convergence_diagnostics.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  convergence_summary,
+  file.path(
+    OUTPUT_DIR,
+    "convergence_summary.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  runtime_summary,
+  file.path(
+    OUTPUT_DIR,
+    "runtime_summary.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  bayesb2_audit,
+  file.path(
+    OUTPUT_DIR,
+    "bayesb2_probability_audit.csv"
   ),
   row.names = FALSE
 )
@@ -589,134 +1882,248 @@ write.csv(
   rrblup_gblup_audit,
   file.path(
     OUTPUT_DIR,
-    "pilot_rrblup_gblup_audit.csv"
+    "rrblup_gblup_audit.csv"
   ),
   row.names = FALSE
 )
 
 write.csv(
-  pilot_audit,
+  run_audit,
   file.path(
     OUTPUT_DIR,
-    "pilot_execution_audit.csv"
+    "run_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  completion_audit,
+  file.path(
+    OUTPUT_DIR,
+    "completion_audit.csv"
   ),
   row.names = FALSE
 )
 
 saveRDS(
   list(
-    fits = pilot_fits,
-    predictions = pilot_predictions,
-    metrics = pilot_metrics,
-    bayesb_probability_audit =
-      bayesb_probability_audit,
+    signature =
+      analysis_signature,
+    settings =
+      analysis_settings,
+    run_design =
+      run_design,
+    model_catalogue =
+      model_catalogue,
+    trait_dictionary =
+      trait_dictionary,
+    predictions =
+      cv_predictions,
+    genomic_values_by_fold =
+      genomic_values_by_fold,
+    metrics_by_fold =
+      cv_metrics_by_fold,
+    metrics_summary =
+      cv_metrics_summary,
+    fixed_effects_by_fold =
+      fixed_effects_by_fold,
+    marker_effects_by_fold =
+      marker_effects_by_fold,
+    convergence_diagnostics =
+      convergence_diagnostics,
+    convergence_summary =
+      convergence_summary,
+    runtime_summary =
+      runtime_summary,
+    bayesb2_audit =
+      bayesb2_audit,
     rrblup_gblup_audit =
       rrblup_gblup_audit,
-    execution_audit = pilot_audit,
-    settings = list(
-      trait = PILOT_TRAIT,
-      fold = PILOT_FOLD,
-      n_iter = PILOT_N_ITER,
-      burn_in = PILOT_BURN_IN,
-      thin = PILOT_THIN,
-      bayesb2_zero_probability =
-        BAYESB2_ZERO_PROBABILITY,
-      bayesb2_prob_in =
-        BAYESB2_PROB_IN,
-      bayesb2_counts =
-        BAYESB2_COUNTS,
-      seeds = method_seeds
-    )
+    run_audit =
+      run_audit,
+    completion_audit =
+      completion_audit
   ),
   file.path(
     OUTPUT_DIR,
-    "pilot_models_object.rds"
+    "models_object.rds"
   )
 )
 ```
 
-## 9. Resultados do piloto
+## 11. Auditoria da conclusão
 
-```{r pilot-metric-table}
-pilot_metrics |>
+```{r completion-audit-table}
+kable(
+  completion_audit,
+  caption = "Auditoria da conclusão dos 350 ajustes planejados"
+)
+```
+
+## 12. Desempenho preditivo com validação cruzada
+
+As métricas combinadas utilizam a predição de cada indivíduo no fold em que
+ele foi retirado. Consequentemente, cada combinação de característica e método
+contém 150 predições fora da amostra.
+
+Correlação preditiva, RMSE, MAE, viés e inclinação da regressão são os critérios
+principais de comparação. O DIC permanece como diagnóstico do ajuste dos
+modelos e é resumido entre os folds.
+
+```{r predictive-summary-table}
+cv_metrics_summary |>
+  select(
+    Trait,
+    Description_pt,
+    Unit,
+    Method_label,
+    Validation_n,
+    Correlation,
+    RMSE,
+    MAE,
+    Prediction_bias,
+    Regression_slope,
+    Mean_DIC
+  ) |>
   arrange(
-    desc(Correlation),
-    RMSE
+    Trait,
+    desc(
+      Correlation
+    )
   ) |>
   kable(
     digits = 6,
-    caption = "Métricas preditivas e diagnósticos de ajuste do piloto"
+    caption = "Desempenho preditivo combinado fora da amostra"
   )
 ```
 
-```{r bayesb-probability-table}
+```{r predictive-correlation-heatmap, fig.height=7}
+ggplot(
+  cv_metrics_summary,
+  aes(
+    x = Method_label,
+    y = Trait,
+    fill = Correlation
+  )
+) +
+  geom_tile() +
+  geom_text(
+    aes(
+      label = sprintf(
+        "%.3f",
+        Correlation
+      )
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = "Característica",
+    fill = "Correlação",
+    title = "Correlação preditiva combinada fora da amostra"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+```
+
+## 13. Revisão da convergência MCMC
+
+O ESS e a estatística de Geweke são diagnósticos de cadeia única. Eles não
+comprovam a convergência, mas identificam execuções e parâmetros escalares que
+exigem inspeção mais detalhada antes da interpretação biológica.
+
+```{r convergence-summary-table}
+convergence_summary |>
+  select(
+    Method_label,
+    Runs,
+    Parameters_reviewed,
+    Parameters_flagged,
+    Runs_with_flags,
+    Minimum_ESS,
+    Median_ESS,
+    Maximum_absolute_Geweke
+  ) |>
+  kable(
+    digits = 3,
+    caption = "Revisão da convergência de cadeia única por método"
+  )
+```
+
+```{r convergence-flag-table}
+convergence_diagnostics |>
+  filter(
+    Review_flag
+  ) |>
+  arrange(
+    Method,
+    Trait,
+    Fold,
+    Parameter
+  ) |>
+  kable(
+    digits = 4,
+    caption = "Cadeias escalares indicadas para revisão adicional"
+  )
+```
+
+## 14. Auditoria da probabilidade do BayesB2
+
+```{r bayesb2-audit-table}
 kable(
-  bayesb_probability_audit,
-  digits = 8,
-  caption = "Auditoria da probabilidade de efeito diferente de zero"
+  bayesb2_audit,
+  digits = 10,
+  caption = "Auditoria da probabilidade de efeito diferente de zero do BayesB2"
 )
 ```
+
+## 15. Comparação diagnóstica entre RR-BLUP e GBLUP
+
+O RR-BLUP utiliza diretamente `M` por meio do componente `BRR`, enquanto o
+GBLUP utiliza `G` por meio do componente `RKHS`. Como `G` é derivada de `M`,
+espera-se associação entre suas predições, mas não se impõe igualdade
+numérica.
 
 ```{r rrblup-gblup-table}
 kable(
   rrblup_gblup_audit,
   digits = 8,
-  caption = "Comparação diagnóstica das predições de RR-BLUP e GBLUP"
+  caption = "Comparação das predições de RR-BLUP e GBLUP por característica e fold"
 )
 ```
 
-```{r pilot-execution-table}
-kable(
-  pilot_audit,
-  caption = "Auditoria da execução do piloto"
-)
-```
+## 16. Inventário do tempo de execução
 
-```{r pilot-prediction-plot, fig.height=8}
-ggplot(
-  pilot_predictions,
-  aes(
-    x = Observed,
-    y = Predicted
+```{r runtime-summary-table}
+runtime_summary |>
+  select(
+    Method_label,
+    Fits,
+    Total_seconds,
+    Mean_seconds,
+    Median_seconds,
+    Maximum_seconds
+  ) |>
+  kable(
+    digits = 3,
+    caption = "Resumo do tempo de execução da análise completa"
   )
-) +
-  geom_point() +
-  geom_abline(
-    intercept = 0,
-    slope = 1,
-    linetype = 2
-  ) +
-  facet_wrap(
-    ~ Method,
-    scales = "free"
-  ) +
-  labs(
-    x = "Fenótipo observado",
-    y = "Fenótipo predito",
-    title = paste(
-      "Predições do piloto:",
-      PILOT_TRAIT,
-      "- fold",
-      PILOT_FOLD
-    )
-  ) +
-  theme_bw()
 ```
 
-## 10. Critério de decisão
+## 17. Próxima etapa
 
-O piloto será aprovado para expansão somente quando:
+O Módulo 04 utilizará as predições fora da amostra e os componentes genômicos
+salvos aqui para:
 
-- os sete métodos forem concluídos sem interrupção;
-- cada método retornar 30 predições de validação;
-- todas as 210 predições forem finitas;
-- correlação, RMSE, MAE, DIC e tempo de execução estiverem disponíveis para
-  todos os métodos;
-- o `probIn` posterior do BayesB2 permanecer extremamente próximo de
-  `0.99999`;
-- os arquivos CSV e RDS gerados forem internamente consistentes.
-
-Após a aprovação deste critério, o mesmo contrato será expandido para 10
-características, 5 folds e 7 métodos, totalizando 350 ajustes. A análise
-completa preservará as mesmas matrizes globais `X`, `M` e `G` e alterará apenas
-o vetor fenotípico mascarado.
+- comparar os métodos em cada característica;
+- examinar a estabilidade entre os folds;
+- resumir os efeitos dos marcadores;
+- calcular valores genômicos com validação cruzada;
+- construir rankings específicos por característica;
+- documentar a influência das observações fenotípicas destacadas anteriormente;
+- definir as saídas finais de seleção sem impor um índice econômico
+  multicaracterística não documentado.
