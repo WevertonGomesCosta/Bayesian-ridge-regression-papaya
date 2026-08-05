@@ -1,6 +1,4 @@
-# Genomic Selection in Papaya with Bayesian Regression, GBLUP, and RR-BLUP / Seleção Genômica em Mamoeiro com Regressão Bayesiana, GBLUP e RR-BLUP
-
-[![Validate workflowr project](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/actions/workflows/validate-workflowr.yml/badge.svg)](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/actions/workflows/validate-workflowr.yml)
+# Genomic Selection in Papaya with Bayesian Regression, RR-BLUP, and GBLUP
 
 [English](#english) | [Português](#português)
 
@@ -10,167 +8,130 @@
 
 ### Overview
 
-This repository contains a bilingual, reproducible `workflowr` project for
+This repository contains a bilingual and reproducible `workflowr` project for
 genomic prediction and selection in papaya using multi-allelic SSR markers.
-The analytical design is based on Silva et al. (2021), while extending the
-comparison to GBLUP and RR-BLUP and making the validation, data alignment, and
-SSR encoding explicit.
 
-The project evaluates ten production and fruit-quality traits in 150 papaya
-individuals genotyped at 35 SSR loci.
+The project analyzes:
 
-### Scientific objective
+- 150 papaya individuals;
+- 35 original SSR loci;
+- 34 SSR loci retained after global quality control;
+- 72 retained allele-dosage columns;
+- 10 production and fruit-quality traits;
+- block and family as categorical fixed effects.
 
-The main objective is to compare whole-genome prediction models and obtain
-cross-validated genomic estimated breeding values for papaya individuals.
-The comparison includes:
+The alphanumeric individual identifier `144B` is preserved throughout the
+alignment of genotype and phenotype records.
+
+### Prediction methods
+
+Eight genomic prediction methods are compared:
 
 1. Bayesian ridge regression (`BRR`);
 2. BayesA;
 3. BayesB;
-4. BayesB with the article's exclusion probability convention
+4. BayesB with the reference article's zero-effect probability convention
    (`pi = 1e-5`);
 5. BayesC;
 6. Bayesian Lasso (`BL`);
-7. ridge-regression BLUP (`RR-BLUP`); and
+7. ridge-regression BLUP (`RR-BLUP`);
 8. genomic BLUP (`GBLUP`).
 
-### Data contract
+In BGLR, `probIn` denotes the probability that a marker effect is non-zero.
+Therefore, the special BayesB configuration uses
+`probIn = 1 - 1e-5`.
 
-The two source workbooks are versioned in `data/` with portable filenames.
-Their original names and SHA-256 checksums are recorded in
-[`data/README.md`](data/README.md).
+### Data and matrix contract
 
-The preprocessing contract has four critical rules:
+The analytical matrices are constructed once using the complete aligned
+dataset:
 
-- individual identity is read from `Genealex!Ind`, not inferred from row
-  numbers or the first column of `Genes`;
-- all identifiers are character values so that `144B` is preserved;
-- the canonical phenotypes come from `Médias_IND_artigo`;
-- block and family are included as categorical fixed effects.
+- `X`: fixed-effect matrix with intercept, block, and family;
+- `M`: centered allele-dosage matrix;
+- `G`: additive genomic relationship matrix derived from `M`.
 
-Four loci are triallelic. Therefore, each SSR genotype is expanded into
-allele-dosage columns (0, 1, or 2 copies) instead of being forced into a
-biallelic SNP code. Missing marker calls are imputed from the training sample
-inside each validation fold, and columns are centered using training means.
+The current validated dimensions are:
 
-### Validation design
+| Matrix | Dimensions | Rank |
+|---|---:|---:|
+| `X` | 150 × 19 | 19 |
+| `M` | 150 × 72 | 38 |
+| `G` | 150 × 150 | 38 |
 
-The primary comparison uses deterministic, family-stratified eight-fold cross-
-validation. Each individual is held out exactly once. All models use the same
-folds and the same training-only marker preprocessing.
+The same `X`, `M`, and `G` are used in every cross-validation fold. Marker
+filtering, allele coding, imputation, centering, allele-frequency calculation,
+and genomic-matrix construction are not repeated within folds.
 
-The reference article contains an internal discrepancy: its methods text
-describes a 75/25 split, whereas Table 1 describes eight-fold validation
-(approximately 88/12). This project adopts true eight-fold validation because
-it is consistent with the table and guarantees one out-of-fold prediction per
-individual.
+### Cross-validation contract
 
-Model performance is summarized with predictive correlation, RMSE, MAE,
-prediction bias, and regression slope. DIC and DIC-derived model weights are
-reported only for Bayesian models because DIC is not a common comparison
-criterion for RR-BLUP and GBLUP.
+The project uses five deterministic folds stratified by family.
 
-### Bayesian configuration
+Each fold contains:
 
-Two execution profiles are available:
+- 30 validation individuals;
+- 120 training individuals;
+- exactly 3 validation individuals from each of the 10 families.
 
-- `smoke`: short chains for code and integration testing;
-- `full`: 1,000,000 iterations, 200,000 burn-in iterations, and thinning of 4,
-  matching the main methods text of Silva et al. (2021).
+Cross-validation changes only the phenotype vector. For each trait and fold,
+the observed phenotype vector is copied and the 30 validation phenotypes are
+replaced by `NA`. The original validation phenotypes are retained separately
+for predictive assessment.
 
-In BGLR, `probIn` is the probability that a marker effect is non-zero. Thus,
-the article's BayesB convention `pi = 1e-5` for the probability of a zero
-effect is implemented as `probIn = 1 - 1e-5` with a highly concentrated prior.
+### Phenotypic audit
+
+Phenotypic values at least four standard deviations from the corresponding
+trait mean are highlighted as descriptive diagnostics. They remain exactly as
+recorded in the source workbook and are not automatically corrected,
+winsorized, transformed, or removed.
 
 ### Analytical workflow
 
-The website is organized into bilingual, modular pages:
+The website is organized into four bilingual modules:
 
-1. preprocessing and data audit;
-2. Bayesian genomic regression;
-3. RR-BLUP;
-4. GBLUP;
-5. model comparison; and
-6. genomic values and selection tables.
+1. data preprocessing and audit;
+2. construction and validation of `X`, `M`, `G`, and the five folds;
+3. fitting of the eight genomic prediction methods;
+4. predictive comparison, genomic values, and trait-specific rankings.
 
-English pages run before Portuguese pages. Computationally expensive chunks
-write reusable objects to `output/`; ordinary website builds load these
-objects and do not silently rerun the full Bayesian analysis.
+English and Portuguese pages contain equivalent analytical code and differ
+only in explanatory language.
 
-### Repository structure
+### Reproduction
 
-```text
-Bayesian-ridge-regression-papaya/
-├── analysis/                 # bilingual workflowr pages
-├── code/                     # shared functions and controlled runners
-├── data/                     # source workbooks, without subdirectories
-├── docs/                     # website generated by workflowr
-├── output/                   # generated results, not versioned
-├── renv/                     # reproducible R environment
-├── tests/testthat/           # data-contract and method tests
-├── README.md
-├── REFERENCES.bib
-└── _workflowr.yml
+Restore the project environment:
+
+```r
+renv::restore()
+renv::status()
 ```
 
-### Reproducing the project
+Build the completed modules directly with `workflowr`:
 
-Recommended environment:
-
-- R >= 4.4.0;
-- RStudio;
-- `renv`;
-- `workflowr` 1.7.2.
-
-Clone the repository and install the locked environment:
-
-```bash
-git clone https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya.git
-cd Bayesian-ridge-regression-papaya
-Rscript -e "renv::restore()"
+```r
+workflowr::wflow_build(
+  c(
+    "analysis/01_preprocessing_en.Rmd",
+    "analysis/01_preprocessing_pt.Rmd",
+    "analysis/02_matrices_en.Rmd",
+    "analysis/02_matrices_pt.Rmd"
+  )
+)
 ```
 
-Run the lightweight validation and build the website:
+The model-fitting and results pages will be added to the same sequence after
+modules 03 and 04 are completed and validated.
 
-```bash
-Rscript code/check_project.R
-Rscript code/run_workflowr_pipeline.R site
-```
+### Source data
 
-Run the complete analytical pipeline:
-
-```bash
-Rscript code/run_workflowr_pipeline.R full
-```
-
-The full profile is intentionally explicit because the Bayesian cross-
-validation requires many MCMC fits.
-
-GitHub Actions validates the data contract, runs the method smoke tests, and
-builds the `site` profile on every push and pull request. The `smoke` and
-`full` profiles can also be selected through the manual workflow dispatcher;
-generated site, lockfile, and analytical outputs are retained as run artifacts.
-
-### Selection scope
-
-The repository produces genomic values and trait-specific rankings. A single
-multi-trait selection index is not imposed at baseline because the breeding
-directions and economic weights for traits such as internal-cavity diameter,
-fruit dimensions, and firmness must be defined by the breeding program.
+The source workbooks are versioned in `data/` with portable filenames. Their
+original names and SHA-256 checksums are documented in
+[`data/README.md`](data/README.md).
 
 ### Reference article
 
 Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for
 SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*,
 11, 13639. <https://doi.org/10.1038/s41598-021-93120-z>.
-
-### Contact
-
-**Weverton Gomes da Costa**
-Postdoctoral Researcher - Department of Statistics - Federal University of
-Viçosa
-[weverton.costa@ufv.br](mailto:weverton.costa@ufv.br)
 
 ---
 
@@ -179,155 +140,125 @@ Viçosa
 ### Visão geral
 
 Este repositório contém um projeto bilíngue e reprodutível em `workflowr` para
-predição e seleção genômica em mamoeiro com marcadores SSR multialélicos. O
-desenho analítico toma como referência Silva et al. (2021), amplia a comparação
-para GBLUP e RR-BLUP e explicita o alinhamento dos dados, a codificação dos SSR
-e a validação preditiva.
+predição e seleção genômica em mamoeiro utilizando marcadores SSR
+multialélicos.
 
-O projeto avalia dez características de produção e qualidade de frutos em 150
-indivíduos de mamoeiro genotipados em 35 locos SSR.
+O projeto analisa:
 
-### Objetivo científico
+- 150 indivíduos de mamoeiro;
+- 35 locos SSR originais;
+- 34 locos SSR mantidos após o controle de qualidade global;
+- 72 colunas de dosagem alélica mantidas;
+- 10 características de produção e qualidade dos frutos;
+- bloco e família como efeitos fixos categóricos.
 
-O objetivo principal é comparar modelos de predição genômica e obter valores
-genômicos preditos por validação cruzada para os indivíduos de mamoeiro. A
-comparação inclui:
+O identificador alfanumérico `144B` é preservado durante todo o alinhamento dos
+registros genotípicos e fenotípicos.
+
+### Métodos de predição
+
+Oito métodos de predição genômica são comparados:
 
 1. regressão ridge Bayesiana (`BRR`);
 2. BayesA;
 3. BayesB;
-4. BayesB com a convenção de probabilidade de exclusão do artigo
-   (`pi = 1e-5`);
+4. BayesB com a convenção de probabilidade de efeito nulo do artigo de
+   referência (`pi = 1e-5`);
 5. BayesC;
 6. Lasso Bayesiano (`BL`);
-7. melhor predição linear não viesada via regressão ridge (`RR-BLUP`); e
-8. melhor predição linear não viesada genômica (`GBLUP`).
-
-### Contrato dos dados
-
-As duas planilhas-fonte estão versionadas diretamente em `data/`, com nomes
-portáveis. Os nomes originais e os hashes SHA-256 estão registrados em
-[`data/README.md`](data/README.md).
-
-O preprocessamento segue quatro regras centrais:
-
-- a identidade individual é lida de `Genealex!Ind`, sem inferência por número
-  da linha ou pela primeira coluna de `Genes`;
-- todos os identificadores são caracteres para preservar `144B`;
-- os fenótipos canônicos são obtidos de `Médias_IND_artigo`;
-- bloco e família entram nos modelos como efeitos fixos categóricos.
-
-Quatro locos são trialélicos. Por isso, cada genótipo SSR é expandido em
-dosagens alélicas (0, 1 ou 2 cópias), sem impor uma codificação bialélica de
-SNP. Chamadas ausentes são imputadas usando apenas a amostra de treinamento de
-cada fold, e as colunas são centralizadas pelas médias do treinamento.
-
-### Desenho de validação
-
-A comparação principal usa validação cruzada determinística com oito folds,
-estratificada por família. Cada indivíduo participa da validação uma única vez.
-Todos os modelos usam os mesmos folds e o mesmo preprocessamento dos marcadores
-restrito ao treinamento.
-
-O artigo de referência contém uma discrepância interna: o texto dos métodos
-descreve divisão 75/25, enquanto a legenda da Tabela 1 descreve validação com
-oito folds, aproximadamente 88/12. O projeto adota oito folds verdadeiros,
-pois essa escolha é coerente com a tabela e produz uma predição fora da amostra
-para cada indivíduo.
-
-O desempenho é resumido por correlação preditiva, RMSE, MAE, viés e inclinação
-da regressão. O DIC e seus pesos derivados são apresentados apenas para os
-modelos Bayesianos, pois não formam um critério comum para RR-BLUP e GBLUP.
-
-### Configuração Bayesiana
-
-Há dois perfis de execução:
-
-- `smoke`: cadeias curtas para testar código e integração;
-- `full`: 1.000.000 de iterações, 200.000 de burn-in e thinning igual a 4,
-  conforme o texto principal dos métodos de Silva et al. (2021).
+7. ridge-regression BLUP (`RR-BLUP`);
+8. genomic BLUP (`GBLUP`).
 
 No BGLR, `probIn` representa a probabilidade de o efeito do marcador ser
-diferente de zero. Portanto, a convenção do artigo `pi = 1e-5` para a
-probabilidade de efeito nulo é implementada como `probIn = 1 - 1e-5`, com uma
-priori altamente concentrada.
+diferente de zero. Portanto, a configuração especial do BayesB utiliza
+`probIn = 1 - 1e-5`.
+
+### Contrato dos dados e das matrizes
+
+As matrizes analíticas são construídas uma única vez com o conjunto completo
+de dados alinhados:
+
+- `X`: matriz de efeitos fixos com intercepto, bloco e família;
+- `M`: matriz centralizada de dosagens alélicas;
+- `G`: matriz de relacionamento genômico aditivo derivada de `M`.
+
+As dimensões atualmente validadas são:
+
+| Matriz | Dimensões | Posto |
+|---|---:|---:|
+| `X` | 150 × 19 | 19 |
+| `M` | 150 × 72 | 38 |
+| `G` | 150 × 150 | 38 |
+
+As mesmas `X`, `M` e `G` são utilizadas em todos os folds. O filtro dos
+marcadores, a codificação dos alelos, a imputação, a centralização, o cálculo
+das frequências alélicas e a construção da matriz genômica não são repetidos
+dentro dos folds.
+
+### Contrato da validação cruzada
+
+O projeto utiliza cinco folds determinísticos e estratificados por família.
+
+Cada fold contém:
+
+- 30 indivíduos de validação;
+- 120 indivíduos de treinamento;
+- exatamente 3 indivíduos de validação de cada uma das 10 famílias.
+
+A validação cruzada altera somente o vetor fenotípico. Para cada característica
+e fold, o vetor observado é copiado e os 30 fenótipos de validação são
+substituídos por `NA`. Os fenótipos originais de validação são mantidos
+separadamente para a avaliação preditiva.
+
+### Auditoria fenotípica
+
+Valores fenotípicos localizados a pelo menos quatro desvios-padrão da média da
+respectiva característica são destacados como diagnósticos descritivos. Eles
+permanecem exatamente como registrados na planilha original e não são
+automaticamente corrigidos, winsorizados, transformados ou removidos.
 
 ### Fluxo analítico
 
-O site está dividido em páginas modulares e bilíngues:
+O site está organizado em quatro módulos bilíngues:
 
-1. preprocessamento e auditoria dos dados;
-2. regressões genômicas Bayesianas;
-3. RR-BLUP;
-4. GBLUP;
-5. comparação dos modelos; e
-6. valores genômicos e tabelas de seleção.
+1. pré-processamento e auditoria dos dados;
+2. construção e validação de `X`, `M`, `G` e dos cinco folds;
+3. ajuste dos oito métodos de predição genômica;
+4. comparação preditiva, valores genômicos e rankings por característica.
 
-As páginas em inglês são executadas antes das páginas em português. Etapas
-computacionalmente pesadas salvam objetos reutilizáveis em `output/`; a
-renderização comum do site carrega esses objetos e não reexecuta silenciosamente
-toda a análise Bayesiana.
-
-### Estrutura do repositório
-
-```text
-Bayesian-ridge-regression-papaya/
-├── analysis/                 # páginas bilíngues do workflowr
-├── code/                     # funções compartilhadas e executores controlados
-├── data/                     # planilhas-fonte, sem subpastas
-├── docs/                     # site gerado pelo workflowr
-├── output/                   # resultados gerados, não versionados
-├── renv/                     # ambiente R reprodutível
-├── tests/testthat/           # testes do contrato de dados e dos métodos
-├── README.md
-├── REFERENCES.bib
-└── _workflowr.yml
-```
+As páginas em inglês e português apresentam códigos analíticos equivalentes e
+diferem apenas no idioma das explicações.
 
 ### Reprodução
 
-Ambiente recomendado:
+Restaure o ambiente do projeto:
 
-- R >= 4.4.0;
-- RStudio;
-- `renv`;
-- `workflowr` 1.7.2.
-
-Clone o repositório e restaure o ambiente:
-
-```bash
-git clone https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya.git
-cd Bayesian-ridge-regression-papaya
-Rscript -e "renv::restore()"
+```r
+renv::restore()
+renv::status()
 ```
 
-Execute a validação leve e construa o site:
+Construa diretamente os módulos concluídos com o `workflowr`:
 
-```bash
-Rscript code/check_project.R
-Rscript code/run_workflowr_pipeline.R site
+```r
+workflowr::wflow_build(
+  c(
+    "analysis/01_preprocessing_en.Rmd",
+    "analysis/01_preprocessing_pt.Rmd",
+    "analysis/02_matrices_en.Rmd",
+    "analysis/02_matrices_pt.Rmd"
+  )
+)
 ```
 
-Execute o pipeline analítico completo:
+As páginas de ajuste dos modelos e resultados serão adicionadas à mesma
+sequência depois que os módulos 03 e 04 forem concluídos e validados.
 
-```bash
-Rscript code/run_workflowr_pipeline.R full
-```
+### Dados-fonte
 
-O perfil completo é explícito porque a validação cruzada Bayesiana exige muitos
-ajustes MCMC.
-
-O GitHub Actions valida o contrato dos dados, executa testes mínimos dos
-métodos e constrói o perfil `site` a cada push e pull request. Os perfis
-`smoke` e `full` também podem ser selecionados pelo disparador manual; site,
-lockfile e resultados analíticos são preservados como artefatos da execução.
-
-### Escopo da seleção
-
-O repositório produz valores genômicos e rankings por característica. O
-baseline não impõe um índice único multicaracterística, porque as direções de
-seleção e os pesos econômicos para diâmetro da cavidade interna, dimensões dos
-frutos e firmeza devem ser definidos pelo programa de melhoramento.
+As planilhas-fonte são versionadas em `data/` com nomes portáveis. Os nomes
+originais e os hashes SHA-256 estão documentados em
+[`data/README.md`](data/README.md).
 
 ### Artigo de referência
 
@@ -335,9 +266,10 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for
 SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*,
 11, 13639. <https://doi.org/10.1038/s41598-021-93120-z>.
 
-### Contato
+### Contact / Contato
 
-**Weverton Gomes da Costa**
-Pesquisador Pós-Doutoral - Departamento de Estatística - Universidade Federal
-de Viçosa
+**Weverton Gomes da Costa**<br>
+Postdoctoral Researcher / Pesquisador Pós-Doutoral<br>
+Department of Statistics / Departamento de Estatística<br>
+Federal University of Viçosa / Universidade Federal de Viçosa<br>
 [weverton.costa@ufv.br](mailto:weverton.costa@ufv.br)

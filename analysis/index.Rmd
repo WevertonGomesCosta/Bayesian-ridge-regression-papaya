@@ -29,75 +29,156 @@ knitr::opts_chunk$set(
 
 ## English
 
-This project evaluates genomic prediction methods for production and
-fruit-quality traits in papaya.
+### Project overview
 
-The dataset contains 150 individuals, 35 multi-allelic SSR loci, ten
-phenotypic traits, block information, and ten families. The alphanumeric
-individual identifier `144B` is preserved during the alignment of genotype and
-phenotype records.
+This project compares genomic prediction methods for production and
+fruit-quality traits in papaya using multi-allelic SSR markers.
 
-The prediction methods are:
+The validated analytical dataset contains:
 
-- Bayesian ridge regression;
-- BayesA;
-- BayesB;
-- BayesB with inclusion probability \(10^{-5}\);
-- BayesC;
-- Bayesian Lasso;
-- RR-BLUP;
-- GBLUP.
+- 150 individuals;
+- 35 original SSR loci;
+- 34 retained SSR loci;
+- 72 retained allele-dosage columns;
+- 10 phenotypic traits;
+- block and family as categorical fixed effects.
 
-The comparison uses five family-stratified folds. Each fold contains 30
-validation individuals and 120 training individuals, with three individuals
-from each family in validation.
+The alphanumeric identifier `144B` is preserved throughout data alignment.
+
+### Prediction methods
+
+The eight methods are:
+
+1. Bayesian ridge regression (`BRR`);
+2. BayesA;
+3. BayesB;
+4. BayesB with `pi = 1e-5` as the reference article's zero-effect
+   probability;
+5. BayesC;
+6. Bayesian Lasso (`BL`);
+7. RR-BLUP;
+8. GBLUP.
+
+Because BGLR defines `probIn` as the probability of a non-zero marker effect,
+the special BayesB configuration uses `probIn = 1 - 1e-5`.
+
+### Matrix and validation contract
+
+The fixed-effect matrix `X`, the centered allele-dosage matrix `M`, and the
+additive genomic relationship matrix `G` are constructed once with all 150
+aligned individuals.
+
+Their validated dimensions are:
+
+| Matrix | Dimensions | Rank |
+|---|---:|---:|
+| `X` | 150 × 19 | 19 |
+| `M` | 150 × 72 | 38 |
+| `G` | 150 × 150 | 38 |
+
+The same matrices are used in all five family-stratified folds. Each fold has
+30 validation individuals, 120 training individuals, and 3 validation
+individuals from each family.
+
+For each trait and fold, cross-validation changes only the phenotype vector:
+the 30 validation phenotypes are replaced by `NA`. The original observed
+values are retained separately for calculating predictive metrics.
+
+### Phenotypic audit
+
+Observations at least four standard deviations from the respective trait mean
+are highlighted but retained without automatic correction, transformation,
+winsorization, or exclusion.
 
 ### Analysis sequence
 
-1. [Data preprocessing](01_preprocessing_en.html)
-2. [Matrix construction](02_matrices_en.html)
-3. [Genomic prediction models](03_models_en.html)
+The website is organized into four bilingual modules:
+
+1. [Data preprocessing and audit](01_preprocessing_en.html)
+2. [Matrix construction and validation](02_matrices_en.html)
+3. [Fitting the eight prediction methods](03_models_en.html)
 4. [Results and model comparison](04_results_en.html)
 
 ## Português
 
-Este projeto avalia métodos de predição genômica para características de
-produção e qualidade de frutos em mamoeiro.
+### Visão geral do projeto
 
-O conjunto de dados contém 150 indivíduos, 35 locos SSR multialélicos, dez
-características fenotípicas, informações de bloco e dez famílias. O
-identificador alfanumérico `144B` é preservado durante o alinhamento dos
-registros genotípicos e fenotípicos.
+Este projeto compara métodos de predição genômica para características de
+produção e qualidade dos frutos em mamoeiro utilizando marcadores SSR
+multialélicos.
 
-Os métodos de predição são:
+O conjunto analítico validado contém:
 
-- regressão ridge Bayesiana;
-- BayesA;
-- BayesB;
-- BayesB com probabilidade de inclusão \(10^{-5}\);
-- BayesC;
-- Lasso Bayesiano;
-- RR-BLUP;
-- GBLUP.
+- 150 indivíduos;
+- 35 locos SSR originais;
+- 34 locos SSR mantidos;
+- 72 colunas de dosagem alélica mantidas;
+- 10 características fenotípicas;
+- bloco e família como efeitos fixos categóricos.
 
-A comparação utiliza cinco folds estratificados por família. Cada fold possui
-30 indivíduos de validação e 120 indivíduos de treinamento, com três
-indivíduos de cada família na validação.
+O identificador alfanumérico `144B` é preservado durante todo o alinhamento dos
+dados.
+
+### Métodos de predição
+
+Os oito métodos são:
+
+1. regressão ridge Bayesiana (`BRR`);
+2. BayesA;
+3. BayesB;
+4. BayesB com `pi = 1e-5` como probabilidade de efeito nulo no artigo de
+   referência;
+5. BayesC;
+6. Lasso Bayesiano (`BL`);
+7. RR-BLUP;
+8. GBLUP.
+
+Como o BGLR define `probIn` como a probabilidade de efeito não nulo do
+marcador, a configuração especial do BayesB utiliza
+`probIn = 1 - 1e-5`.
+
+### Contrato das matrizes e da validação
+
+A matriz de efeitos fixos `X`, a matriz centralizada de dosagens alélicas `M` e
+a matriz de relacionamento genômico aditivo `G` são construídas uma única vez
+com os 150 indivíduos alinhados.
+
+As dimensões validadas são:
+
+| Matriz | Dimensões | Posto |
+|---|---:|---:|
+| `X` | 150 × 19 | 19 |
+| `M` | 150 × 72 | 38 |
+| `G` | 150 × 150 | 38 |
+
+As mesmas matrizes são utilizadas nos cinco folds estratificados por família.
+Cada fold possui 30 indivíduos de validação, 120 indivíduos de treinamento e 3
+indivíduos de validação de cada família.
+
+Para cada característica e fold, a validação cruzada altera somente o vetor
+fenotípico: os 30 fenótipos de validação são substituídos por `NA`. Os valores
+observados originais permanecem armazenados separadamente para o cálculo das
+métricas preditivas.
+
+### Auditoria fenotípica
+
+Observações localizadas a pelo menos quatro desvios-padrão da média da
+respectiva característica são destacadas, mas mantidas sem correção,
+transformação, winsorização ou exclusão automática.
 
 ### Sequência das análises
 
-1. [Pré-processamento dos dados](01_preprocessing_pt.html)
-2. [Construção das matrizes](02_matrices_pt.html)
-3. [Modelos de predição genômica](03_models_pt.html)
+O site está organizado em quatro módulos bilíngues:
+
+1. [Pré-processamento e auditoria dos dados](01_preprocessing_pt.html)
+2. [Construção e validação das matrizes](02_matrices_pt.html)
+3. [Ajuste dos oito métodos de predição](03_models_pt.html)
 4. [Resultados e comparação dos modelos](04_results_pt.html)
 
 ## Reproducibility / Reprodutibilidade
 
-The same folds and the same validation individuals are used for every model.
-Marker filtering, imputation, centering, and genomic-matrix construction are
-recalculated from the training individuals of each fold.
+The complete dataset is processed once to define the analytical matrices.
+Cross-validation changes only the phenotype vector.
 
-Os mesmos folds e os mesmos indivíduos de validação são utilizados em todos
-os modelos. O filtro dos marcadores, a imputação, a centralização e a construção
-da matriz genômica são recalculados com os indivíduos de treinamento de cada
-fold.
+O conjunto completo é processado uma única vez para definir as matrizes
+analíticas. A validação cruzada altera somente o vetor fenotípico.
