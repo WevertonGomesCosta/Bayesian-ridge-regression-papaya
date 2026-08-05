@@ -61,6 +61,7 @@ PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
 OUTPUT_DIR <- here("output", "preprocessing")
 
 CALL_RATE_MIN <- 0.90
+PHENOTYPE_DISTANCE_THRESHOLD <- 4
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
@@ -381,6 +382,91 @@ kable(
 )
 ```
 
+### Phenotypic observations distant from the trait mean
+
+Standardized values are used only as a descriptive diagnostic to identify
+observations located far from the mean of their respective trait. An
+observation is highlighted when its absolute standardized value is at least
+`r PHENOTYPE_DISTANCE_THRESHOLD`.
+
+The highlighted values are retained exactly as recorded in the source
+workbook. They are not automatically corrected, winsorized, transformed, or
+removed. Their potential influence must be considered when interpreting model
+fit, predictive performance, residual diagnostics, and genomic rankings.
+
+```{r phenotype-extreme-values}
+phenotype_means <- colMeans(
+  phenotypes
+)
+
+phenotype_standard_deviations <- numeric(
+  ncol(phenotypes)
+)
+
+for (j in seq_len(ncol(phenotypes))) {
+  phenotype_standard_deviations[j] <- sd(
+    phenotypes[, j]
+  )
+}
+
+phenotype_standardized <- scale(
+  phenotypes,
+  center = phenotype_means,
+  scale = phenotype_standard_deviations
+)
+
+extreme_positions <- which(
+  abs(phenotype_standardized) >=
+    PHENOTYPE_DISTANCE_THRESHOLD,
+  arr.ind = TRUE
+)
+
+phenotype_extremes <- data.frame(
+  IND = rownames(phenotypes)[
+    extreme_positions[, "row"]
+  ],
+  Trait = colnames(phenotypes)[
+    extreme_positions[, "col"]
+  ],
+  Value = phenotypes[
+    extreme_positions
+  ],
+  Trait_mean = phenotype_means[
+    extreme_positions[, "col"]
+  ],
+  Trait_SD = phenotype_standard_deviations[
+    extreme_positions[, "col"]
+  ],
+  Standardized_value = phenotype_standardized[
+    extreme_positions
+  ],
+  Absolute_standardized_distance = abs(
+    phenotype_standardized[
+      extreme_positions
+    ]
+  )
+)
+
+phenotype_extremes <- phenotype_extremes[
+  order(
+    -phenotype_extremes$
+      Absolute_standardized_distance
+  ),
+]
+
+rownames(phenotype_extremes) <- NULL
+
+kable(
+  phenotype_extremes,
+  digits = 3,
+  caption = paste0(
+    "Phenotypic observations at least ",
+    PHENOTYPE_DISTANCE_THRESHOLD,
+    " standard deviations from the trait mean"
+  )
+)
+```
+
 The trait dictionary records the biological meaning and measurement unit of
 each phenotype code.
 
@@ -464,9 +550,12 @@ preprocessing_object <- list(
   locus_audit = locus_audit,
   individual_audit = individual_audit,
   phenotype_summary = phenotype_summary,
+  phenotype_extremes = phenotype_extremes,
   trait_dictionary = trait_dictionary,
   settings = list(
-    call_rate_min = CALL_RATE_MIN
+    call_rate_min = CALL_RATE_MIN,
+    phenotype_distance_threshold =
+      PHENOTYPE_DISTANCE_THRESHOLD
   )
 )
 
@@ -500,6 +589,15 @@ write.csv(
 )
 
 write.csv(
+  phenotype_extremes,
+  file.path(
+    OUTPUT_DIR,
+    "phenotype_extreme_values.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
   trait_dictionary,
   file.path(OUTPUT_DIR, "trait_dictionary.csv"),
   row.names = FALSE
@@ -513,14 +611,16 @@ data.frame(
     "Phenotype traits",
     "Original SSR loci",
     "Retained SSR loci",
-    "Missing SSR calls"
+    "Missing SSR calls",
+    "Phenotypic observations highlighted"
   ),
   Value = c(
     length(ids),
     ncol(phenotypes),
     ncol(ssr_raw),
     ncol(ssr),
-    sum(is.na(ssr_raw))
+    sum(is.na(ssr_raw)),
+    nrow(phenotype_extremes)
   )
 ) |>
   kable(caption = "Final preprocessing inventory")
