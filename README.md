@@ -25,17 +25,18 @@ alignment of genotype and phenotype records.
 
 ### Prediction methods
 
-Eight genomic prediction methods are compared:
+Seven genomic prediction methods are compared:
 
-1. Bayesian ridge regression (`BRR`);
+1. ridge-regression BLUP (`RR-BLUP`), implemented with the BGLR `BRR`
+   component and the complete marker matrix `M`;
 2. BayesA;
 3. BayesB;
 4. BayesB with the reference article's zero-effect probability convention
    (`pi = 1e-5`);
 5. BayesC;
 6. Bayesian Lasso (`BL`);
-7. ridge-regression BLUP (`RR-BLUP`);
-8. genomic BLUP (`GBLUP`).
+7. genomic BLUP (`GBLUP`), implemented with `G` and the BGLR `RKHS`
+   component.
 
 In BGLR, `probIn` denotes the probability that a marker effect is non-zero.
 Therefore, the special BayesB configuration uses
@@ -90,7 +91,7 @@ The website is organized into four bilingual modules:
 
 1. data preprocessing and audit;
 2. construction and validation of `X`, `M`, `G`, and the five folds;
-3. fitting of the eight genomic prediction methods;
+3. fitting of the seven genomic prediction methods;
 4. predictive comparison, genomic values, and trait-specific rankings.
 
 English and Portuguese pages contain equivalent analytical code and differ
@@ -157,17 +158,18 @@ registros genotípicos e fenotípicos.
 
 ### Métodos de predição
 
-Oito métodos de predição genômica são comparados:
+Sete métodos de predição genômica são comparados:
 
-1. regressão ridge Bayesiana (`BRR`);
+1. ridge-regression BLUP (`RR-BLUP`), implementado com o componente `BRR`
+   do BGLR e a matriz completa de marcadores `M`;
 2. BayesA;
 3. BayesB;
 4. BayesB com a convenção de probabilidade de efeito nulo do artigo de
    referência (`pi = 1e-5`);
 5. BayesC;
 6. Lasso Bayesiano (`BL`);
-7. ridge-regression BLUP (`RR-BLUP`);
-8. genomic BLUP (`GBLUP`).
+7. genomic BLUP (`GBLUP`), implementado com `G` e o componente `RKHS` do
+   BGLR.
 
 No BGLR, `probIn` representa a probabilidade de o efeito do marcador ser
 diferente de zero. Portanto, a configuração especial do BayesB utiliza
@@ -223,7 +225,7 @@ O site está organizado em quatro módulos bilíngues:
 
 1. pré-processamento e auditoria dos dados;
 2. construção e validação de `X`, `M`, `G` e dos cinco folds;
-3. ajuste dos oito métodos de predição genômica;
+3. ajuste dos sete métodos de predição genômica;
 4. comparação preditiva, valores genômicos e rankings por característica.
 
 As páginas em inglês e português apresentam códigos analíticos equivalentes e

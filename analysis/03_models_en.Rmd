@@ -1,0 +1,717 @@
+---
+title: "Pilot fitting of seven genomic prediction methods in papaya"
+author:
+  - Costa, W. G.^[Weverton Gomes da Costa, Postdoctoral Researcher, Department of Statistics - Federal University of Viçosa, weverton.costa@ufv.br]
+date: "`r Sys.Date()`"
+site: workflowr::wflow_site
+url: https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/
+bibliography: ../REFERENCES.bib
+link-citations: true
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_download: true
+    code_folding: show
+editor_options:
+  chunk_output_type: console
+github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  cache = FALSE,
+  fig.align = "center",
+  out.width = "100%"
+)
+```
+
+## 1. Objective
+
+This module first validates the model-fitting contract with one phenotype and
+one cross-validation fold. The pilot uses `MMCOM` and fold 1.
+
+Seven genomic prediction methods are fitted exclusively with BGLR
+[@perez2014bglr]:
+
+1. RR-BLUP, implemented with the BGLR `BRR` component and the complete marker
+   matrix `M`;
+2. BayesA with `M`;
+3. BayesB with `M`;
+4. BayesB2 with `M` and the zero-effect probability fixed operationally near
+   \(10^{-5}\);
+5. BayesC with `M`;
+6. Bayesian Lasso with `M`;
+7. GBLUP with the genomic relationship matrix `G` and the BGLR `RKHS`
+   component.
+
+RR-BLUP and Bayesian ridge regression are not fitted as separate models. The
+Gaussian marker-effect model implemented by `model = "BRR"` is adopted as the
+RR-BLUP implementation.
+
+The pilot checks code execution, phenotype masking, output structure,
+prediction finiteness, predictive metrics, and the BayesB2 probability
+parameter. It is not used for biological conclusions.
+
+## 2. BGLR contract
+
+BGLR includes an intercept by default and accepts missing values in the
+phenotype vector. Therefore, the intercept column is removed from `X` before
+the remaining block and family columns are passed as fixed effects. For each
+fold, only the validation phenotypes are replaced by `NA`; `X`, `M`, and `G`
+remain unchanged.
+
+The reference article defines BayesB2 with \(\pi=10^{-5}\) as the probability
+of a zero marker effect [@silva2021brrguava]. In BGLR, `probIn` is the
+probability of a non-zero effect. Thus, BayesB2 uses
+`probIn = 1 - 1e-5`. Because BGLR samples this probability, an extremely
+concentrated beta prior (`counts = 1e6`) is used to keep it operationally fixed
+at the reference value.
+
+## 3. Packages and pilot settings
+
+```{r packages}
+suppressPackageStartupMessages({
+  library(BGLR)
+  library(dplyr)
+  library(ggplot2)
+  library(knitr)
+  library(here)
+})
+```
+
+```{r pilot-settings}
+MATRICES_FILE <- here(
+  "output",
+  "matrices",
+  "matrices_object.rds"
+)
+
+OUTPUT_DIR <- here(
+  "output",
+  "models",
+  "pilot"
+)
+
+PILOT_TRAIT <- "MMCOM"
+PILOT_FOLD <- 1L
+
+PILOT_N_ITER <- 12000L
+PILOT_BURN_IN <- 2000L
+PILOT_THIN <- 10L
+
+BAYESB2_ZERO_PROBABILITY <- 1e-5
+BAYESB2_PROB_IN <-
+  1 - BAYESB2_ZERO_PROBABILITY
+BAYESB2_COUNTS <- 1e6
+
+dir.create(
+  OUTPUT_DIR,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+```
+
+The pilot uses fewer iterations than the final analysis. After the model
+contract is approved, the complete analysis will use the reference settings:
+1,000,000 iterations, 200,000 burn-in iterations, and thinning equal to 4
+[@silva2021brrguava].
+
+## 4. Input matrices and phenotype masking
+
+```{r input-object}
+matrices_object <- readRDS(
+  MATRICES_FILE
+)
+
+ids <- matrices_object$ids
+X <- matrices_object$X
+M <- matrices_object$M
+G <- matrices_object$G
+phenotypes <- matrices_object$phenotypes
+cv_folds <- matrices_object$cv_folds
+
+X_fixed <- X[
+  ,
+  colnames(X) != "(Intercept)",
+  drop = FALSE
+]
+
+y_observed <- phenotypes[
+  ,
+  PILOT_TRAIT
+]
+
+validation_index <- which(
+  cv_folds$Fold == PILOT_FOLD
+)
+
+training_index <- which(
+  cv_folds$Fold != PILOT_FOLD
+)
+
+y_model <- y_observed
+y_model[validation_index] <- NA_real_
+```
+
+```{r input-audit}
+input_audit <- data.frame(
+  Check = c(
+    "Individuals",
+    "Fixed-effect columns supplied to BGLR",
+    "Marker columns",
+    "Rows and columns of G",
+    "Observed training phenotypes",
+    "Masked validation phenotypes",
+    "Validation individuals",
+    "Training individuals",
+    "X row names aligned with IDs",
+    "M row names aligned with IDs",
+    "G row names aligned with IDs",
+    "G column names aligned with IDs"
+  ),
+  Value = c(
+    length(ids),
+    ncol(X_fixed),
+    ncol(M),
+    paste(dim(G), collapse = " x "),
+    sum(!is.na(y_model)),
+    sum(is.na(y_model)),
+    length(validation_index),
+    length(training_index),
+    identical(rownames(X), ids),
+    identical(rownames(M), ids),
+    identical(rownames(G), ids),
+    identical(colnames(G), ids)
+  )
+)
+
+kable(
+  input_audit,
+  caption = "Pilot input audit"
+)
+```
+
+## 5. Model catalogue
+
+```{r model-catalogue}
+model_catalogue <- data.frame(
+  Method = c(
+    "RR-BLUP",
+    "BayesA",
+    "BayesB",
+    "BayesB2",
+    "BayesC",
+    "Bayesian Lasso",
+    "GBLUP"
+  ),
+  BGLR_component = c(
+    "BRR",
+    "BayesA",
+    "BayesB",
+    "BayesB",
+    "BayesC",
+    "BL",
+    "RKHS"
+  ),
+  Genomic_input = c(
+    "M",
+    "M",
+    "M",
+    "M",
+    "M",
+    "M",
+    "G"
+  ),
+  Main_assumption = c(
+    "Common Gaussian variance for all marker effects",
+    "Marker-specific scaled-t variances",
+    "Scaled-t slab and a point mass at zero",
+    "BayesB with zero-effect probability near 1e-5",
+    "Common Gaussian slab and a point mass at zero",
+    "Double-exponential marginal prior",
+    "Genomic values structured by G"
+  )
+)
+
+kable(
+  model_catalogue,
+  caption = "Seven genomic prediction methods in the pilot"
+)
+```
+
+## 6. ETA specifications
+
+```{r eta-specifications}
+ETA_models <- list(
+  RRBLUP = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      X = M,
+      model = "BRR"
+    )
+  ),
+  BayesA = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      X = M,
+      model = "BayesA"
+    )
+  ),
+  BayesB = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      X = M,
+      model = "BayesB"
+    )
+  ),
+  BayesB2 = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      X = M,
+      model = "BayesB",
+      probIn = BAYESB2_PROB_IN,
+      counts = BAYESB2_COUNTS
+    )
+  ),
+  BayesC = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      X = M,
+      model = "BayesC"
+    )
+  ),
+  BL = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      X = M,
+      model = "BL"
+    )
+  ),
+  GBLUP = list(
+    fixed = list(
+      X = X_fixed,
+      model = "FIXED"
+    ),
+    genomic = list(
+      K = G,
+      model = "RKHS"
+    )
+  )
+)
+```
+
+## 7. Pilot fitting
+
+Each method receives a deterministic seed and a distinct file prefix. The
+validation observations remain absent from `y_model` during fitting.
+
+```{r pilot-fitting}
+model_names <- names(
+  ETA_models
+)
+
+method_seeds <- setNames(
+  202608051L + seq_along(model_names) - 1L,
+  model_names
+)
+
+pilot_fits <- vector(
+  mode = "list",
+  length = length(model_names)
+)
+
+names(pilot_fits) <- model_names
+
+prediction_parts <- vector(
+  mode = "list",
+  length = length(model_names)
+)
+
+metric_parts <- vector(
+  mode = "list",
+  length = length(model_names)
+)
+
+for (method_index in seq_along(model_names)) {
+  method_name <- model_names[method_index]
+
+  set.seed(
+    method_seeds[method_name]
+  )
+
+  fit_start <- proc.time()[["elapsed"]]
+
+  pilot_fits[[method_name]] <- BGLR::BGLR(
+    y = y_model,
+    ETA = ETA_models[[method_name]],
+    response_type = "gaussian",
+    nIter = PILOT_N_ITER,
+    burnIn = PILOT_BURN_IN,
+    thin = PILOT_THIN,
+    saveAt = file.path(
+      OUTPUT_DIR,
+      paste0(
+        "pilot_",
+        method_name,
+        "_"
+      )
+    ),
+    verbose = FALSE,
+    rmExistingFiles = TRUE
+  )
+
+  fit_end <- proc.time()[["elapsed"]]
+
+  predicted_validation <-
+    pilot_fits[[method_name]]$yHat[
+      validation_index
+    ]
+
+  observed_validation <-
+    y_observed[
+      validation_index
+    ]
+
+  prediction_parts[[method_index]] <- data.frame(
+    IND = ids[validation_index],
+    Trait = PILOT_TRAIT,
+    Fold = PILOT_FOLD,
+    Method = method_name,
+    Observed = observed_validation,
+    Predicted = predicted_validation
+  )
+
+  metric_parts[[method_index]] <- data.frame(
+    Trait = PILOT_TRAIT,
+    Fold = PILOT_FOLD,
+    Method = method_name,
+    Validation_n = length(validation_index),
+    Correlation = cor(
+      observed_validation,
+      predicted_validation
+    ),
+    RMSE = sqrt(
+      mean(
+        (
+          observed_validation -
+            predicted_validation
+        )^2
+      )
+    ),
+    MAE = mean(
+      abs(
+        observed_validation -
+          predicted_validation
+      )
+    ),
+    DIC =
+      pilot_fits[[method_name]]$fit$DIC,
+    Effective_parameters =
+      pilot_fits[[method_name]]$fit$pD,
+    Log_likelihood_at_posterior_mean =
+      pilot_fits[[method_name]]$fit$
+        logLikAtPostMean,
+    Residual_variance =
+      pilot_fits[[method_name]]$varE,
+    Elapsed_seconds =
+      fit_end - fit_start,
+    Finite_predictions = all(
+      is.finite(
+        predicted_validation
+      )
+    )
+  )
+}
+```
+
+## 8. Consolidated pilot outputs
+
+```{r consolidate-pilot}
+pilot_predictions <- do.call(
+  rbind,
+  prediction_parts
+)
+
+pilot_metrics <- do.call(
+  rbind,
+  metric_parts
+)
+
+rownames(pilot_predictions) <- NULL
+rownames(pilot_metrics) <- NULL
+
+bayesb_probability_audit <- data.frame(
+  Method = c(
+    "BayesB",
+    "BayesB2",
+    "BayesC"
+  ),
+  Prior_nonzero_probability = c(
+    NA_real_,
+    BAYESB2_PROB_IN,
+    NA_real_
+  ),
+  Posterior_nonzero_probability = c(
+    pilot_fits[["BayesB"]]$ETA$
+      genomic$probIn,
+    pilot_fits[["BayesB2"]]$ETA$
+      genomic$probIn,
+    pilot_fits[["BayesC"]]$ETA$
+      genomic$probIn
+  )
+)
+
+rrblup_predictions <- pilot_predictions$Predicted[
+  pilot_predictions$Method == "RRBLUP"
+]
+
+gblup_predictions <- pilot_predictions$Predicted[
+  pilot_predictions$Method == "GBLUP"
+]
+
+rrblup_gblup_audit <- data.frame(
+  Comparison = "RR-BLUP versus GBLUP",
+  Prediction_correlation = cor(
+    rrblup_predictions,
+    gblup_predictions
+  ),
+  Maximum_absolute_difference = max(
+    abs(
+      rrblup_predictions -
+        gblup_predictions
+    )
+  ),
+  Mean_absolute_difference = mean(
+    abs(
+      rrblup_predictions -
+        gblup_predictions
+    )
+  )
+)
+
+pilot_audit <- data.frame(
+  Check = c(
+    "Methods fitted",
+    "Validation individuals per method",
+    "Total prediction rows",
+    "Finite predictions",
+    "Complete metric rows",
+    "BayesB2 posterior probIn",
+    "Absolute BayesB2 probIn deviation"
+  ),
+  Expected = c(
+    "7",
+    "30",
+    "210",
+    "TRUE",
+    "7",
+    format(BAYESB2_PROB_IN, digits = 8),
+    "close to 0"
+  ),
+  Observed = c(
+    length(model_names),
+    unique(pilot_metrics$Validation_n),
+    nrow(pilot_predictions),
+    all(pilot_metrics$Finite_predictions),
+    nrow(pilot_metrics),
+    format(
+      pilot_fits[["BayesB2"]]$ETA$
+        genomic$probIn,
+      digits = 8
+    ),
+    format(
+      abs(
+        pilot_fits[["BayesB2"]]$ETA$
+          genomic$probIn -
+          BAYESB2_PROB_IN
+      ),
+      scientific = TRUE
+    )
+  )
+)
+```
+
+```{r save-pilot-outputs}
+write.csv(
+  pilot_predictions,
+  file.path(
+    OUTPUT_DIR,
+    "pilot_predictions.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  pilot_metrics,
+  file.path(
+    OUTPUT_DIR,
+    "pilot_metrics.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  bayesb_probability_audit,
+  file.path(
+    OUTPUT_DIR,
+    "pilot_bayesb_probability_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  rrblup_gblup_audit,
+  file.path(
+    OUTPUT_DIR,
+    "pilot_rrblup_gblup_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  pilot_audit,
+  file.path(
+    OUTPUT_DIR,
+    "pilot_execution_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+saveRDS(
+  list(
+    fits = pilot_fits,
+    predictions = pilot_predictions,
+    metrics = pilot_metrics,
+    bayesb_probability_audit =
+      bayesb_probability_audit,
+    rrblup_gblup_audit =
+      rrblup_gblup_audit,
+    execution_audit = pilot_audit,
+    settings = list(
+      trait = PILOT_TRAIT,
+      fold = PILOT_FOLD,
+      n_iter = PILOT_N_ITER,
+      burn_in = PILOT_BURN_IN,
+      thin = PILOT_THIN,
+      bayesb2_zero_probability =
+        BAYESB2_ZERO_PROBABILITY,
+      bayesb2_prob_in =
+        BAYESB2_PROB_IN,
+      bayesb2_counts =
+        BAYESB2_COUNTS,
+      seeds = method_seeds
+    )
+  ),
+  file.path(
+    OUTPUT_DIR,
+    "pilot_models_object.rds"
+  )
+)
+```
+
+## 9. Pilot results
+
+```{r pilot-metric-table}
+pilot_metrics |>
+  arrange(
+    desc(Correlation),
+    RMSE
+  ) |>
+  kable(
+    digits = 6,
+    caption = "Predictive metrics and fitting diagnostics for the pilot"
+  )
+```
+
+```{r bayesb-probability-table}
+kable(
+  bayesb_probability_audit,
+  digits = 8,
+  caption = "Non-zero-effect probability audit"
+)
+```
+
+```{r rrblup-gblup-table}
+kable(
+  rrblup_gblup_audit,
+  digits = 8,
+  caption = "Diagnostic comparison of RR-BLUP and GBLUP predictions"
+)
+```
+
+```{r pilot-execution-table}
+kable(
+  pilot_audit,
+  caption = "Pilot execution audit"
+)
+```
+
+```{r pilot-prediction-plot, fig.height=8}
+ggplot(
+  pilot_predictions,
+  aes(
+    x = Observed,
+    y = Predicted
+  )
+) +
+  geom_point() +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = 2
+  ) +
+  facet_wrap(
+    ~ Method,
+    scales = "free"
+  ) +
+  labs(
+    x = "Observed phenotype",
+    y = "Predicted phenotype",
+    title = paste(
+      "Pilot predictions:",
+      PILOT_TRAIT,
+      "- fold",
+      PILOT_FOLD
+    )
+  ) +
+  theme_bw()
+```
+
+## 10. Decision gate
+
+The pilot is approved for expansion only when:
+
+- all seven methods complete without interruption;
+- each method returns 30 validation predictions;
+- all 210 predictions are finite;
+- correlation, RMSE, MAE, DIC, and runtime are available for every method;
+- the BayesB2 posterior `probIn` remains extremely close to `0.99999`;
+- the generated CSV and RDS files are internally consistent.
+
+After this gate is approved, the same contract will be expanded to 10 traits,
+5 folds, and 7 methods, totaling 350 fits. The complete analysis will preserve
+the same global `X`, `M`, and `G` matrices and will change only the masked
+phenotype vector.
