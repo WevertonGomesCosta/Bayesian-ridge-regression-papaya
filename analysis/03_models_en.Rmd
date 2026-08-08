@@ -100,19 +100,22 @@ Each trait-fold-method combination has:
 - a deterministic seed;
 - a unique run identifier;
 - an individual compact RDS result;
-- temporary BGLR chain files;
+- a persistent directory containing the native files written by BGLR;
 - a row in the run manifest.
 
-A run is considered complete only when its compact RDS result exists. When the
-module is rebuilt, completed runs are skipped and only missing runs are fitted.
-This provides deterministic checkpointing without rebuilding matrices or
-silently changing the model contract.
+The compact RDS remains the checkpoint that determines whether a statistical
+fit is missing during an ordinary rebuild. Completed checkpoints are skipped,
+so the model, seed, matrices, and cross-validation contract are not changed by
+this storage revision.
 
-Temporary BGLR files are read immediately after each fit. BGLR writes
-thinned samples during both burn-in and posterior sampling, so the saved burn-in
-portion is removed before the single-chain diagnostics are calculated. The raw
-files are then deleted. Only compact posterior summaries, predictions, genomic
-values, effects, diagnostics, and metrics are retained.
+The native BGLR files are now preserved under
+`output/models/full/bglr_runs/Trait/Fold/Method/`. They retain all files written
+by the current BGLR specification, including the thinned burn-in and posterior
+samples. The same files are read for the convergence diagnostics, but they are
+no longer deleted after the compact checkpoint is created. Historical native
+files that were deleted by earlier versions of the pipeline are reconstructed
+separately by deterministic replay and are accepted only after exact comparison
+with the corresponding official checkpoint.
 
 ## 4. Packages and complete-analysis settings
 
@@ -146,9 +149,9 @@ RUNS_DIR <- file.path(
   "runs"
 )
 
-TEMP_DIR <- file.path(
+BGLR_RUNS_DIR <- file.path(
   OUTPUT_DIR,
-  "temporary"
+  "bglr_runs"
 )
 
 N_ITER <- 1000000L
@@ -195,7 +198,7 @@ dir.create(
 )
 
 dir.create(
-  TEMP_DIR,
+  BGLR_RUNS_DIR,
   recursive = TRUE,
   showWarnings = FALSE
 )
@@ -612,7 +615,9 @@ performed in one build. Its default value is 350, so an ordinary build fits
 all remaining runs. Setting it to 7 validates one complete trait-fold block
 containing all methods before the remaining analysis is launched.
 
-The temporary chains retained for diagnostic calculation are:
+The native BGLR files are preserved permanently for every new fit. For the
+single-chain diagnostics used in this module, two of those saved chains are read
+directly:
 
 - residual variance;
 - one method-specific genomic scale or variance parameter.
@@ -670,14 +675,25 @@ for (run_index in pending_indices) {
     ".tmp"
   )
 
-  save_prefix <- file.path(
-    TEMP_DIR,
+  bglr_run_dir <- file.path(
+    BGLR_RUNS_DIR,
+    trait_name,
     paste0(
-      run_id,
-      "_",
-      analysis_signature,
-      "_"
-    )
+      "F",
+      fold_number
+    ),
+    method_name
+  )
+
+  dir.create(
+    bglr_run_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+
+  save_prefix <- file.path(
+    bglr_run_dir,
+    "bglr_"
   )
 
   unlink(
@@ -1264,15 +1280,6 @@ for (run_index in pending_indices) {
     row.names = FALSE
   )
 
-  unlink(
-    Sys.glob(
-      paste0(
-        save_prefix,
-        "*"
-      )
-    )
-  )
-
   fit <- NULL
   compact_result <- NULL
   trace_object <- NULL
@@ -1281,6 +1288,157 @@ for (run_index in pending_indices) {
     verbose = FALSE
   )
 }
+```
+
+
+### 8.1 Native BGLR artifact audit
+
+This block checks whether the four native files expected from each official
+BGLR fit are present and non-empty in the persistent run archive. It is a
+read-only completeness check: it does not refit any model and does not modify
+the existing compact checkpoints.
+
+```{r bglr-native-artifact-audit}
+bglr_run_dirs <- file.path(
+  BGLR_RUNS_DIR,
+  run_design$Trait,
+  paste0(
+    "F",
+    run_design$Fold
+  ),
+  run_design$Method
+)
+
+bglr_fixed_files <- file.path(
+  bglr_run_dirs,
+  "bglr_ETA_fixed_b.dat"
+)
+
+bglr_mu_files <- file.path(
+  bglr_run_dirs,
+  "bglr_mu.dat"
+)
+
+bglr_residual_files <- file.path(
+  bglr_run_dirs,
+  "bglr_varE.dat"
+)
+
+bglr_genomic_files <- file.path(
+  bglr_run_dirs,
+  paste0(
+    "bglr_",
+    unname(
+      genomic_trace_suffix[
+        run_design$Method
+      ]
+    )
+  )
+)
+
+bglr_fixed_sizes <- file.info(
+  bglr_fixed_files
+)$size
+
+bglr_mu_sizes <- file.info(
+  bglr_mu_files
+)$size
+
+bglr_residual_sizes <- file.info(
+  bglr_residual_files
+)$size
+
+bglr_genomic_sizes <- file.info(
+  bglr_genomic_files
+)$size
+
+bglr_artifact_audit <- data.frame(
+  Run_id = run_design$Run_id,
+  Signature = run_design$Signature,
+  Trait = run_design$Trait,
+  Fold = run_design$Fold,
+  Method = run_design$Method,
+  Fixed_file =
+    file.exists(
+      bglr_fixed_files
+    ) &
+    !is.na(
+      bglr_fixed_sizes
+    ) &
+    bglr_fixed_sizes > 0,
+  Mu_file =
+    file.exists(
+      bglr_mu_files
+    ) &
+    !is.na(
+      bglr_mu_sizes
+    ) &
+    bglr_mu_sizes > 0,
+  Residual_file =
+    file.exists(
+      bglr_residual_files
+    ) &
+    !is.na(
+      bglr_residual_sizes
+    ) &
+    bglr_residual_sizes > 0,
+  Genomic_file =
+    file.exists(
+      bglr_genomic_files
+    ) &
+    !is.na(
+      bglr_genomic_sizes
+    ) &
+    bglr_genomic_sizes > 0
+)
+
+bglr_artifact_audit$Artifacts_complete <-
+  bglr_artifact_audit$Fixed_file &
+  bglr_artifact_audit$Mu_file &
+  bglr_artifact_audit$Residual_file &
+  bglr_artifact_audit$Genomic_file
+
+write.csv(
+  bglr_artifact_audit,
+  file.path(
+    OUTPUT_DIR,
+    "bglr_artifact_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+bglr_artifact_summary <- data.frame(
+  Planned_runs = nrow(
+    bglr_artifact_audit
+  ),
+  Complete_native_archives = sum(
+    bglr_artifact_audit$Artifacts_complete
+  ),
+  Incomplete_native_archives = sum(
+    !bglr_artifact_audit$Artifacts_complete
+  ),
+  Expected_native_files = 4L *
+    nrow(
+      bglr_artifact_audit
+    ),
+  Present_native_files = sum(
+    bglr_artifact_audit$Fixed_file
+  ) +
+    sum(
+      bglr_artifact_audit$Mu_file
+    ) +
+    sum(
+      bglr_artifact_audit$Residual_file
+    ) +
+    sum(
+      bglr_artifact_audit$Genomic_file
+    )
+)
+
+kable(
+  bglr_artifact_summary,
+  caption = "Native BGLR artifact completeness for the 350 official fits"
+)
 ```
 
 ## 9. Consolidation of the 350 compact results

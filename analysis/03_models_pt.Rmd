@@ -103,21 +103,23 @@ Cada combinação de característica, fold e método possui:
 - uma semente determinística;
 - um identificador único de execução;
 - um resultado RDS compacto e individual;
-- arquivos temporários das cadeias do BGLR;
+- um diretório persistente contendo os arquivos nativos gravados pelo BGLR;
 - uma linha no manifesto das execuções.
 
-Uma execução é considerada concluída somente quando seu resultado RDS compacto
-existe. Quando o módulo é reconstruído, as execuções concluídas são ignoradas e
-apenas as ausentes são ajustadas. Isso fornece pontos de retomada
-determinísticos sem reconstruir as matrizes ou alterar silenciosamente o
-contrato dos modelos.
+O RDS compacto permanece como checkpoint que determina se um ajuste estatístico
+está ausente durante uma reconstrução comum do módulo. Checkpoints concluídos
+são ignorados, de modo que o modelo, a semente, as matrizes e o contrato da
+validação cruzada não são alterados por esta revisão de armazenamento.
 
-Os arquivos temporários do BGLR são lidos imediatamente após cada ajuste. O
-BGLR grava amostras reduzidas pelo thinning durante o burn-in e durante a
-amostragem posterior; por isso, a parte correspondente ao burn-in é removida
-antes do cálculo dos diagnósticos de cadeia única. Depois, os arquivos brutos
-são excluídos. Permanecem somente resumos posteriores compactos, predições,
-valores genômicos, efeitos, diagnósticos e métricas.
+Os arquivos nativos do BGLR passam a ser preservados em
+`output/models/full/bglr_runs/Trait/Fold/Method/`. Eles mantêm todos os arquivos
+gravados pela especificação atual do BGLR, incluindo as amostras reduzidas pelo
+thinning durante o burn-in e durante a amostragem posterior. Os mesmos arquivos
+são lidos para os diagnósticos de convergência, mas deixam de ser excluídos após
+a criação do checkpoint compacto. Os arquivos históricos apagados pelas versões
+anteriores do pipeline são reconstruídos separadamente por replay determinístico
+e somente são aceitos após comparação exata com o checkpoint oficial
+correspondente.
 
 ## 4. Pacotes e configurações da análise completa
 
@@ -151,9 +153,9 @@ RUNS_DIR <- file.path(
   "runs"
 )
 
-TEMP_DIR <- file.path(
+BGLR_RUNS_DIR <- file.path(
   OUTPUT_DIR,
-  "temporary"
+  "bglr_runs"
 )
 
 N_ITER <- 1000000L
@@ -200,7 +202,7 @@ dir.create(
 )
 
 dir.create(
-  TEMP_DIR,
+  BGLR_RUNS_DIR,
   recursive = TRUE,
   showWarnings = FALSE
 )
@@ -631,7 +633,9 @@ as execuções restantes. O valor 7 permite validar um bloco completo de
 característica e fold com todos os métodos antes de iniciar o restante da
 análise.
 
-As cadeias temporárias mantidas para o cálculo dos diagnósticos são:
+Os arquivos nativos do BGLR são preservados permanentemente para cada novo
+ajuste. Para os diagnósticos de cadeia única utilizados neste módulo, duas
+dessas cadeias salvas são lidas diretamente:
 
 - variância residual;
 - um parâmetro de escala ou variância genômica específico do método.
@@ -689,14 +693,25 @@ for (run_index in pending_indices) {
     ".tmp"
   )
 
-  save_prefix <- file.path(
-    TEMP_DIR,
+  bglr_run_dir <- file.path(
+    BGLR_RUNS_DIR,
+    trait_name,
     paste0(
-      run_id,
-      "_",
-      analysis_signature,
-      "_"
-    )
+      "F",
+      fold_number
+    ),
+    method_name
+  )
+
+  dir.create(
+    bglr_run_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+
+  save_prefix <- file.path(
+    bglr_run_dir,
+    "bglr_"
   )
 
   unlink(
@@ -1283,15 +1298,6 @@ for (run_index in pending_indices) {
     row.names = FALSE
   )
 
-  unlink(
-    Sys.glob(
-      paste0(
-        save_prefix,
-        "*"
-      )
-    )
-  )
-
   fit <- NULL
   compact_result <- NULL
   trace_object <- NULL
@@ -1300,6 +1306,157 @@ for (run_index in pending_indices) {
     verbose = FALSE
   )
 }
+```
+
+
+### 8.1 Auditoria dos artefatos nativos do BGLR
+
+Este bloco verifica se os quatro arquivos nativos esperados de cada ajuste
+oficial do BGLR estão presentes e não vazios no arquivo persistente das
+execuções. Trata-se apenas de uma verificação de completude: nenhum modelo é
+reajustado e os checkpoints compactos existentes não são modificados.
+
+```{r bglr-native-artifact-audit}
+bglr_run_dirs <- file.path(
+  BGLR_RUNS_DIR,
+  run_design$Trait,
+  paste0(
+    "F",
+    run_design$Fold
+  ),
+  run_design$Method
+)
+
+bglr_fixed_files <- file.path(
+  bglr_run_dirs,
+  "bglr_ETA_fixed_b.dat"
+)
+
+bglr_mu_files <- file.path(
+  bglr_run_dirs,
+  "bglr_mu.dat"
+)
+
+bglr_residual_files <- file.path(
+  bglr_run_dirs,
+  "bglr_varE.dat"
+)
+
+bglr_genomic_files <- file.path(
+  bglr_run_dirs,
+  paste0(
+    "bglr_",
+    unname(
+      genomic_trace_suffix[
+        run_design$Method
+      ]
+    )
+  )
+)
+
+bglr_fixed_sizes <- file.info(
+  bglr_fixed_files
+)$size
+
+bglr_mu_sizes <- file.info(
+  bglr_mu_files
+)$size
+
+bglr_residual_sizes <- file.info(
+  bglr_residual_files
+)$size
+
+bglr_genomic_sizes <- file.info(
+  bglr_genomic_files
+)$size
+
+bglr_artifact_audit <- data.frame(
+  Run_id = run_design$Run_id,
+  Signature = run_design$Signature,
+  Trait = run_design$Trait,
+  Fold = run_design$Fold,
+  Method = run_design$Method,
+  Fixed_file =
+    file.exists(
+      bglr_fixed_files
+    ) &
+    !is.na(
+      bglr_fixed_sizes
+    ) &
+    bglr_fixed_sizes > 0,
+  Mu_file =
+    file.exists(
+      bglr_mu_files
+    ) &
+    !is.na(
+      bglr_mu_sizes
+    ) &
+    bglr_mu_sizes > 0,
+  Residual_file =
+    file.exists(
+      bglr_residual_files
+    ) &
+    !is.na(
+      bglr_residual_sizes
+    ) &
+    bglr_residual_sizes > 0,
+  Genomic_file =
+    file.exists(
+      bglr_genomic_files
+    ) &
+    !is.na(
+      bglr_genomic_sizes
+    ) &
+    bglr_genomic_sizes > 0
+)
+
+bglr_artifact_audit$Artifacts_complete <-
+  bglr_artifact_audit$Fixed_file &
+  bglr_artifact_audit$Mu_file &
+  bglr_artifact_audit$Residual_file &
+  bglr_artifact_audit$Genomic_file
+
+write.csv(
+  bglr_artifact_audit,
+  file.path(
+    OUTPUT_DIR,
+    "bglr_artifact_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+bglr_artifact_summary <- data.frame(
+  Planned_runs = nrow(
+    bglr_artifact_audit
+  ),
+  Complete_native_archives = sum(
+    bglr_artifact_audit$Artifacts_complete
+  ),
+  Incomplete_native_archives = sum(
+    !bglr_artifact_audit$Artifacts_complete
+  ),
+  Expected_native_files = 4L *
+    nrow(
+      bglr_artifact_audit
+    ),
+  Present_native_files = sum(
+    bglr_artifact_audit$Fixed_file
+  ) +
+    sum(
+      bglr_artifact_audit$Mu_file
+    ) +
+    sum(
+      bglr_artifact_audit$Residual_file
+    ) +
+    sum(
+      bglr_artifact_audit$Genomic_file
+    )
+)
+
+kable(
+  bglr_artifact_summary,
+  caption = "Completude dos artefatos nativos do BGLR para os 350 ajustes oficiais"
+)
 ```
 
 ## 9. Consolidação dos 350 resultados compactos
