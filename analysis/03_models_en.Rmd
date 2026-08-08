@@ -2064,6 +2064,176 @@ convergence_diagnostics |>
   )
 ```
 
+### 13.1 Representative posterior-chain inspection
+
+The scalar ESS and Geweke summaries above cover all official fits. To provide
+the graphical MCMC inspection used in the reference study, the posterior draws
+for one representative official fit were recovered by a deterministic replay
+of `PRODCOM_F1_RRBLUP`. The replay used the same data, fold, matrices, withheld
+phenotypes, seed, BGLR version, and MCMC settings as the original fit. It was
+performed only because the production pipeline intentionally discarded the raw
+BGLR chain files after calculating the compact convergence summaries.
+
+The replay is not an additional cross-validation result and does not replace
+any of the 350 official fits. Before inclusion in this module, its predictions,
+effects, model-fit statistics, and convergence summaries were compared with
+the original compact checkpoint, and all compared quantities matched exactly.
+Only the compact retained posterior chains required for the final graphical
+report are kept as a permanent model output.
+
+```{r mcmc-posterior-load}
+MCMC_POSTERIOR_DIR <- file.path(
+  OUTPUT_DIR,
+  "mcmc",
+  paste0(
+    "PRODCOM_F1_RRBLUP_",
+    analysis_signature
+  )
+)
+
+mcmc_replay_summary <- read.csv(
+  file.path(
+    MCMC_POSTERIOR_DIR,
+    "posterior_chain_summary.csv"
+  ),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+mcmc_replay_chains <- readRDS(
+  file.path(
+    MCMC_POSTERIOR_DIR,
+    "posterior_chains.rds"
+  )
+)
+
+```
+
+For the 200,000 retained posterior draws, the residual-variance chain had a
+posterior mean of `r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Residual_variance"], 4)`,
+an effective sample size of
+`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Residual_variance"])`,
+and a Geweke statistic of
+`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Residual_variance"], 3)`.
+The marker-variance chain had a posterior mean of
+`r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Marker_variance"], 4)`,
+an effective sample size of
+`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Marker_variance"])`,
+and a Geweke statistic of
+`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Marker_variance"], 3)`.
+Neither parameter was flagged for additional convergence review.
+
+```{r mcmc-replay-summary-table}
+mcmc_replay_summary |>
+  select(
+    Parameter,
+    Retained_samples,
+    Posterior_mean,
+    Posterior_SD,
+    Effective_sample_size,
+    Geweke_Z,
+    Review_flag
+  ) |>
+  kable(
+    digits = 4,
+    caption = "Posterior-chain diagnostics for the representative official RR-BLUP/BRR fit"
+  )
+```
+
+```{r mcmc-replay-figure, fig.width=12, fig.height=7.6, fig.cap="Representative MCMC diagnostics for the official PRODCOM fold-1 RR-BLUP/BRR fit. Trace plots show the 200,000 retained post-burn-in draws; running means illustrate stabilization of posterior expectations; posterior densities summarize marginal posterior distributions. The deterministic replay reproduced the original official checkpoint exactly before these chains were used for visualization."}
+par(
+  mfrow = c(2, 3),
+  mar = c(4.2, 4.5, 3.0, 1.0),
+  oma = c(0, 0, 0.5, 0)
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Residual_variance,
+  type = "l",
+  xlab = "Iteration",
+  ylab = expression(sigma[e]^2),
+  main = "Trace plot — residual variance"
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Residual_running_mean,
+  type = "l",
+  xlab = "Iteration",
+  ylab = "Running mean",
+  main = "Running mean — residual variance"
+)
+abline(
+  h = mean(
+    mcmc_replay_chains$Residual_variance
+  ),
+  lty = 2
+)
+
+plot(
+  density(
+    mcmc_replay_chains$Residual_variance
+  ),
+  xlab = expression(sigma[e]^2),
+  ylab = "Density",
+  main = "Posterior distribution — residual variance"
+)
+abline(
+  v = mean(
+    mcmc_replay_chains$Residual_variance
+  ),
+  lty = 2
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Marker_variance,
+  type = "l",
+  xlab = "Iteration",
+  ylab = expression(sigma[b]^2),
+  main = "Trace plot — marker variance"
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Marker_running_mean,
+  type = "l",
+  xlab = "Iteration",
+  ylab = "Running mean",
+  main = "Running mean — marker variance"
+)
+abline(
+  h = mean(
+    mcmc_replay_chains$Marker_variance
+  ),
+  lty = 2
+)
+
+plot(
+  density(
+    mcmc_replay_chains$Marker_variance
+  ),
+  xlab = expression(sigma[b]^2),
+  ylab = "Density",
+  main = "Posterior distribution — marker variance"
+)
+abline(
+  v = mean(
+    mcmc_replay_chains$Marker_variance
+  ),
+  lty = 2
+)
+```
+
+The trace plots fluctuate around stable regions without visible long-term
+drift, while the running means stabilize rapidly over the retained posterior
+sample. The marginal posterior distributions are unimodal and right-skewed,
+especially for marker variance. Together with the large effective sample sizes
+and Geweke statistics well within the review threshold, the representative
+chains support adequate MCMC behavior for this official fit. These graphical
+diagnostics complement, rather than replace, the systematic ESS and Geweke
+review of all 350 official fits.
 ## 14. BayesB2 probability audit
 
 ```{r bayesb2-audit-table}

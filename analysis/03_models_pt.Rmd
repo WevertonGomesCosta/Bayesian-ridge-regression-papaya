@@ -2104,6 +2104,182 @@ convergence_diagnostics |>
   )
 ```
 
+### 13.1 Inspeção representativa das cadeias a posteriori
+
+Os resumos de ESS e Geweke apresentados acima abrangem todos os ajustes
+oficiais. Para acrescentar a inspeção gráfica das cadeias MCMC utilizada no
+artigo de referência, as amostras a posteriori de um ajuste oficial
+representativo foram recuperadas por meio de um replay determinístico de
+`PRODCOM_F1_RRBLUP`. O replay utilizou os mesmos dados, fold, matrizes,
+fenótipos omitidos, semente, versão do BGLR e configurações MCMC do ajuste
+original. Ele foi necessário apenas porque o pipeline de produção descartou
+intencionalmente os arquivos brutos das cadeias do BGLR depois de calcular os
+resumos compactos de convergência.
+
+O replay não constitui um resultado adicional de validação cruzada e não
+substitui nenhum dos 350 ajustes oficiais. Antes de sua inclusão neste módulo,
+suas predições, efeitos, estatísticas de ajuste e resumos de convergência foram
+comparados com o checkpoint compacto original, e todas as quantidades
+comparadas coincidiram exatamente. Apenas as cadeias posteriores compactas
+necessárias para a apresentação gráfica final são mantidas como saída
+permanente dos modelos.
+
+```{r mcmc-posterior-load}
+MCMC_POSTERIOR_DIR <- file.path(
+  OUTPUT_DIR,
+  "mcmc",
+  paste0(
+    "PRODCOM_F1_RRBLUP_",
+    analysis_signature
+  )
+)
+
+mcmc_replay_summary <- read.csv(
+  file.path(
+    MCMC_POSTERIOR_DIR,
+    "posterior_chain_summary.csv"
+  ),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+
+mcmc_replay_chains <- readRDS(
+  file.path(
+    MCMC_POSTERIOR_DIR,
+    "posterior_chains.rds"
+  )
+)
+
+```
+
+Nas 200.000 amostras posteriores retidas, a cadeia da variância residual
+apresentou média a posteriori de
+`r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Residual_variance"], 4)`,
+tamanho efetivo de amostra de
+`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Residual_variance"])`
+e estatística de Geweke igual a
+`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Residual_variance"], 3)`.
+A cadeia da variância dos marcadores apresentou média a posteriori de
+`r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Marker_variance"], 4)`,
+tamanho efetivo de amostra de
+`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Marker_variance"])`
+e estatística de Geweke igual a
+`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Marker_variance"], 3)`.
+Nenhum dos dois parâmetros foi sinalizado para revisão adicional da
+convergência.
+
+```{r mcmc-replay-summary-table}
+mcmc_replay_summary |>
+  select(
+    Parameter,
+    Retained_samples,
+    Posterior_mean,
+    Posterior_SD,
+    Effective_sample_size,
+    Geweke_Z,
+    Review_flag
+  ) |>
+  kable(
+    digits = 4,
+    caption = "Diagnósticos das cadeias a posteriori para o ajuste RR-BLUP/BRR oficial representativo"
+  )
+```
+
+```{r mcmc-replay-figure, fig.width=12, fig.height=7.6, fig.cap="Diagnósticos MCMC representativos para o ajuste oficial RR-BLUP/BRR de PRODCOM no fold 1. Os trace plots apresentam as 200.000 amostras retidas após o burn-in; as médias acumuladas mostram a estabilização das esperanças a posteriori; e as densidades resumem as distribuições marginais a posteriori. O replay determinístico reproduziu exatamente o checkpoint oficial original antes que essas cadeias fossem utilizadas para visualização."}
+par(
+  mfrow = c(2, 3),
+  mar = c(4.2, 4.5, 3.0, 1.0),
+  oma = c(0, 0, 0.5, 0)
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Residual_variance,
+  type = "l",
+  xlab = "Iteração",
+  ylab = expression(sigma[e]^2),
+  main = "Trace plot — variância residual"
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Residual_running_mean,
+  type = "l",
+  xlab = "Iteração",
+  ylab = "Média acumulada",
+  main = "Média acumulada — variância residual"
+)
+abline(
+  h = mean(
+    mcmc_replay_chains$Residual_variance
+  ),
+  lty = 2
+)
+
+plot(
+  density(
+    mcmc_replay_chains$Residual_variance
+  ),
+  xlab = expression(sigma[e]^2),
+  ylab = "Densidade",
+  main = "Distribuição a posteriori — variância residual"
+)
+abline(
+  v = mean(
+    mcmc_replay_chains$Residual_variance
+  ),
+  lty = 2
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Marker_variance,
+  type = "l",
+  xlab = "Iteração",
+  ylab = expression(sigma[b]^2),
+  main = "Trace plot — variância dos marcadores"
+)
+
+plot(
+  mcmc_replay_chains$Iteration,
+  mcmc_replay_chains$Marker_running_mean,
+  type = "l",
+  xlab = "Iteração",
+  ylab = "Média acumulada",
+  main = "Média acumulada — variância dos marcadores"
+)
+abline(
+  h = mean(
+    mcmc_replay_chains$Marker_variance
+  ),
+  lty = 2
+)
+
+plot(
+  density(
+    mcmc_replay_chains$Marker_variance
+  ),
+  xlab = expression(sigma[b]^2),
+  ylab = "Densidade",
+  main = "Distribuição a posteriori — variância dos marcadores"
+)
+abline(
+  v = mean(
+    mcmc_replay_chains$Marker_variance
+  ),
+  lty = 2
+)
+```
+
+Os trace plots oscilam em regiões estáveis, sem deriva visível de longo prazo,
+enquanto as médias acumuladas se estabilizam rapidamente ao longo da amostra
+posterior retida. As distribuições marginais a posteriori são unimodais e
+assimétricas à direita, principalmente para a variância dos marcadores. Em
+conjunto com os elevados tamanhos efetivos de amostra e as estatísticas de
+Geweke bem dentro do limite de revisão, as cadeias representativas sustentam
+um comportamento MCMC adequado para esse ajuste oficial. Esses diagnósticos
+gráficos complementam, sem substituir, a revisão sistemática por ESS e Geweke
+dos 350 ajustes oficiais.
 ## 14. Auditoria da probabilidade do BayesB2
 
 ```{r bayesb2-audit-table}
