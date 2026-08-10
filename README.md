@@ -87,12 +87,13 @@ winsorized, transformed, or removed.
 
 ### Analytical workflow
 
-The website is organized into four bilingual modules:
+The website is organized into five bilingual modules:
 
 1. data preprocessing and audit;
 2. construction and validation of `X`, `M`, `G`, and the five folds;
 3. fitting of the seven genomic prediction methods;
 4. predictive comparison, genomic values, and trait-specific rankings.
+5. presentation of the final results following the structure of the reference article.
 
 English and Portuguese pages contain equivalent analytical code and differ
 only in explanatory language.
@@ -118,12 +119,14 @@ workflowr::wflow_build(
     "analysis/03_models_en.Rmd",
     "analysis/03_models_pt.Rmd",
     "analysis/04_results_en.Rmd",
-    "analysis/04_results_pt.Rmd"
+    "analysis/04_results_pt.Rmd",
+    "analysis/05_results_en.Rmd",
+    "analysis/05_results_pt.Rmd"
   )
 )
 ```
 
-The four bilingual analytical modules are complete and validated.
+The five bilingual analytical modules are complete and validated.
 
 ### Source data
 
@@ -224,12 +227,13 @@ automaticamente corrigidos, winsorizados, transformados ou removidos.
 
 ### Fluxo analítico
 
-O site está organizado em quatro módulos bilíngues:
+O site está organizado em cinco módulos bilíngues:
 
 1. pré-processamento e auditoria dos dados;
 2. construção e validação de `X`, `M`, `G` e dos cinco folds;
 3. ajuste dos sete métodos de predição genômica;
 4. comparação preditiva, valores genômicos e rankings por característica.
+5. apresentação dos resultados finais seguindo a estrutura do artigo de referência.
 
 As páginas em inglês e português apresentam códigos analíticos equivalentes e
 diferem apenas no idioma das explicações.
@@ -255,12 +259,14 @@ workflowr::wflow_build(
     "analysis/03_models_en.Rmd",
     "analysis/03_models_pt.Rmd",
     "analysis/04_results_en.Rmd",
-    "analysis/04_results_pt.Rmd"
+    "analysis/04_results_pt.Rmd",
+    "analysis/05_results_en.Rmd",
+    "analysis/05_results_pt.Rmd"
   )
 )
 ```
 
-Os quatro módulos analíticos bilíngues estão concluídos e validados.
+Os cinco módulos analíticos bilíngues estão concluídos e validados.
 
 ### Dados-fonte
 
