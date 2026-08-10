@@ -591,7 +591,7 @@ ggplot(
   theme_bw()
 ```
 
-## 11. Objetos salvos
+## 11. Objetos salvos e diagnóstico das matrizes
 
 O objeto de saída contém uma matriz de efeitos fixos, uma matriz de marcadores,
 uma matriz de relacionamento genômico e a tabela de atribuição dos folds.
@@ -603,12 +603,17 @@ matrix_inventory <- data.frame(
     "Indivíduos",
     "Linhas da matriz de efeitos fixos",
     "Colunas da matriz de efeitos fixos",
+    "Posto da matriz de efeitos fixos",
     "Linhas da matriz de marcadores",
     "Colunas da matriz de marcadores",
+    "Posto da matriz de marcadores",
     "Linhas da matriz genômica",
     "Colunas da matriz genômica",
+    "Posto da matriz genômica",
     "Folds da validação cruzada",
+    "Indivíduos de treinamento por fold",
     "Indivíduos de validação por fold",
+    "Diferença máxima de simetria de G",
     "Média da diagonal de G",
     "Menor autovalor de G"
   ),
@@ -616,12 +621,17 @@ matrix_inventory <- data.frame(
     length(ids),
     nrow(X),
     ncol(X),
+    qr(X)$rank,
     nrow(M_full),
     ncol(M_full),
+    qr(M_full)$rank,
     nrow(G_full),
     ncol(G_full),
+    qr(G_full)$rank,
     N_FOLDS,
+    length(ids) - unique(fold_sizes),
     unique(fold_sizes),
+    max(abs(G_full - t(G_full))),
     mean(diag(G_full)),
     min(eigenvalues_G_full)
   )
@@ -695,12 +705,6 @@ write.csv(
   row.names = FALSE
 )
 
-unlink(
-  file.path(
-    OUTPUT_DIR,
-    "fold_diagnostics.csv"
-  )
-)
 
 kable(
   matrix_inventory,
@@ -709,44 +713,18 @@ kable(
     "Item",
     "Valor"
   ),
-  caption = "Inventário final das matrizes"
+  caption = "Diagnóstico final das matrizes analíticas"
 )
 ```
 
-## 12. Resumo das matrizes
+As 72 colunas de dosagem alélica mantidas não representam 72 dimensões
+independentes de marcadores. Dentro de um loco SSR multialélico, as dosagens
+dos alelos apresentam dependências lineares porque o número de cópias é
+limitado pela diploidia. Por isso, a matriz de marcadores pode apresentar
+posto menor que seu número de colunas. Como `G` é construída a partir de
+`M`, seu posto também é limitado pelo posto da matriz de marcadores.
 
-```{r resumo-matrizes}
-matrix_summary <- data.frame(
-  Medida = c(
-    "Indivíduos",
-    "Colunas completas de marcadores",
-    "Colunas de efeitos fixos",
-    "Posto dos efeitos fixos",
-    "Diferença de simetria da matriz G",
-    "Menor autovalor de G",
-    "Indivíduos de validação por fold",
-    "Indivíduos de treinamento por fold"
-  ),
-  Valor = c(
-    length(ids),
-    ncol(M_full),
-    ncol(X),
-    qr(X)$rank,
-    max(abs(G_full - t(G_full))),
-    min(eigenvalues_G_full),
-    unique(fold_sizes),
-    length(ids) - unique(fold_sizes)
-  )
-)
-
-kable(
-  matrix_summary,
-  digits = 8,
-  caption = "Resumo das matrizes utilizadas na predição genômica"
-)
-```
-
-## 13. Próxima etapa
+## 12. Próxima etapa
 
 A próxima etapa ajusta RR-BLUP, BayesA, BayesB, BayesB com a probabilidade
 especificada de efeito zero, BayesC, Lasso Bayesiano e GBLUP utilizando os

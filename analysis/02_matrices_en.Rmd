@@ -581,7 +581,7 @@ ggplot(
   theme_bw()
 ```
 
-## 11. Saved objects
+## 11. Saved objects and matrix diagnostics
 
 The output object contains one fixed-effect matrix, one marker matrix, one
 genomic relationship matrix, and the fold assignment table. No matrix-specific
@@ -593,12 +593,17 @@ matrix_inventory <- data.frame(
     "Individuals",
     "Fixed-effect rows",
     "Fixed-effect columns",
+    "Fixed-effect rank",
     "Marker-matrix rows",
     "Marker-matrix columns",
+    "Marker-matrix rank",
     "Genomic-matrix rows",
     "Genomic-matrix columns",
+    "Genomic-matrix rank",
     "Cross-validation folds",
+    "Training individuals per fold",
     "Validation individuals per fold",
+    "Maximum symmetry difference of G",
     "Mean diagonal of G",
     "Minimum eigenvalue of G"
   ),
@@ -606,12 +611,17 @@ matrix_inventory <- data.frame(
     length(ids),
     nrow(X),
     ncol(X),
+    qr(X)$rank,
     nrow(M_full),
     ncol(M_full),
+    qr(M_full)$rank,
     nrow(G_full),
     ncol(G_full),
+    qr(G_full)$rank,
     N_FOLDS,
+    length(ids) - unique(fold_sizes),
     unique(fold_sizes),
+    max(abs(G_full - t(G_full))),
     mean(diag(G_full)),
     min(eigenvalues_G_full)
   )
@@ -685,54 +695,22 @@ write.csv(
   row.names = FALSE
 )
 
-unlink(
-  file.path(
-    OUTPUT_DIR,
-    "fold_diagnostics.csv"
-  )
-)
 
 kable(
   matrix_inventory,
   digits = 6,
-  caption = "Final matrix inventory"
+  caption = "Final diagnostics of the analytical matrices"
 )
 ```
 
-## 12. Matrix summary
+The 72 retained allele-dosage columns do not imply 72 independent marker
+dimensions. Within a multi-allelic SSR locus, allele dosages are linearly
+dependent because their copy numbers are constrained by diploidy. Therefore,
+the marker matrix can have rank lower than its number of columns. Because
+`G` is constructed from `M`, its rank is also limited by the rank of the
+marker matrix.
 
-```{r matrix-summary}
-matrix_summary <- data.frame(
-  Measure = c(
-    "Individuals",
-    "Complete marker columns",
-    "Fixed-effect columns",
-    "Fixed-effect rank",
-    "Genomic-matrix symmetry difference",
-    "Minimum eigenvalue of G",
-    "Validation individuals per fold",
-    "Training individuals per fold"
-  ),
-  Value = c(
-    length(ids),
-    ncol(M_full),
-    ncol(X),
-    qr(X)$rank,
-    max(abs(G_full - t(G_full))),
-    min(eigenvalues_G_full),
-    unique(fold_sizes),
-    length(ids) - unique(fold_sizes)
-  )
-)
-
-kable(
-  matrix_summary,
-  digits = 8,
-  caption = "Summary of the matrices used in genomic prediction"
-)
-```
-
-## 13. Next step
+## 12. Next step
 
 The next step fits RR-BLUP, BayesA, BayesB, BayesB with the specified
 zero-effect probability, BayesC, Bayesian Lasso, and GBLUP using the same
