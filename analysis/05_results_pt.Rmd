@@ -1,0 +1,1137 @@
+---
+title: "Apresentação dos resultados finais"
+author:
+  - Costa, W. G.^[Weverton Gomes da Costa, Pós-Doutorando, Departamento de Estatística - Universidade Federal de Viçosa, weverton.costa@ufv.br]
+date: "`r Sys.Date()`"
+site: workflowr::wflow_site
+url: https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/
+bibliography: ../REFERENCES.bib
+link-citations: true
+output:
+  workflowr::wflow_html:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_download: true
+    code_folding: show
+editor_options:
+  chunk_output_type: console
+github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  cache = FALSE,
+  fig.align = "center",
+  out.width = "100%"
+)
+```
+
+## 1. Objetivo
+
+Este módulo reúne e apresenta os resultados finais produzidos nos Módulos 03 e
+04. Nenhum modelo é reajustado.
+
+A organização segue a estrutura de apresentação de Silva et al.
+[@silva2021brrguava], adaptada aos sete métodos avaliados neste projeto e ao
+desenho de validação cruzada previamente definido.
+
+As explicações desta página são descritivas e diretas. A discussão científica
+dos resultados será realizada separadamente no manuscrito.
+
+## 2. Pacotes, entradas e padrão gráfico
+
+```{r packages}
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(knitr)
+  library(here)
+})
+```
+
+```{r inputs-and-style}
+MATRICES_FILE <- here(
+  "output",
+  "matrices",
+  "matrices_object.rds"
+)
+
+MODELS_FILE <- here(
+  "output",
+  "models",
+  "models_object.rds"
+)
+
+M04_FILE <- here(
+  "output",
+  "results",
+  "m04",
+  "module04_results.rds"
+)
+
+RESULTS_DIR <- here(
+  "output",
+  "results",
+  "m05"
+)
+
+FIGURE_DIR <- file.path(
+  RESULTS_DIR,
+  "figures"
+)
+
+dir.create(
+  RESULTS_DIR,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+dir.create(
+  FIGURE_DIR,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+matrices_object <- readRDS(
+  MATRICES_FILE
+)
+
+models_object <- readRDS(
+  MODELS_FILE
+)
+
+m04 <- readRDS(
+  M04_FILE
+)
+
+model_comparison <- m04$model_comparison
+model_selection <- m04$model_selection
+runtime_summary <- m04$runtime
+rrblup_heritability_summary <- m04$rrblup_heritability_summary
+genomic_ranking <- m04$genomic_ranking
+selected_genetic_correlations <- m04$selected_genetic_correlations
+
+metadata <- matrices_object$metadata
+
+traits <- colnames(
+  matrices_object$phenotypes
+)
+
+methods <- c(
+  "RRBLUP",
+  "BayesA",
+  "BayesB",
+  "BayesB2",
+  "BayesC",
+  "BL",
+  "GBLUP"
+)
+
+method_labels <- c(
+  RRBLUP = "RR-BLUP/BRR",
+  BayesA = "BayesA",
+  BayesB = "BayesB",
+  BayesB2 = "BayesB2",
+  BayesC = "BayesC",
+  BL = "Bayesian Lasso",
+  GBLUP = "GBLUP"
+)
+
+method_colors <- c(
+  RRBLUP = "#3366CC",
+  BayesA = "#DC3912",
+  BayesB = "#FF9900",
+  BayesB2 = "#109618",
+  BayesC = "#990099",
+  BL = "#0099C6",
+  GBLUP = "#DD4477"
+)
+
+project_theme <-
+  theme_bw(
+    base_size = 12
+  ) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(
+      face = "bold"
+    ),
+    plot.title = element_text(
+      face = "bold"
+    ),
+    axis.text.x = element_text(
+      angle = 0,
+      vjust = 0.5
+    )
+  )
+```
+
+```{r input-audit}
+input_audit <- data.frame(
+  Check = c(
+    "Assinatura M04 corresponde ao M03",
+    "70 combinações característica × método",
+    "10 métodos finais por característica",
+    "7 métodos no resumo de tempo",
+    "10 características no resumo RR-BLUP/BRR",
+    "1.500 posições no ranking genômico",
+    "Matriz de correlação 10 × 10"
+  ),
+  Passed = c(
+    identical(
+      m04$signature,
+      models_object$signature
+    ),
+    nrow(
+      model_comparison
+    ) == 70L,
+    nrow(
+      model_selection
+    ) == 10L,
+    nrow(
+      runtime_summary
+    ) == 7L,
+    nrow(
+      rrblup_heritability_summary
+    ) == 10L,
+    nrow(
+      genomic_ranking
+    ) == 1500L,
+    identical(
+      dim(
+        selected_genetic_correlations
+      ),
+      c(
+        10L,
+        10L
+      )
+    )
+  )
+)
+
+kable(
+  input_audit,
+  caption = "Auditoria das entradas utilizadas no Módulo 05"
+)
+```
+
+## 3. Comparação dos sete métodos
+
+A tabela abaixo reproduz a estrutura principal de comparação utilizada por
+Silva et al. [@silva2021brrguava]: DIC, diferença em relação ao menor DIC,
+probabilidade aproximada do modelo (`Wprob`), razão de evidência (`ER`),
+correlação preditiva e p-valor.
+
+No presente projeto, a comparação é realizada conjuntamente entre os sete
+métodos ajustados.
+
+```{r article-style-model-table}
+article_model_table <- model_comparison |>
+  transmute(
+    Trait,
+    Method,
+    Method_label,
+    DIC = Mean_DIC,
+    Delta_DIC,
+    Wprob,
+    ER,
+    r,
+    p_value
+  ) |>
+  arrange(
+    match(
+      Trait,
+      traits
+    ),
+    match(
+      Method,
+      methods
+    )
+  )
+
+kable(
+  article_model_table |>
+    select(
+      Trait,
+      Method_label,
+      DIC,
+      Delta_DIC,
+      Wprob,
+      ER,
+      r,
+      p_value
+    ),
+  digits = 5,
+  caption = "Comparação dos sete métodos por característica"
+)
+```
+
+### 3.1. Capacidade preditiva
+
+```{r predictive-correlation-figure, fig.width=13, fig.height=10}
+predictive_plot <- model_comparison |>
+  mutate(
+    Method = factor(
+      Method,
+      levels = methods
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Method,
+      y = r,
+      fill = Method
+    )
+  ) +
+  geom_hline(
+    yintercept = 0,
+    linetype = 2,
+    linewidth = 0.4
+  ) +
+  geom_col(
+    width = 0.75
+  ) +
+  facet_wrap(
+    ~ Trait,
+    scales = "free_y",
+    ncol = 2
+  ) +
+  scale_fill_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
+  scale_x_discrete(
+    labels = method_labels
+  ) +
+  labs(
+    x = NULL,
+    y = "Correlação OOF",
+    fill = "Método",
+    title = "Capacidade preditiva dos sete métodos"
+  ) +
+  project_theme +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+predictive_plot
+
+ggsave(
+  filename = file.path(
+    FIGURE_DIR,
+    "predictive_correlation_by_method_pt.png"
+  ),
+  plot = predictive_plot,
+  width = 13,
+  height = 10,
+  dpi = 300
+)
+```
+
+## 4. Métodos selecionados por característica
+
+```{r selected-methods-table}
+selected_methods_table <- model_selection |>
+  transmute(
+    Trait,
+    Method = Selected_method,
+    Method_label = Selected_method_label,
+    r,
+    p_value,
+    DIC = Mean_DIC,
+    Delta_DIC,
+    Wprob,
+    ER,
+    Parameters_flagged,
+    Runs_with_flags,
+    Predictive_evidence
+  ) |>
+  arrange(
+    match(
+      Trait,
+      traits
+    )
+  )
+
+kable(
+  selected_methods_table |>
+    select(
+      Trait,
+      Method_label,
+      r,
+      p_value,
+      DIC,
+      Delta_DIC,
+      Wprob,
+      ER,
+      Parameters_flagged,
+      Runs_with_flags,
+      Predictive_evidence
+    ),
+  digits = 5,
+  caption = "Método final e resultados associados a cada característica"
+)
+```
+
+RR-BLUP/BRR foi selecionado para
+`r sum(model_selection$Selected_method == "RRBLUP")` características e o
+Bayesian Lasso para `r sum(model_selection$Selected_method == "BL")`.
+BayesB, BayesC e GBLUP foram selecionados para uma característica cada.
+
+Das dez características,
+`r sum(model_selection$Predictive_evidence == "positive_p_lt_0.05")`
+apresentaram correlação OOF positiva com p < 0,05.
+
+## 5. Cadeias MCMC dos métodos selecionados
+
+Como representação visual análoga à apresentada no artigo de referência, são
+mostradas a cadeia posterior de \(\mu\), sua média acumulada e a densidade
+posterior no primeiro fold do método selecionado para cada característica.
+
+Os diagnósticos numéricos completos de convergência permanecem documentados no
+Módulo 03.
+
+```{r selected-mu-data}
+burn_in_saved <-
+  models_object$settings$burn_in /
+  models_object$settings$thin
+
+selected_method_lookup <- setNames(
+  model_selection$Selected_method,
+  model_selection$Trait
+)
+
+trace_parts <- vector(
+  "list",
+  length(
+    traits
+  )
+)
+
+density_parts <- vector(
+  "list",
+  length(
+    traits
+  )
+)
+
+for (trait_index in seq_along(
+  traits
+)) {
+  trait_name <- traits[
+    trait_index
+  ]
+
+  method_name <- selected_method_lookup[
+    trait_name
+  ]
+
+  mu_file <- file.path(
+    here(
+      "output",
+      "models",
+      "bglr"
+    ),
+    trait_name,
+    "F1",
+    method_name,
+    "bglr_mu.dat"
+  )
+
+  mu_full <- scan(
+    mu_file,
+    quiet = TRUE
+  )
+
+  posterior_mu <- mu_full[
+    seq.int(
+      burn_in_saved + 1L,
+      length(
+        mu_full
+      )
+    )
+  ]
+
+  iteration <- seq.int(
+    from =
+      models_object$settings$burn_in +
+      models_object$settings$thin,
+    by =
+      models_object$settings$thin,
+    length.out =
+      length(
+        posterior_mu
+      )
+  )
+
+  running_mean <-
+    cumsum(
+      posterior_mu
+    ) /
+    seq_along(
+      posterior_mu
+    )
+
+  keep_index <- seq.int(
+    from = 1L,
+    to = length(
+      posterior_mu
+    ),
+    by = 100L
+  )
+
+  trace_parts[[
+    trait_index
+  ]] <- data.frame(
+    Trait = trait_name,
+    Method = method_name,
+    Facet = paste0(
+      trait_name,
+      " — ",
+      method_labels[
+        method_name
+      ]
+    ),
+    Iteration =
+      iteration[
+        keep_index
+      ],
+    Posterior_mu =
+      posterior_mu[
+        keep_index
+      ],
+    Running_mean =
+      running_mean[
+        keep_index
+      ]
+  )
+
+  density_object <- density(
+    posterior_mu,
+    n = 512
+  )
+
+  density_parts[[
+    trait_index
+  ]] <- data.frame(
+    Trait = trait_name,
+    Method = method_name,
+    Facet = paste0(
+      trait_name,
+      " — ",
+      method_labels[
+        method_name
+      ]
+    ),
+    x = density_object$x,
+    y = density_object$y
+  )
+}
+
+selected_mu_trace <- bind_rows(
+  trace_parts
+)
+
+selected_mu_density <- bind_rows(
+  density_parts
+)
+```
+
+```{r selected-mu-trace-figure, fig.width=13, fig.height=14}
+mu_trace_plot <- ggplot(
+  selected_mu_trace,
+  aes(
+    x = Iteration,
+    y = Posterior_mu
+  )
+) +
+  geom_line(
+    linewidth = 0.25,
+    alpha = 0.35
+  ) +
+  geom_line(
+    aes(
+      y = Running_mean,
+      color = Method
+    ),
+    linewidth = 0.8
+  ) +
+  facet_wrap(
+    ~ Facet,
+    scales = "free_y",
+    ncol = 2
+  ) +
+  scale_color_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
+  labs(
+    x = "Iteração",
+    y = expression(mu),
+    color = "Método",
+    title = "Cadeia posterior e média acumulada de mu — fold 1"
+  ) +
+  project_theme
+
+mu_trace_plot
+
+ggsave(
+  filename = file.path(
+    FIGURE_DIR,
+    "selected_model_mu_trace_pt.png"
+  ),
+  plot = mu_trace_plot,
+  width = 13,
+  height = 14,
+  dpi = 300
+)
+```
+
+```{r selected-mu-density-figure, fig.width=13, fig.height=14}
+mu_density_plot <- ggplot(
+  selected_mu_density,
+  aes(
+    x = x,
+    y = y,
+    color = Method
+  )
+) +
+  geom_line(
+    linewidth = 0.8
+  ) +
+  facet_wrap(
+    ~ Facet,
+    scales = "free",
+    ncol = 2
+  ) +
+  scale_color_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
+  labs(
+    x = expression(mu),
+    y = "Densidade",
+    color = "Método",
+    title = "Densidade posterior de mu — fold 1"
+  ) +
+  project_theme
+
+mu_density_plot
+
+ggsave(
+  filename = file.path(
+    FIGURE_DIR,
+    "selected_model_mu_density_pt.png"
+  ),
+  plot = mu_density_plot,
+  width = 13,
+  height = 14,
+  dpi = 300
+)
+```
+
+## 6. Tempo computacional
+
+Os tempos correspondem aos 350 ajustes oficiais já realizados no Módulo 03.
+Nenhuma repetição adicional é executada exclusivamente para mensuração de
+tempo.
+
+```{r runtime-table}
+kable(
+  runtime_summary |>
+    select(
+      Method_label,
+      Fits,
+      Total_seconds,
+      Mean_seconds,
+      SD_seconds,
+      Median_seconds,
+      Minimum_seconds,
+      Maximum_seconds
+    ),
+  digits = 2,
+  caption = "Tempo observado nos ajustes oficiais"
+)
+```
+
+```{r runtime-figure, fig.width=11, fig.height=7}
+runtime_plot <- runtime_summary |>
+  mutate(
+    Method = factor(
+      Method,
+      levels = methods
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Method,
+      y = Mean_seconds,
+      fill = Method
+    )
+  ) +
+  geom_col(
+    width = 0.7
+  ) +
+  geom_errorbar(
+    aes(
+      ymin = pmax(
+        0,
+        Mean_seconds - SD_seconds
+      ),
+      ymax =
+        Mean_seconds + SD_seconds
+    ),
+    width = 0.2
+  ) +
+  scale_fill_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
+  scale_x_discrete(
+    labels = method_labels
+  ) +
+  labs(
+    x = NULL,
+    y = "Tempo médio (segundos)",
+    fill = "Método",
+    title = "Tempo computacional por método"
+  ) +
+  project_theme +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+runtime_plot
+
+ggsave(
+  filename = file.path(
+    FIGURE_DIR,
+    "runtime_by_method_pt.png"
+  ),
+  plot = runtime_plot,
+  width = 11,
+  height = 7,
+  dpi = 300
+)
+```
+
+## 7. Herdabilidade e acurácia no análogo RR-BLUP/BRR
+
+Seguindo a estrutura da Tabela 3 de Silva et al.
+[@silva2021brrguava], são apresentados a herdabilidade e a acurácia preditiva.
+
+Neste projeto, esses valores constituem especificamente o análogo
+**RR-BLUP/BRR** calculado no Módulo 04. Eles não representam estimativas
+produzidas pelos diferentes métodos selecionados para cada característica.
+
+```{r rrblup-heritability-table}
+rrblup_table <- rrblup_heritability_summary |>
+  transmute(
+    Trait,
+    RRBLUP_H2 = Mean_H2,
+    SD_RRBLUP_H2 = SD_H2,
+    RRBLUP_mean_fold_r = Mean_fold_r,
+    SD_RRBLUP_fold_r = SD_fold_r,
+    RRBLUP_predictive_accuracy =
+      Mean_predictive_accuracy,
+    SD_RRBLUP_predictive_accuracy =
+      SD_predictive_accuracy
+  )
+
+kable(
+  rrblup_table,
+  digits = 5,
+  caption = "Herdabilidade e acurácia preditiva no análogo RR-BLUP/BRR"
+)
+```
+
+## 8. Correlação entre valores genômicos OOF
+
+A matriz abaixo apresenta a correlação de Pearson entre os valores genômicos
+OOF obtidos pelos métodos selecionados para cada característica.
+
+```{r oof-correlation-data}
+correlation_long <- as.data.frame(
+  as.table(
+    selected_genetic_correlations
+  )
+)
+
+names(
+  correlation_long
+) <- c(
+  "Trait_1",
+  "Trait_2",
+  "Correlation"
+)
+```
+
+```{r oof-correlation-figure, fig.width=10, fig.height=9}
+correlation_plot <- ggplot(
+  correlation_long,
+  aes(
+    x = Trait_1,
+    y = Trait_2,
+    fill = Correlation
+  )
+) +
+  geom_tile() +
+  geom_text(
+    aes(
+      label = sprintf(
+        "%.2f",
+        Correlation
+      )
+    ),
+    size = 3
+  ) +
+  scale_fill_gradient2(
+    low = "#DC3912",
+    mid = "white",
+    high = "#3366CC",
+    midpoint = 0,
+    limits = c(
+      -1,
+      1
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "r",
+    title = "Correlação entre valores genômicos OOF"
+  ) +
+  coord_equal() +
+  project_theme +
+  theme(
+    axis.text.x = element_text(
+      angle = 45,
+      hjust = 1
+    )
+  )
+
+correlation_plot
+
+ggsave(
+  filename = file.path(
+    FIGURE_DIR,
+    "selected_oof_correlations_pt.png"
+  ),
+  plot = correlation_plot,
+  width = 10,
+  height = 9,
+  dpi = 300
+)
+```
+
+A maior correlação positiva observada fora da diagonal ocorre entre DF e DCI,
+com valor de 0,834.
+
+## 9. Valores genômicos e ordenamento dos indivíduos
+
+Os indivíduos são apresentados em ordem decrescente de valor genômico OOF,
+mantendo o método selecionado para cada característica.
+
+A tabela mostra os dez primeiros indivíduos por característica e adiciona a
+família (`FAM`) registrada no conjunto de dados.
+
+```{r top10-ranking}
+top10_with_family <- genomic_ranking |>
+  filter(
+    Rank <= 10L
+  ) |>
+  left_join(
+    metadata |>
+      select(
+        IND,
+        FAM
+      ),
+    by = "IND"
+  ) |>
+  mutate(
+    Method_label =
+      unname(
+        method_labels[
+          Method
+        ]
+      )
+  ) |>
+  select(
+    Trait,
+    Rank,
+    IND,
+    FAM,
+    Method,
+    Method_label,
+    Genomic_value,
+    Predictive_evidence
+  ) |>
+  arrange(
+    match(
+      Trait,
+      traits
+    ),
+    Rank
+  )
+
+kable(
+  top10_with_family |>
+    select(
+      Trait,
+      Rank,
+      IND,
+      FAM,
+      Method_label,
+      Genomic_value,
+      Predictive_evidence
+    ),
+  digits = 5,
+  caption = "Dez maiores valores genômicos OOF por característica"
+)
+```
+
+## 10. Indivíduos recorrentes entre os rankings
+
+Como resumo descritivo adicional, são identificados os indivíduos presentes no
+top 10 de pelo menos duas das características com correlação OOF positiva e
+p < 0,05.
+
+Essa tabela descreve a recorrência entre rankings e não constitui um índice de
+seleção multicaracterística.
+
+```{r recurrent-individuals}
+positive_top10 <- top10_with_family |>
+  filter(
+    Predictive_evidence ==
+      "positive_p_lt_0.05"
+  )
+
+recurring_top10 <- positive_top10 |>
+  group_by(
+    IND
+  ) |>
+  summarise(
+    N_traits = n(),
+    Traits = paste(
+      Trait,
+      collapse = ", "
+    ),
+    .groups = "drop"
+  ) |>
+  filter(
+    N_traits >= 2L
+  ) |>
+  left_join(
+    metadata |>
+      select(
+        IND,
+        FAM
+      ),
+    by = "IND"
+  ) |>
+  arrange(
+    desc(
+      N_traits
+    ),
+    FAM,
+    IND
+  ) |>
+  select(
+    IND,
+    FAM,
+    N_traits,
+    Traits
+  )
+
+kable(
+  recurring_top10,
+  caption = "Indivíduos recorrentes no top 10 das características com correlação OOF positiva e p < 0,05"
+)
+```
+
+Foram identificados `r nrow(recurring_top10)` indivíduos recorrentes. O maior
+número de características observado para um mesmo indivíduo foi
+`r max(recurring_top10$N_traits)`.
+
+## 11. Resumo final
+
+```{r final-summary}
+final_summary <- model_selection |>
+  transmute(
+    Trait,
+    Selected_method,
+    Selected_method_label,
+    r,
+    p_value,
+    DIC = Mean_DIC,
+    Delta_DIC,
+    Wprob,
+    ER,
+    Predictive_evidence
+  ) |>
+  arrange(
+    match(
+      Trait,
+      traits
+    )
+  )
+
+kable(
+  final_summary |>
+    select(
+      Trait,
+      Selected_method_label,
+      r,
+      p_value,
+      DIC,
+      Delta_DIC,
+      Wprob,
+      ER,
+      Predictive_evidence
+    ),
+  digits = 5,
+  caption = "Resumo dos resultados finais por característica"
+)
+```
+
+As características MMCOM, PRODCOM, CF, DF, DCI e SS apresentaram correlação OOF
+positiva com p < 0,05. PRODEF, FFC e FFP apresentaram correlação positiva com
+p >= 0,05, enquanto EP apresentou correlação não positiva.
+
+## 12. Saídas do módulo
+
+```{r save-module05-results}
+write.csv(
+  article_model_table,
+  file.path(
+    RESULTS_DIR,
+    "model_comparison_article_format.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  final_summary,
+  file.path(
+    RESULTS_DIR,
+    "final_results_summary.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  rrblup_table,
+  file.path(
+    RESULTS_DIR,
+    "rrblup_heritability_accuracy.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  top10_with_family,
+  file.path(
+    RESULTS_DIR,
+    "top10_genomic_values_with_family.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
+  recurring_top10,
+  file.path(
+    RESULTS_DIR,
+    "recurring_top10_individuals.csv"
+  ),
+  row.names = FALSE
+)
+```
+
+## 13. Auditoria final
+
+```{r module05-audit}
+module05_audit <- data.frame(
+  Check = c(
+    "Todas as entradas oficiais foram validadas",
+    "Tabela comparativa contém 70 linhas",
+    "Resumo final contém 10 características",
+    "Tabela RR-BLUP/BRR contém 10 características",
+    "Top 10 contém 100 linhas",
+    "Top 10 possui 10 indivíduos por característica",
+    "Todos os valores genômicos do top 10 são finitos",
+    "Cores fixas definidas para os sete métodos"
+  ),
+  Passed = c(
+    all(
+      input_audit$Passed
+    ),
+    nrow(
+      article_model_table
+    ) == 70L,
+    nrow(
+      final_summary
+    ) == 10L,
+    nrow(
+      rrblup_table
+    ) == 10L,
+    nrow(
+      top10_with_family
+    ) == 100L,
+    all(
+      table(
+        top10_with_family$Trait
+      ) == 10L
+    ),
+    all(
+      is.finite(
+        top10_with_family$Genomic_value
+      )
+    ),
+    length(
+      method_colors[
+        methods
+      ]
+    ) == 7L &
+      all(
+        !is.na(
+          method_colors[
+            methods
+          ]
+        )
+      )
+  )
+)
+
+write.csv(
+  module05_audit,
+  file.path(
+    RESULTS_DIR,
+    "module05_audit.csv"
+  ),
+  row.names = FALSE
+)
+
+kable(
+  module05_audit,
+  caption = "Auditoria final do Módulo 05"
+)
+```
+
+O Módulo 05 apresenta os resultados produzidos e validados nas etapas
+anteriores. A interpretação científica aprofundada desses resultados não faz
+parte desta página e será desenvolvida no manuscrito.
