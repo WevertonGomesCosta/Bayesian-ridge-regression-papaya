@@ -56,11 +56,12 @@ family-stratified folds, with 120 training and 30 validation individuals in
 each fold.
 
 Because the article does not provide a single scalar rule combining DIC and
-predictive ability, this project uses an explicit operational rule: selection
-within each trait prioritizes predictive correlation based on the 150 OOF
-predictions; RMSE and MAE are tie-breakers. DIC, `Wprob`, `ER`, and convergence
-diagnostics remain visible as decision qualifiers, without selective model
-refitting.
+predictive ability, this project explicitly integrates three sources of
+evidence: OOF performance, relative fit by DIC, and chain stability. The
+highest OOF `r` remains the predictive reference, but small predictive
+differences are not used automatically to override a model with better DIC or
+clearer chain stability. The final decision for each trait is stored in an
+explicit, auditable table, without selective model refitting.
 
 Genomic values used for ranking follow the cross-validation logic: each
 individual receives the genomic value from the fold in which its phenotype was
@@ -503,15 +504,34 @@ ggsave(
 )
 ```
 
-## 6. Method selection by trait
+## 6. Final method selection by trait
 
-Operational selection prioritizes the highest OOF correlation. RMSE and MAE
-are tie-breakers. The minimum DIC is retained separately to show whether
-Bayesian fit and predictive ability point to the same or different methods.
+The highest OOF correlation is retained as the predictive reference, whereas
+the minimum DIC identifies the best relative fit. The final decision does not
+apply an arbitrary numerical penalty that combines these two quantities.
+Instead, it explicitly records cases in which a very small predictive
+difference does not compensate for poorer relative fit or clear evidence of
+chain instability.
 
-Convergence diagnostics are not used to silently replace a fit. When a
-`Review_flag` is present, the selection remains recorded and the need for
-review is made explicit.
+The scientific audit of the results led to the following final decisions:
+
+- `MMCOM`: RR-BLUP, because the BL gain in `r` was small, whereas RR-BLUP had
+  the minimum DIC and no flags;
+- `PRODCOM`: BL, the winner for both prediction and DIC, while retaining its
+  convergence warning;
+- `PRODEF`: GBLUP, because the BL predictive advantage was weak and accompanied
+  by extreme instability, whereas GBLUP had the minimum DIC and no flags;
+- `CF`: BayesB, the prediction and DIC winner with no flags;
+- `DF`: RR-BLUP, the prediction and DIC winner with no flags;
+- `DCI`: RR-BLUP, with the highest `r`, DIC close to BayesC, and no flags;
+- `EP`: BL, the relative predictive and DIC winner, although without a positive
+  predictive signal;
+- `FFC`: RR-BLUP, with the highest `r`, DIC very close to the minimum, and no
+  flags;
+- `FFP`: BL, the prediction and DIC winner, but with weak predictive evidence
+  and convergence flags;
+- `SS`: BayesC, because its correlation was essentially the same as BayesB,
+  with lower DIC and no flags.
 
 ```{r model-selection}
 predictive_ranking <- model_comparison |>
@@ -530,25 +550,17 @@ predictive_ranking <- model_comparison |>
   ) |>
   ungroup()
 
-selected_methods <- predictive_ranking |>
+predictive_winners <- predictive_ranking |>
   filter(
     Predictive_rank == 1L
   ) |>
   transmute(
     Trait,
-    Selected_method = Method,
-    Selected_method_label =
-      Method_label,
-    r,
-    p_value,
-    RMSE,
-    MAE,
-    Bias,
-    Slope,
-    Mean_DIC,
-    Delta_DIC,
-    Wprob,
-    ER
+    Predictive_winner = Method,
+    Predictive_winner_r = r,
+    Predictive_winner_p_value = p_value,
+    Predictive_winner_RMSE = RMSE,
+    Predictive_winner_MAE = MAE
   )
 
 dic_winners <- model_comparison |>
@@ -609,7 +621,90 @@ convergence_by_trait_method <- convergence |>
     .groups = "drop"
   )
 
-model_selection <- selected_methods |>
+selection_spec <- data.frame(
+  Trait = c(
+    "MMCOM",
+    "PRODCOM",
+    "PRODEF",
+    "CF",
+    "DF",
+    "DCI",
+    "EP",
+    "FFC",
+    "FFP",
+    "SS"
+  ),
+  Selected_method = c(
+    "RRBLUP",
+    "BL",
+    "GBLUP",
+    "BayesB",
+    "RRBLUP",
+    "RRBLUP",
+    "BL",
+    "RRBLUP",
+    "BL",
+    "BayesC"
+  ),
+  Decision_code = c(
+    "prefer_dic_stability_small_predictive_loss",
+    "predictive_and_dic_winner_convergence_review",
+    "prefer_stable_dic_winner_weak_prediction",
+    "predictive_and_dic_winner",
+    "predictive_and_dic_winner",
+    "best_prediction_similar_dic_stable",
+    "predictive_and_dic_winner_no_positive_signal",
+    "best_prediction_similar_dic_stable_weak_signal",
+    "predictive_and_dic_winner_weak_signal_convergence_review",
+    "prefer_stable_dic_winner_negligible_predictive_loss"
+  ),
+  stringsAsFactors = FALSE
+)
+
+selected_performance <- model_comparison |>
+  inner_join(
+    selection_spec |>
+      select(
+        Trait,
+        Selected_method
+      ),
+    by = "Trait"
+  ) |>
+  filter(
+    Method ==
+      Selected_method
+  ) |>
+  transmute(
+    Trait,
+    Selected_method,
+    Selected_method_label =
+      Method_label,
+    r,
+    p_value,
+    RMSE,
+    MAE,
+    Bias,
+    Slope,
+    Mean_DIC,
+    Delta_DIC,
+    Wprob,
+    ER,
+    Mean_fold_r,
+    SD_fold_r
+  )
+
+model_selection <- selection_spec |>
+  left_join(
+    selected_performance,
+    by = c(
+      "Trait",
+      "Selected_method"
+    )
+  ) |>
+  left_join(
+    predictive_winners,
+    by = "Trait"
+  ) |>
   left_join(
     dic_winners,
     by = "Trait"
@@ -622,12 +717,29 @@ model_selection <- selected_methods |>
     )
   ) |>
   mutate(
-    DIC_and_predictive_agree =
+    Predictive_loss =
+      Predictive_winner_r -
+      r,
+    Predictive_winner_agrees =
+      Selected_method ==
+      Predictive_winner,
+    DIC_winner_agrees =
       Selected_method ==
       DIC_winner,
     Convergence_review =
       Parameters_flagged >
-      0
+      0,
+    Predictive_evidence =
+      case_when(
+        r > 0 &
+          p_value < 0.05 ~
+          "positive_p_lt_0.05",
+        r > 0 &
+          p_value >= 0.05 ~
+          "positive_p_ge_0.05",
+        TRUE ~
+          "nonpositive_p_ge_0.05"
+      )
   ) |>
   arrange(
     match(
@@ -636,12 +748,113 @@ model_selection <- selected_methods |>
     )
   )
 
+decision_labels <- c(
+  prefer_dic_stability_small_predictive_loss =
+    "Lower DIC and greater stability with a small predictive loss",
+  predictive_and_dic_winner_convergence_review =
+    "Prediction and DIC winner; convergence requires review",
+  prefer_stable_dic_winner_weak_prediction =
+    "Lower DIC and stable chain under weak predictive ability",
+  predictive_and_dic_winner =
+    "Prediction and DIC winner with no flags",
+  best_prediction_similar_dic_stable =
+    "Highest prediction, DIC close to the minimum, and stable chain",
+  predictive_and_dic_winner_no_positive_signal =
+    "Relative prediction and DIC winner, but no positive predictive signal",
+  best_prediction_similar_dic_stable_weak_signal =
+    "Highest prediction and stability, but weak predictive evidence",
+  predictive_and_dic_winner_weak_signal_convergence_review =
+    "Prediction and DIC winner with weak evidence and convergence flags",
+  prefer_stable_dic_winner_negligible_predictive_loss =
+    "Lower DIC and greater stability with a negligible predictive loss"
+)
+
+predictive_evidence_labels <- c(
+  positive_p_lt_0.05 =
+    "Positive correlation with p < 0.05",
+  positive_p_ge_0.05 =
+    "Positive correlation, but p >= 0.05",
+  nonpositive_p_ge_0.05 =
+    "Non-positive correlation and p >= 0.05"
+)
+
+model_selection_display <- model_selection |>
+  mutate(
+    Decision =
+      unname(
+        decision_labels[
+          Decision_code
+        ]
+      ),
+    Predictive_evidence_label =
+      unname(
+        predictive_evidence_labels[
+          Predictive_evidence
+        ]
+      )
+  ) |>
+  select(
+    Trait,
+    Selected_method,
+    Predictive_winner,
+    DIC_winner,
+    r,
+    p_value,
+    Predictive_loss,
+    Delta_DIC,
+    Wprob,
+    ER,
+    Parameters_flagged,
+    Runs_with_flags,
+    Minimum_ESS,
+    Maximum_absolute_Geweke,
+    Predictive_evidence_label,
+    Decision
+  )
+
 kable(
-  model_selection,
+  model_selection_display,
   digits = 5,
-  caption = "Method selected by predictive ability, best DIC, and convergence qualification"
+  caption = "Final decision by trait integrating prediction, DIC, and convergence"
 )
 ```
+
+### 6.1. Predictive evidence for the final methods
+
+Selecting a final method does not imply that a trait has useful predictive
+ability. To separate these two questions, the result is classified only by the
+direction of `r` and the p-value of the OOF correlation, without converting
+this classification into a new model-fitting criterion.
+
+```{r predictive-evidence-summary}
+predictive_evidence_summary <- model_selection |>
+  count(
+    Predictive_evidence,
+    name = "Traits"
+  )
+
+predictive_evidence_summary$Evidence <- unname(
+  predictive_evidence_labels[
+    predictive_evidence_summary$
+      Predictive_evidence
+  ]
+)
+
+kable(
+  predictive_evidence_summary |>
+    select(
+      Evidence,
+      Traits
+    ),
+  caption = "Summary of predictive evidence for the final methods"
+)
+```
+
+Rankings are calculated for every trait to preserve analytical completeness.
+However, `PRODEF`, `FFC`, and `FFP` have positive correlations with
+`p >= 0.05`, whereas `EP` has a non-positive correlation. These rankings should
+therefore be interpreted cautiously and not with the same strength of evidence
+observed for `MMCOM`, `PRODCOM`, `CF`, `DF`, `DCI`, and `SS`.
 
 ## 7. Visual diagnostics of selected-model chains
 
@@ -876,10 +1089,10 @@ ggsave(
 
 ## 8. Computational time
 
-O artigo mediu tempo repetindo cadeias especificamente para essa finalidade.
-Aqui não são executadas repetições adicionais. A adaptação usa o tempo real dos
-50 ajustes oficiais já realizados para cada método
-(\(10\) características \(\times 5\) folds).
+The article measured computation time by repeating chains specifically for
+that purpose. No additional repetitions are run here. This adaptation uses the
+observed time from the 50 official fits already completed for each method
+(\(10\) traits \(\times 5\) folds).
 
 ```{r runtime}
 runtime_summary_module04 <- metrics |>
@@ -946,7 +1159,7 @@ Silva et al. [@silva2021brrguava] estimated additive genetic variance as
 \operatorname{Var}(m_j)
 \]
 
-e a herdabilidade por
+and heritability as
 
 \[
 H^2 =
@@ -1099,7 +1312,8 @@ selected_oof_genomic_values <- predictions |>
     model_selection |>
       select(
         Trait,
-        Selected_method
+        Selected_method,
+        Predictive_evidence
       ),
     by = "Trait"
   ) |>
@@ -1112,6 +1326,7 @@ selected_oof_genomic_values <- predictions |>
     Trait,
     Fold,
     Method,
+    Predictive_evidence,
     Genomic_value =
       Genomic_component
   ) |>
@@ -1215,7 +1430,9 @@ kable(
 
 Ranking is descending by genomic value. It represents the statistical ranking
 rule and does not impose economic weights, trait-specific breeding directions,
-or a multi-trait selection index at this stage.
+or a multi-trait selection index at this stage. The `Predictive_evidence`
+column should remain part of the ranking interpretation, especially for traits
+without a positive OOF correlation with `p < 0.05`.
 
 ```{r genomic-ranking}
 genomic_ranking <- selected_oof_genomic_values |>
@@ -1412,6 +1629,15 @@ write.csv(
 )
 
 write.csv(
+  selection_spec,
+  file.path(
+    RESULTS_DIR,
+    "selection_decision_spec.csv"
+  ),
+  row.names = FALSE
+)
+
+write.csv(
   convergence_by_trait_method,
   file.path(
     RESULTS_DIR,
@@ -1497,13 +1723,14 @@ module04_audit <- data.frame(
     "Model_comparison_70_rows",
     "Wprob_sums_to_one",
     "One_selected_method_per_trait",
+    "Selected_methods_are_valid",
+    "Predictive_evidence_classified",
     "RRBLUP_heritability_50_folds",
     "RRBLUP_H2_in_unit_interval",
     "Selected_OOF_genomic_values_1500",
     "Genomic_ranking_1500_rows",
     "Ranking_150_individuals_per_trait",
-    "OOF_genomic_identity",
-    "No_new_BGLR_fit"
+    "OOF_genomic_identity"
   ),
   Passed = c(
     all(
@@ -1527,6 +1754,20 @@ module04_audit <- data.frame(
           model_selection$Trait
         )
       ) == 10L,
+    all(
+      model_selection$
+        Selected_method %in%
+        methods
+    ),
+    all(
+      model_selection$
+        Predictive_evidence %in%
+        c(
+          "positive_p_lt_0.05",
+          "positive_p_ge_0.05",
+          "nonpositive_p_ge_0.05"
+        )
+    ),
     nrow(
       rrblup_heritability_by_fold
     ) == 50L,
@@ -1552,8 +1793,7 @@ module04_audit <- data.frame(
     all(
       oof_genomic_audit$
         Passed
-    ),
-    TRUE
+    )
   )
 )
 
@@ -1572,6 +1812,8 @@ saveRDS(
       models_object$signature,
     model_comparison =
       model_comparison,
+    selection_spec =
+      selection_spec,
     model_selection =
       model_selection,
     convergence_by_trait_method =
@@ -1605,14 +1847,15 @@ module04_audit_display$Check <- c(
   "Official input audit",
   "70 rows in model comparison",
   "Wprob sums to 1 within each trait",
-  "One selected method per trait",
+  "One final method per trait",
+  "All final methods belong to the seven fitted methods",
+  "Predictive evidence classified for every trait",
   "50 RR-BLUP/BRR fold-specific heritability estimates",
   "RR-BLUP/BRR H2 in the interval (0, 1)",
   "1,500 selected OOF genomic values",
   "1,500 ranking positions",
   "150 individuals per trait in ranking",
-  "OOF genomic-value identity",
-  "No new BGLR fit"
+  "OOF genomic-value identity"
 )
 
 kable(
@@ -1628,6 +1871,15 @@ and MAE quantify generalization to individuals whose phenotypes were masked.
 Second, DIC, delta, `Wprob`, and `ER` describe relative Bayesian fit among the
 seven methods. Third, convergence diagnostics identify results requiring
 additional caution, without selective replacement of chains.
+
+The final decision shows that no single method dominates every trait:
+RR-BLUP was selected for `MMCOM`, `DF`, `DCI`, and `FFC`; BL for `PRODCOM`,
+`EP`, and `FFP`; BayesB for `CF`; GBLUP for `PRODEF`; and BayesC for `SS`.
+
+Having a final method should not be confused with strong predictive evidence.
+`PRODEF`, `FFC`, and `FFP` have positive correlations but `p >= 0.05`, whereas
+`EP` has a non-positive correlation. Rankings for these traits are retained
+for completeness and reproducibility, but they require additional caution.
 
 The final genomic ranking is trait-specific and uses only OOF values from the
 selected methods. The correlation matrix summarizes association among those
