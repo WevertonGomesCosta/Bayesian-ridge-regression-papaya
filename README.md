@@ -106,7 +106,7 @@ renv::restore()
 renv::status()
 ```
 
-Build the completed modules directly with `workflowr`:
+Build the complete validated workflow directly with `workflowr`:
 
 ```r
 workflowr::wflow_build(
@@ -114,13 +114,16 @@ workflowr::wflow_build(
     "analysis/01_preprocessing_en.Rmd",
     "analysis/01_preprocessing_pt.Rmd",
     "analysis/02_matrices_en.Rmd",
-    "analysis/02_matrices_pt.Rmd"
+    "analysis/02_matrices_pt.Rmd",
+    "analysis/03_models_en.Rmd",
+    "analysis/03_models_pt.Rmd",
+    "analysis/04_results_en.Rmd",
+    "analysis/04_results_pt.Rmd"
   )
 )
 ```
 
-The model-fitting and results pages will be added to the same sequence after
-modules 03 and 04 are completed and validated.
+The four bilingual analytical modules are complete and validated.
 
 ### Source data
 
@@ -240,7 +243,7 @@ renv::restore()
 renv::status()
 ```
 
-Construa diretamente os módulos concluídos com o `workflowr`:
+Construa diretamente o fluxo completo e validado com o `workflowr`:
 
 ```r
 workflowr::wflow_build(
@@ -248,13 +251,16 @@ workflowr::wflow_build(
     "analysis/01_preprocessing_en.Rmd",
     "analysis/01_preprocessing_pt.Rmd",
     "analysis/02_matrices_en.Rmd",
-    "analysis/02_matrices_pt.Rmd"
+    "analysis/02_matrices_pt.Rmd",
+    "analysis/03_models_en.Rmd",
+    "analysis/03_models_pt.Rmd",
+    "analysis/04_results_en.Rmd",
+    "analysis/04_results_pt.Rmd"
   )
 )
 ```
 
-As páginas de ajuste dos modelos e resultados serão adicionadas à mesma
-sequência depois que os módulos 03 e 04 forem concluídos e validados.
+Os quatro módulos analíticos bilíngues estão concluídos e validados.
 
 ### Dados-fonte
 
