@@ -298,7 +298,7 @@ predictive_plot <- model_comparison |>
   ) +
   facet_wrap(
     ~ Trait,
-    scales = "free_y",
+    scales = "fixed",
     ncol = 2
   ) +
   scale_fill_manual(
@@ -700,7 +700,15 @@ runtime_plot <- runtime_summary |>
     labels = method_labels
   ) +
   scale_x_discrete(
-    labels = method_labels
+    labels = c(
+      RRBLUP = "RR-BLUP",
+      BayesA = "BayesA",
+      BayesB = "BayesB",
+      BayesB2 = "BayesB2",
+      BayesC = "BayesC",
+      BL = "BL",
+      GBLUP = "GBLUP"
+    )
   ) +
   labs(
     x = NULL,
@@ -745,8 +753,6 @@ rrblup_table <- rrblup_heritability_summary |>
     Trait,
     RRBLUP_H2 = Mean_H2,
     SD_RRBLUP_H2 = SD_H2,
-    RRBLUP_mean_fold_r = Mean_fold_r,
-    SD_RRBLUP_fold_r = SD_fold_r,
     RRBLUP_predictive_accuracy =
       Mean_predictive_accuracy,
     SD_RRBLUP_predictive_accuracy =
@@ -779,6 +785,17 @@ names(
   "Trait_2",
   "Correlation"
 )
+
+correlation_long <- correlation_long |>
+  mutate(
+    Correlation_label = replace(
+      Correlation,
+      abs(
+        Correlation
+      ) < 0.005,
+      0
+    )
+  )
 ```
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
@@ -795,7 +812,7 @@ correlation_plot <- ggplot(
     aes(
       label = sprintf(
         "%.2f",
-        Correlation
+        Correlation_label
       )
     ),
     size = 3
