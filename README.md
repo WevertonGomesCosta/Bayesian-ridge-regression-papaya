@@ -8,95 +8,33 @@
 
 ### Overview
 
-This repository contains a bilingual and reproducible `workflowr` project for
-genomic prediction and selection in papaya using multi-allelic SSR markers.
+This repository contains a bilingual and reproducible `workflowr` tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers.
 
-The project analyzes:
+The validated analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Block and family are included as categorical fixed effects.
 
-- 150 papaya individuals;
-- 35 original SSR loci;
-- 34 SSR loci retained after global quality control;
-- 72 retained allele-dosage columns;
-- 10 production and fruit-quality traits;
-- block and family as categorical fixed effects.
+Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
 
-The alphanumeric individual identifier `144B` is preserved throughout the
-alignment of genotype and phenotype records.
+### Tutorial workflow
 
-### Prediction methods
+The website is organized into five bilingual modules:
 
-Seven genomic prediction methods are compared:
+1. **Data preprocessing and diagnostics** — reading, alignment, missing data, SSR quality control, phenotype summaries, and descriptive diagnostics.
+2. **Matrix construction and diagnostics** — allele-dosage coding, construction of `X`, `M`, and `G`, and definition of the five family-stratified folds.
+3. **Model fitting and MCMC diagnostics** — fitting the seven genomic prediction methods with BGLR and summarizing posterior diagnostics.
+4. **Model comparison and genomic results** — OOF predictive performance, DIC-based comparison, model selection by trait, OOF genomic values, and trait-specific rankings.
+5. **Final results** — presentation of the final tables and figures used as the analytical basis for the manuscript.
 
-1. ridge-regression BLUP (`RR-BLUP`), implemented with the BGLR `BRR`
-   component and the complete marker matrix `M`;
-2. BayesA;
-3. BayesB;
-4. BayesB with the reference article's zero-effect probability convention
-   (`pi = 1e-5`);
-5. BayesC;
-6. Bayesian Lasso (`BL`);
-7. genomic BLUP (`GBLUP`), implemented with `G` and the BGLR `RKHS`
-   component.
+### Core analytical contract
 
-In BGLR, `probIn` denotes the probability that a marker effect is non-zero.
-Therefore, the special BayesB configuration uses
-`probIn = 1 - 1e-5`.
-
-### Data and matrix contract
-
-The analytical matrices are constructed once using the complete aligned
-dataset:
+The analytical matrices are constructed once using the complete aligned dataset:
 
 - `X`: fixed-effect matrix with intercept, block, and family;
 - `M`: centered allele-dosage matrix;
 - `G`: additive genomic relationship matrix derived from `M`.
 
-The current validated dimensions are:
+The same `X`, `M`, and `G` are used in all five deterministic family-stratified folds. Each fold contains 120 training individuals and 30 validation individuals, with three validation individuals from each family.
 
-| Matrix | Dimensions | Rank |
-|---|---:|---:|
-| `X` | 150 × 19 | 19 |
-| `M` | 150 × 72 | 38 |
-| `G` | 150 × 150 | 38 |
-
-The same `X`, `M`, and `G` are used in every cross-validation fold. Marker
-filtering, allele coding, imputation, centering, allele-frequency calculation,
-and genomic-matrix construction are not repeated within folds.
-
-### Cross-validation contract
-
-The project uses five deterministic folds stratified by family.
-
-Each fold contains:
-
-- 30 validation individuals;
-- 120 training individuals;
-- exactly 3 validation individuals from each of the 10 families.
-
-Cross-validation changes only the phenotype vector. For each trait and fold,
-the observed phenotype vector is copied and the 30 validation phenotypes are
-replaced by `NA`. The original validation phenotypes are retained separately
-for predictive assessment.
-
-### Phenotypic audit
-
-Phenotypic values at least four standard deviations from the corresponding
-trait mean are highlighted as descriptive diagnostics. They remain exactly as
-recorded in the source workbook and are not automatically corrected,
-winsorized, transformed, or removed.
-
-### Analytical workflow
-
-The website is organized into five bilingual modules:
-
-1. data preprocessing and audit;
-2. construction and validation of `X`, `M`, `G`, and the five folds;
-3. fitting of the seven genomic prediction methods;
-4. predictive comparison, genomic values, and trait-specific rankings.
-5. presentation of the final results following the structure of the reference article.
-
-English and Portuguese pages contain equivalent analytical code and differ
-only in explanatory language.
+For each trait and fold, only the phenotype vector is masked for validation. The original validation phenotypes are retained separately for out-of-fold (OOF) predictive assessment.
 
 ### Reproduction
 
@@ -107,7 +45,7 @@ renv::restore()
 renv::status()
 ```
 
-Build the complete validated workflow directly with `workflowr`:
+Build the complete bilingual workflow:
 
 ```r
 workflowr::wflow_build(
@@ -126,19 +64,15 @@ workflowr::wflow_build(
 )
 ```
 
-The five bilingual analytical modules are complete and validated.
+A complete reproduction from raw data can require the 350 model fits from Module 03. When validated checkpoints already exist locally, setting `PAPAYA_MAX_NEW_RUNS=0` prevents new model fits during a site rebuild.
 
-### Source data
+### Data and references
 
-The source workbooks are versioned in `data/` with portable filenames. Their
-original names and SHA-256 checksums are documented in
-[`data/README.md`](data/README.md).
+The source workbooks are versioned in `data/` with portable filenames. Their original names, SHA-256 checksums, and the data contract are documented in [`data/README.md`](data/README.md).
 
-### Reference article
+The main reference for the analytical presentation is:
 
-Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for
-SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*,
-11, 13639. <https://doi.org/10.1038/s41598-021-93120-z>.
+Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*, 11, 13639. <https://doi.org/10.1038/s41598-021-93120-z>.
 
 ---
 
@@ -146,97 +80,33 @@ SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*,
 
 ### Visão geral
 
-Este repositório contém um projeto bilíngue e reprodutível em `workflowr` para
-predição e seleção genômica em mamoeiro utilizando marcadores SSR
-multialélicos.
+Este repositório contém um tutorial bilíngue e reprodutível em `workflowr` para predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos.
 
-O projeto analisa:
+O conjunto analítico validado contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Bloco e família são incluídos como efeitos fixos categóricos.
 
-- 150 indivíduos de mamoeiro;
-- 35 locos SSR originais;
-- 34 locos SSR mantidos após o controle de qualidade global;
-- 72 colunas de dosagem alélica mantidas;
-- 10 características de produção e qualidade dos frutos;
-- bloco e família como efeitos fixos categóricos.
+Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
 
-O identificador alfanumérico `144B` é preservado durante todo o alinhamento dos
-registros genotípicos e fenotípicos.
+### Fluxo do tutorial
 
-### Métodos de predição
+O site está organizado em cinco módulos bilíngues:
 
-Sete métodos de predição genômica são comparados:
+1. **Pré-processamento e diagnóstico dos dados** — leitura, alinhamento, dados ausentes, controle de qualidade dos SSR, resumos fenotípicos e diagnósticos descritivos.
+2. **Construção e diagnóstico das matrizes** — codificação das dosagens alélicas, construção de `X`, `M` e `G` e definição dos cinco folds estratificados por família.
+3. **Ajuste dos modelos e diagnósticos MCMC** — ajuste dos sete métodos de predição genômica com BGLR e resumo dos diagnósticos posteriores.
+4. **Comparação dos modelos e resultados genômicos** — desempenho preditivo OOF, comparação por DIC, seleção do método por característica, valores genômicos OOF e rankings específicos por característica.
+5. **Resultados finais** — apresentação das tabelas e figuras finais utilizadas como base analítica para o manuscrito.
 
-1. ridge-regression BLUP (`RR-BLUP`), implementado com o componente `BRR`
-   do BGLR e a matriz completa de marcadores `M`;
-2. BayesA;
-3. BayesB;
-4. BayesB com a convenção de probabilidade de efeito nulo do artigo de
-   referência (`pi = 1e-5`);
-5. BayesC;
-6. Lasso Bayesiano (`BL`);
-7. genomic BLUP (`GBLUP`), implementado com `G` e o componente `RKHS` do
-   BGLR.
+### Contrato analítico central
 
-No BGLR, `probIn` representa a probabilidade de o efeito do marcador ser
-diferente de zero. Portanto, a configuração especial do BayesB utiliza
-`probIn = 1 - 1e-5`.
-
-### Contrato dos dados e das matrizes
-
-As matrizes analíticas são construídas uma única vez com o conjunto completo
-de dados alinhados:
+As matrizes analíticas são construídas uma única vez utilizando o conjunto completo de dados alinhados:
 
 - `X`: matriz de efeitos fixos com intercepto, bloco e família;
 - `M`: matriz centralizada de dosagens alélicas;
 - `G`: matriz de relacionamento genômico aditivo derivada de `M`.
 
-As dimensões atualmente validadas são:
+As mesmas `X`, `M` e `G` são utilizadas nos cinco folds determinísticos e estratificados por família. Cada fold contém 120 indivíduos de treinamento e 30 de validação, com três indivíduos de validação de cada família.
 
-| Matriz | Dimensões | Posto |
-|---|---:|---:|
-| `X` | 150 × 19 | 19 |
-| `M` | 150 × 72 | 38 |
-| `G` | 150 × 150 | 38 |
-
-As mesmas `X`, `M` e `G` são utilizadas em todos os folds. O filtro dos
-marcadores, a codificação dos alelos, a imputação, a centralização, o cálculo
-das frequências alélicas e a construção da matriz genômica não são repetidos
-dentro dos folds.
-
-### Contrato da validação cruzada
-
-O projeto utiliza cinco folds determinísticos e estratificados por família.
-
-Cada fold contém:
-
-- 30 indivíduos de validação;
-- 120 indivíduos de treinamento;
-- exatamente 3 indivíduos de validação de cada uma das 10 famílias.
-
-A validação cruzada altera somente o vetor fenotípico. Para cada característica
-e fold, o vetor observado é copiado e os 30 fenótipos de validação são
-substituídos por `NA`. Os fenótipos originais de validação são mantidos
-separadamente para a avaliação preditiva.
-
-### Auditoria fenotípica
-
-Valores fenotípicos localizados a pelo menos quatro desvios-padrão da média da
-respectiva característica são destacados como diagnósticos descritivos. Eles
-permanecem exatamente como registrados na planilha original e não são
-automaticamente corrigidos, winsorizados, transformados ou removidos.
-
-### Fluxo analítico
-
-O site está organizado em cinco módulos bilíngues:
-
-1. pré-processamento e auditoria dos dados;
-2. construção e validação de `X`, `M`, `G` e dos cinco folds;
-3. ajuste dos sete métodos de predição genômica;
-4. comparação preditiva, valores genômicos e rankings por característica.
-5. apresentação dos resultados finais seguindo a estrutura do artigo de referência.
-
-As páginas em inglês e português apresentam códigos analíticos equivalentes e
-diferem apenas no idioma das explicações.
+Para cada característica e fold, apenas o vetor fenotípico é mascarado para a validação. Os fenótipos originais dos indivíduos de validação são mantidos separadamente para a avaliação preditiva fora da amostra (OOF).
 
 ### Reprodução
 
@@ -247,7 +117,7 @@ renv::restore()
 renv::status()
 ```
 
-Construa diretamente o fluxo completo e validado com o `workflowr`:
+Construa o fluxo bilíngue completo:
 
 ```r
 workflowr::wflow_build(
@@ -266,19 +136,15 @@ workflowr::wflow_build(
 )
 ```
 
-Os cinco módulos analíticos bilíngues estão concluídos e validados.
+Uma reprodução completa a partir dos dados brutos pode exigir os 350 ajustes do Módulo 03. Quando os checkpoints validados já existem localmente, definir `PAPAYA_MAX_NEW_RUNS=0` impede novos ajustes durante uma reconstrução do site.
 
-### Dados-fonte
+### Dados e referências
 
-As planilhas-fonte são versionadas em `data/` com nomes portáveis. Os nomes
-originais e os hashes SHA-256 estão documentados em
-[`data/README.md`](data/README.md).
+As planilhas-fonte são versionadas em `data/` com nomes portáveis. Seus nomes originais, hashes SHA-256 e o contrato dos dados estão documentados em [`data/README.md`](data/README.md).
 
-### Artigo de referência
+A principal referência para a estrutura de apresentação das análises é:
 
-Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for
-SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*,
-11, 13639. <https://doi.org/10.1038/s41598-021-93120-z>.
+Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR markers in *Psidium guajava* among Bayesian models. *Scientific Reports*, 11, 13639. <https://doi.org/10.1038/s41598-021-93120-z>.
 
 ### Contact / Contato
 

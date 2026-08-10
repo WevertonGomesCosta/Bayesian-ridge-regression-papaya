@@ -33,157 +33,37 @@ knitr::opts_chunk$set(
 
 ### Scientific scope
 
-This project evaluates genomic prediction methods for production and
-fruit-quality traits in papaya using multi-allelic SSR markers.
+This project evaluates genomic prediction methods for production and fruit-quality traits in papaya using multi-allelic SSR markers.
 
-The validated dataset contains 150 individuals, 35 original SSR loci, 34
-retained loci, 72 retained allele-dosage columns, and 10 complete phenotypic
-traits.
+The comparison includes RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP. All seven methods are fitted with BGLR [@perez2014bglr].
 
-### Prediction methods
+The project follows a reproducible five-module workflow:
 
-The comparison includes:
+1. preprocessing and diagnosis of the source data;
+2. construction and diagnosis of the analytical matrices and validation folds;
+3. fitting of the seven genomic prediction methods and MCMC diagnostics;
+4. model comparison and derivation of OOF genomic results;
+5. presentation of the final results used as the analytical basis for the manuscript.
 
-- RR-BLUP, implemented with `M` and the BGLR `BRR` component;
-- BayesA;
-- BayesB;
-- BayesB with `pi = 1e-5` as the zero-effect probability specified by the
-  reference convention;
-- BayesC;
-- Bayesian Lasso;
-- GBLUP, implemented with `G` and the BGLR `RKHS` component.
-
-All seven methods are fitted with BGLR [@perez2014bglr]. Since BGLR defines
-`probIn` as the probability of a non-zero marker effect, the special BayesB
-configuration uses `probIn = 1 - 1e-5`.
-
-### Analytical matrices
-
-Three matrices define the common analytical input:
-
-- `X`, with intercept, block, and family;
-- `M`, with centered allele dosages;
-- `G`, with additive genomic relationships derived from `M`.
-
-They are constructed once with all 150 aligned individuals and are not rebuilt
-inside the validation folds.
-
-The validated dimensions and ranks are:
-
-| Matrix | Dimensions | Rank |
-|---|---:|---:|
-| `X` | 150 × 19 | 19 |
-| `M` | 150 × 72 | 38 |
-| `G` | 150 × 150 | 38 |
-
-### Validation design
-
-The predictive comparison uses five deterministic folds stratified by family.
-Each fold contains 30 validation individuals and 120 training individuals,
-with exactly 3 validation individuals from each of the 10 families.
-
-For each trait and fold, cross-validation changes only the phenotype vector.
-The validation phenotypes are replaced by `NA`, while `X`, `M`, and `G`
-remain unchanged. The original validation observations are retained separately
-for predictive correlation, RMSE, and MAE.
-
-### Phenotypic observations
-
-Phenotypic observations at least four standard deviations from their trait
-mean are documented as descriptive diagnostics. They are retained exactly as
-recorded and are not automatically corrected, transformed, winsorized, or
-removed.
-
-### Bilingual workflow
-
-The project is organized into four bilingual modules:
-
-1. preprocessing and data audit;
-2. matrix construction and validation;
-3. fitting of the seven genomic prediction methods;
-4. results, model comparison, genomic values, and trait-specific rankings.
-
-English and Portuguese pages implement equivalent analytical steps.
+The project emphasizes reproducibility: source data provenance is documented, dependencies are recorded with `renv`, and the analytical website is generated with `workflowr`.
 
 ## Português
 
 ### Escopo científico
 
-Este projeto avalia métodos de predição genômica para características de
-produção e qualidade dos frutos em mamoeiro utilizando marcadores SSR
-multialélicos.
+Este projeto avalia métodos de predição genômica para características de produção e qualidade dos frutos em mamoeiro utilizando marcadores SSR multialélicos.
 
-O conjunto validado contém 150 indivíduos, 35 locos SSR originais, 34 locos
-mantidos, 72 colunas de dosagem alélica mantidas e 10 características
-fenotípicas completas.
+A comparação inclui RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP. Os sete métodos são ajustados com o BGLR [@perez2014bglr].
 
-### Métodos de predição
+O projeto segue um fluxo reprodutível em cinco módulos:
 
-A comparação inclui:
+1. pré-processamento e diagnóstico dos dados-fonte;
+2. construção e diagnóstico das matrizes analíticas e dos folds de validação;
+3. ajuste dos sete métodos de predição genômica e diagnósticos MCMC;
+4. comparação dos modelos e construção dos resultados genômicos OOF;
+5. apresentação dos resultados finais utilizados como base analítica para o manuscrito.
 
-- RR-BLUP, implementado com `M` e o componente `BRR` do BGLR;
-- BayesA;
-- BayesB;
-- BayesB com `pi = 1e-5` como probabilidade de efeito nulo definida pela
-  convenção de referência;
-- BayesC;
-- Lasso Bayesiano;
-- GBLUP, implementado com `G` e o componente `RKHS` do BGLR.
-
-Os sete métodos são ajustados com o BGLR [@perez2014bglr]. Como o BGLR
-define `probIn` como a probabilidade de efeito não nulo, a configuração especial
-do BayesB utiliza `probIn = 1 - 1e-5`.
-
-### Matrizes analíticas
-
-Três matrizes definem a entrada analítica comum:
-
-- `X`, com intercepto, bloco e família;
-- `M`, com dosagens alélicas centralizadas;
-- `G`, com relacionamentos genômicos aditivos derivados de `M`.
-
-Elas são construídas uma única vez com os 150 indivíduos alinhados e não são
-reconstruídas dentro dos folds.
-
-As dimensões e os postos validados são:
-
-| Matriz | Dimensões | Posto |
-|---|---:|---:|
-| `X` | 150 × 19 | 19 |
-| `M` | 150 × 72 | 38 |
-| `G` | 150 × 150 | 38 |
-
-### Desenho de validação
-
-A comparação preditiva utiliza cinco folds determinísticos e estratificados por
-família. Cada fold contém 30 indivíduos de validação e 120 indivíduos de
-treinamento, com exatamente 3 indivíduos de validação de cada uma das 10
-famílias.
-
-Para cada característica e fold, a validação cruzada altera somente o vetor
-fenotípico. Os fenótipos de validação são substituídos por `NA`, enquanto `X`,
-`M` e `G` permanecem inalteradas. As observações originais de validação são
-mantidas separadamente para o cálculo da correlação preditiva, do RMSE e do
-MAE.
-
-### Observações fenotípicas
-
-Observações fenotípicas localizadas a pelo menos quatro desvios-padrão da média
-da característica são documentadas como diagnósticos descritivos. Elas
-permanecem exatamente como registradas e não são automaticamente corrigidas,
-transformadas, winsorizadas ou removidas.
-
-### Fluxo bilíngue
-
-O projeto está organizado em quatro módulos bilíngues:
-
-1. pré-processamento e auditoria dos dados;
-2. construção e validação das matrizes;
-3. ajuste dos sete métodos de predição genômica;
-4. resultados, comparação dos modelos, valores genômicos e rankings por
-   característica.
-
-As páginas em inglês e português implementam etapas analíticas equivalentes.
+O projeto prioriza reprodutibilidade: a proveniência dos dados-fonte é documentada, as dependências são registradas com `renv` e o site analítico é gerado com `workflowr`.
 
 ### Contact / Contato
 
