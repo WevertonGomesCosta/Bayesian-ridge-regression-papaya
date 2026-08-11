@@ -588,6 +588,69 @@ genomic relationship matrix, and the fold assignment table. No matrix-specific
 cross-validation objects are created.
 
 ```{r save-matrix-objects}
+theoretical_rank_M <-
+  sum(
+    table(
+      allele_audit_full$Locus[
+        allele_audit_full$Keep_allele
+      ]
+    ) - 1L
+  )
+
+maximum_M_column_mean <-
+  max(
+    abs(
+      colMeans(M_full)
+    )
+  )
+
+G_reconstructed <-
+  tcrossprod(M_full) /
+  denominator_full
+
+maximum_G_reconstruction_difference <-
+  max(
+    abs(
+      G_full -
+        G_reconstructed
+    )
+  )
+
+locus_names <- unique(
+  allele_audit_full$Locus[
+    allele_audit_full$Keep_allele
+  ]
+)
+
+dosage_sum_error <- numeric(
+  length(locus_names)
+)
+
+for (j in seq_along(locus_names)) {
+  locus_columns <-
+    allele_audit_full$Marker[
+      allele_audit_full$Keep_allele &
+        allele_audit_full$Locus ==
+          locus_names[j]
+    ]
+
+  dosage_sum_error[j] <-
+    max(
+      abs(
+        rowSums(
+          dosage_full_imputed[
+            ,
+            locus_columns,
+            drop = FALSE
+          ]
+        ) - 2
+      )
+    )
+}
+
+maximum_dosage_sum_error <-
+  max(dosage_sum_error)
+
 matrix_inventory <- data.frame(
   Item = c(
     "Individuals",
@@ -597,6 +660,10 @@ matrix_inventory <- data.frame(
     "Marker-matrix rows",
     "Marker-matrix columns",
     "Marker-matrix rank",
+    "Theoretical marker-matrix rank",
+    "Maximum absolute column mean of M",
+    "Maximum dosage-sum error by locus",
+    "Maximum reconstruction difference for G",
     "Genomic-matrix rows",
     "Genomic-matrix columns",
     "Genomic-matrix rank",
@@ -615,6 +682,10 @@ matrix_inventory <- data.frame(
     nrow(M_full),
     ncol(M_full),
     qr(M_full)$rank,
+    theoretical_rank_M,
+    maximum_M_column_mean,
+    maximum_dosage_sum_error,
+    maximum_G_reconstruction_difference,
     nrow(G_full),
     ncol(G_full),
     qr(G_full)$rank,
