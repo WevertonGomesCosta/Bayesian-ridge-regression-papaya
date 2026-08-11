@@ -1,5 +1,5 @@
 ---
-title: "Ajuste completo de sete métodos de predição genômica em mamoeiro"
+title: "Ajuste dos modelos e diagnósticos MCMC para predição genômica em mamoeiro"
 author:
   - Costa, W. G.^[Weverton Gomes da Costa, Pós-Doutorando, Departamento de Estatística - Universidade Federal de Viçosa, weverton.costa@ufv.br]
 date: "`r Sys.Date()`"
@@ -106,20 +106,16 @@ Cada combinação de característica, fold e método possui:
 - um diretório persistente contendo os arquivos nativos gravados pelo BGLR;
 - uma linha no manifesto das execuções.
 
-O RDS compacto permanece como checkpoint que determina se um ajuste estatístico
-está ausente durante uma reconstrução comum do módulo. Checkpoints concluídos
-são ignorados, de modo que o modelo, a semente, as matrizes e o contrato da
-validação cruzada não são alterados por esta revisão de armazenamento.
+O RDS compacto é o checkpoint que determina se um ajuste estatístico está
+ausente durante uma reconstrução comum do módulo. Checkpoints concluídos são
+ignorados, portanto uma reconstrução comum não reajusta modelos já concluídos.
 
-Os arquivos nativos do BGLR passam a ser preservados em
-`output/models/bglr/Trait/Fold/Method/`. Eles mantêm todos os arquivos
-gravados pela especificação atual do BGLR, incluindo as amostras reduzidas pelo
-thinning durante o burn-in e durante a amostragem posterior. Os mesmos arquivos
-são lidos para os diagnósticos de convergência, mas deixam de ser excluídos após
-a criação do checkpoint compacto. Os arquivos históricos apagados pelas versões
-anteriores do pipeline são reconstruídos separadamente por replay determinístico
-e somente são aceitos após comparação exata com o checkpoint oficial
-correspondente.
+Os arquivos nativos do BGLR são preservados em
+`output/models/bglr/Trait/Fold/Method/`. Eles contêm as cadeias reduzidas pelo
+thinning gravadas pelo BGLR e são utilizados diretamente nos diagnósticos
+posteriores e nas apresentações gráficas finais. O RDS compacto, e não os
+arquivos nativos das cadeias, permanece como critério de retomada dos 350
+ajustes.
 
 ## 4. Pacotes e configurações da análise completa
 
@@ -129,7 +125,6 @@ suppressPackageStartupMessages({
   library(coda)
   library(digest)
   library(dplyr)
-  library(ggplot2)
   library(knitr)
   library(here)
 })
@@ -254,59 +249,6 @@ method_labels <- c(
 )
 ```
 
-```{r input-audit}
-input_audit <- data.frame(
-  Check = c(
-    "Indivíduos",
-    "Características",
-    "Folds",
-    "Métodos",
-    "Ajustes planejados",
-    "Indivíduos de validação por fold",
-    "Indivíduos de treinamento por fold",
-    "Colunas de efeitos fixos fornecidas ao BGLR",
-    "Colunas de marcadores",
-    "Posto de M",
-    "Linhas e colunas de G",
-    "Posto de G",
-    "Nomes das linhas de X alinhados aos IDs",
-    "Nomes das linhas de M alinhados aos IDs",
-    "Nomes das linhas de G alinhados aos IDs",
-    "Nomes das colunas de G alinhados aos IDs"
-  ),
-  Value = c(
-    length(ids),
-    length(traits),
-    matrices_object$settings$n_folds,
-    length(method_names),
-    length(traits) *
-      matrices_object$settings$n_folds *
-      length(method_names),
-    unique(
-      matrices_object$fold_summary$
-        Validation_n
-    ),
-    unique(
-      matrices_object$fold_summary$
-        Training_n
-    ),
-    ncol(X_fixed),
-    ncol(M),
-    qr(M)$rank,
-    paste(dim(G), collapse = " x "),
-    qr(G)$rank,
-    identical(rownames(X), ids),
-    identical(rownames(M), ids),
-    identical(rownames(G), ids),
-    identical(colnames(G), ids)
-  )
-)
-
-kable(
-  input_audit,
-  caption = "Auditoria das entradas invariantes para o ajuste completo"
-)
-```
 
 ## 6. Catálogo dos modelos e especificações do BGLR
 
@@ -1307,157 +1249,13 @@ for (run_index in pending_indices) {
 ```
 
 
-### 8.1 Auditoria dos artefatos nativos do BGLR
+## 9. Consolidação dos resultados oficiais
 
-Este bloco verifica se os quatro arquivos nativos esperados de cada ajuste
-oficial do BGLR estão presentes e não vazios no arquivo persistente das
-execuções. Trata-se apenas de uma verificação de completude: nenhum modelo é
-reajustado e os checkpoints compactos existentes não são modificados.
-
-```{r bglr-native-artifact-audit}
-bglr_run_dirs <- file.path(
-  BGLR_RUNS_DIR,
-  run_design$Trait,
-  paste0(
-    "F",
-    run_design$Fold
-  ),
-  run_design$Method
-)
-
-bglr_fixed_files <- file.path(
-  bglr_run_dirs,
-  "bglr_ETA_fixed_b.dat"
-)
-
-bglr_mu_files <- file.path(
-  bglr_run_dirs,
-  "bglr_mu.dat"
-)
-
-bglr_residual_files <- file.path(
-  bglr_run_dirs,
-  "bglr_varE.dat"
-)
-
-bglr_genomic_files <- file.path(
-  bglr_run_dirs,
-  paste0(
-    "bglr_",
-    unname(
-      genomic_trace_suffix[
-        run_design$Method
-      ]
-    )
-  )
-)
-
-bglr_fixed_sizes <- file.info(
-  bglr_fixed_files
-)$size
-
-bglr_mu_sizes <- file.info(
-  bglr_mu_files
-)$size
-
-bglr_residual_sizes <- file.info(
-  bglr_residual_files
-)$size
-
-bglr_genomic_sizes <- file.info(
-  bglr_genomic_files
-)$size
-
-bglr_artifact_audit <- data.frame(
-  Run_id = run_design$Run_id,
-  Signature = run_design$Signature,
-  Trait = run_design$Trait,
-  Fold = run_design$Fold,
-  Method = run_design$Method,
-  Fixed_file =
-    file.exists(
-      bglr_fixed_files
-    ) &
-    !is.na(
-      bglr_fixed_sizes
-    ) &
-    bglr_fixed_sizes > 0,
-  Mu_file =
-    file.exists(
-      bglr_mu_files
-    ) &
-    !is.na(
-      bglr_mu_sizes
-    ) &
-    bglr_mu_sizes > 0,
-  Residual_file =
-    file.exists(
-      bglr_residual_files
-    ) &
-    !is.na(
-      bglr_residual_sizes
-    ) &
-    bglr_residual_sizes > 0,
-  Genomic_file =
-    file.exists(
-      bglr_genomic_files
-    ) &
-    !is.na(
-      bglr_genomic_sizes
-    ) &
-    bglr_genomic_sizes > 0
-)
-
-bglr_artifact_audit$Artifacts_complete <-
-  bglr_artifact_audit$Fixed_file &
-  bglr_artifact_audit$Mu_file &
-  bglr_artifact_audit$Residual_file &
-  bglr_artifact_audit$Genomic_file
-
-write.csv(
-  bglr_artifact_audit,
-  file.path(
-    OUTPUT_DIR,
-    "bglr_artifact_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-bglr_artifact_summary <- data.frame(
-  Planned_runs = nrow(
-    bglr_artifact_audit
-  ),
-  Complete_native_archives = sum(
-    bglr_artifact_audit$Artifacts_complete
-  ),
-  Incomplete_native_archives = sum(
-    !bglr_artifact_audit$Artifacts_complete
-  ),
-  Expected_native_files = 4L *
-    nrow(
-      bglr_artifact_audit
-    ),
-  Present_native_files = sum(
-    bglr_artifact_audit$Fixed_file
-  ) +
-    sum(
-      bglr_artifact_audit$Mu_file
-    ) +
-    sum(
-      bglr_artifact_audit$Residual_file
-    ) +
-    sum(
-      bglr_artifact_audit$Genomic_file
-    )
-)
-
-kable(
-  bglr_artifact_summary,
-  caption = "Completude dos artefatos nativos do BGLR para os 350 ajustes oficiais"
-)
-```
-
-## 9. Consolidação dos 350 resultados compactos
+Os checkpoints compactos são consolidados sem reajustar modelos já concluídos.
+O objeto analítico final mantém os campos necessários aos módulos de comparação
+e ordenamento: assinatura e configurações analíticas, desenho das execuções,
+catálogo dos modelos, predições OOF, métricas por fold, valores genômicos específicos por fold e
+diagnósticos formais de convergência.
 
 ```{r consolidate-results}
 completed_after_build <- file.exists(
@@ -1468,1024 +1266,121 @@ completed_indices <- which(
   completed_after_build
 )
 
-result_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
+metric_parts <- vector("list", length(completed_indices))
+prediction_parts <- vector("list", length(completed_indices))
+genomic_value_parts <- vector("list", length(completed_indices))
+convergence_parts <- vector("list", length(completed_indices))
 
-metric_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-prediction_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-genomic_value_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-fixed_effect_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-marker_effect_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-convergence_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-run_audit_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-for (part_index in seq_along(
-  completed_indices
-)) {
-  run_index <- completed_indices[
-    part_index
-  ]
-
-  result_parts[[part_index]] <- readRDS(
-    result_files[
-      run_index
-    ]
-  )
-
-  metric_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      metrics
-
-  prediction_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      predictions
-
-  genomic_value_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      genomic_values
-
-  fixed_effect_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      fixed_effects
-
-  marker_effect_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      marker_effects
-
-  convergence_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      convergence
-
-  run_audit_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      run_audit
+for (part_index in seq_along(completed_indices)) {
+  run_index <- completed_indices[part_index]
+  compact_result <- readRDS(result_files[run_index])
+  metric_parts[[part_index]] <- compact_result$metrics
+  prediction_parts[[part_index]] <- compact_result$predictions
+  genomic_value_parts[[part_index]] <- compact_result$genomic_values
+  convergence_parts[[part_index]] <- compact_result$convergence
 }
 
-cv_metrics_by_fold <- bind_rows(
-  metric_parts
-)
-
-cv_predictions <- bind_rows(
-  prediction_parts
-)
-
-genomic_values_by_fold <- bind_rows(
-  genomic_value_parts
-)
-
-fixed_effects_by_fold <- bind_rows(
-  fixed_effect_parts
-)
-
-marker_effects_by_fold <- bind_rows(
-  marker_effect_parts
-)
-
-convergence_diagnostics <- bind_rows(
-  convergence_parts
-)
-
-run_audit <- bind_rows(
-  run_audit_parts
-)
-
-cv_fold_summary <- cv_metrics_by_fold |>
-  group_by(
-    Trait,
-    Method
-  ) |>
-  summarise(
-    Mean_fold_correlation = mean(
-      Correlation
-    ),
-    SD_fold_correlation = sd(
-      Correlation
-    ),
-    Mean_fold_RMSE = mean(
-      RMSE
-    ),
-    SD_fold_RMSE = sd(
-      RMSE
-    ),
-    Mean_fold_MAE = mean(
-      MAE
-    ),
-    SD_fold_MAE = sd(
-      MAE
-    ),
-    Mean_fold_bias = mean(
-      Prediction_bias
-    ),
-    Mean_fold_slope = mean(
-      Regression_slope
-    ),
-    Mean_DIC = mean(
-      DIC
-    ),
-    Mean_elapsed_seconds = mean(
-      Elapsed_seconds
-    ),
-    .groups = "drop"
-  )
-
-cv_pooled_summary <- cv_predictions |>
-  group_by(
-    Trait,
-    Method
-  ) |>
-  summarise(
-    Validation_n = n(),
-    Correlation = cor(
-      Observed,
-      Predicted
-    ),
-    RMSE = sqrt(
-      mean(
-        (
-          Observed -
-            Predicted
-        )^2
-      )
-    ),
-    MAE = mean(
-      abs(
-        Observed -
-          Predicted
-      )
-    ),
-    Prediction_bias = mean(
-      Predicted -
-        Observed
-    ),
-    Regression_slope =
-      cov(
-        Observed,
-        Predicted
-      ) /
-      var(
-        Predicted
-      ),
-    .groups = "drop"
-  )
-
-cv_metrics_summary <- left_join(
-  cv_pooled_summary,
-  cv_fold_summary,
-  by = c(
-    "Trait",
-    "Method"
-  )
-)
-
-cv_metrics_summary <- left_join(
-  cv_metrics_summary,
-  trait_dictionary,
-  by = "Trait"
-)
-
-cv_metrics_summary$Method_label <-
-  unname(
-    method_labels[
-      cv_metrics_summary$Method
-    ]
-  )
+cv_metrics_by_fold <- bind_rows(metric_parts)
+cv_predictions <- bind_rows(prediction_parts)
+genomic_values_by_fold <- bind_rows(genomic_value_parts)
+convergence_diagnostics <- bind_rows(convergence_parts)
 
 convergence_summary <- convergence_diagnostics |>
-  group_by(
-    Method
-  ) |>
+  group_by(Method) |>
   summarise(
-    Runs = n_distinct(
-      Run_id
-    ),
+    Runs = n_distinct(Run_id),
     Parameters_reviewed = n(),
-    Parameters_flagged = sum(
-      Review_flag
-    ),
-    Runs_with_flags = n_distinct(
-      Run_id[
-        Review_flag
-      ]
-    ),
-    Minimum_ESS = min(
-      Effective_sample_size,
-      na.rm = TRUE
-    ),
-    Median_ESS = median(
-      Effective_sample_size,
-      na.rm = TRUE
-    ),
-    Maximum_absolute_Geweke = max(
-      abs(
-        Geweke_Z
-      ),
-      na.rm = TRUE
-    ),
+    Parameters_flagged = sum(Review_flag),
+    Runs_with_flags = n_distinct(Run_id[Review_flag]),
+    Minimum_ESS = min(Effective_sample_size, na.rm = TRUE),
+    Median_ESS = median(Effective_sample_size, na.rm = TRUE),
+    Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
     .groups = "drop"
   )
 
 convergence_summary$Method_label <-
-  unname(
-    method_labels[
-      convergence_summary$Method
-    ]
-  )
+  unname(method_labels[convergence_summary$Method])
 
-runtime_summary <- cv_metrics_by_fold |>
-  group_by(
-    Method
-  ) |>
-  summarise(
-    Fits = n(),
-    Total_seconds = sum(
-      Elapsed_seconds
-    ),
-    Mean_seconds = mean(
-      Elapsed_seconds
-    ),
-    Median_seconds = median(
-      Elapsed_seconds
-    ),
-    Maximum_seconds = max(
-      Elapsed_seconds
-    ),
-    .groups = "drop"
-  )
-
-runtime_summary$Method_label <-
-  unname(
-    method_labels[
-      runtime_summary$Method
-    ]
-  )
-
-bayesb2_audit <- cv_metrics_by_fold |>
-  filter(
-    Method == "BayesB2"
-  ) |>
-  summarise(
-    Runs = n(),
-    Target_probIn =
-      BAYESB2_PROB_IN,
-    Minimum_posterior_probIn = min(
-      Posterior_probIn
-    ),
-    Maximum_posterior_probIn = max(
-      Posterior_probIn
-    ),
-    Mean_posterior_probIn = mean(
-      Posterior_probIn
-    ),
-    Maximum_absolute_deviation = max(
-      abs(
-        Posterior_probIn -
-          BAYESB2_PROB_IN
-      )
-    )
-  )
-
-rrblup_predictions <- cv_predictions |>
-  filter(
-    Method == "RRBLUP"
-  ) |>
-  select(
-    IND,
-    Trait,
-    Fold,
-    RRBLUP_prediction = Predicted
-  )
-
-gblup_predictions <- cv_predictions |>
-  filter(
-    Method == "GBLUP"
-  ) |>
-  select(
-    IND,
-    Trait,
-    Fold,
-    GBLUP_prediction = Predicted
-  )
-
-rrblup_gblup_audit <- inner_join(
-  rrblup_predictions,
-  gblup_predictions,
-  by = c(
-    "IND",
-    "Trait",
-    "Fold"
-  )
-) |>
-  group_by(
-    Trait,
-    Fold
-  ) |>
-  summarise(
-    Prediction_correlation = cor(
-      RRBLUP_prediction,
-      GBLUP_prediction
-    ),
-    Maximum_absolute_difference = max(
-      abs(
-        RRBLUP_prediction -
-          GBLUP_prediction
-      )
-    ),
-    Mean_absolute_difference = mean(
-      abs(
-        RRBLUP_prediction -
-          GBLUP_prediction
-      )
-    ),
-    .groups = "drop"
-  )
-
-completion_audit <- data.frame(
-  Check = c(
-    "Analytical signature",
-    "Planned fits",
-    "Completed fits",
-    "Missing fits",
-    "Expected prediction rows",
-    "Observed prediction rows",
-    "Expected genomic-value rows",
-    "Observed genomic-value rows",
-    "Expected validation predictions per trait and method",
-    "Observed validation predictions per trait and method",
-    "All predictions finite",
-    "All primary metrics finite",
-    "Expected raw saved samples per run",
-    "Minimum raw saved samples observed",
-    "Expected retained samples per run",
-    "Minimum retained samples observed"
-  ),
-  Expected = c(
-    analysis_signature,
-    nrow(
-      run_design
-    ),
-    nrow(
-      run_design
-    ),
-    0,
-    nrow(
-      run_design
-    ) * 30,
-    nrow(
-      run_design
-    ) * 30,
-    nrow(
-      run_design
-    ) *
-      length(ids),
-    nrow(
-      run_design
-    ) *
-      length(ids),
-    length(ids),
-    length(ids),
-    TRUE,
-    TRUE,
-    RAW_SAVED_SAMPLES,
-    RAW_SAVED_SAMPLES,
-    RETAINED_SAMPLES,
-    RETAINED_SAMPLES
-  ),
-  Observed = c(
-    analysis_signature,
-    nrow(
-      run_design
-    ),
-    sum(
-      completed_after_build
-    ),
-    sum(
-      !completed_after_build
-    ),
-    nrow(
-      run_design
-    ) * 30,
-    nrow(
-      cv_predictions
-    ),
-    nrow(
-      run_design
-    ) *
-      length(ids),
-    nrow(
-      genomic_values_by_fold
-    ),
-    length(ids),
-    paste(
-      range(
-        table(
-          cv_predictions$Trait,
-          cv_predictions$Method
-        )
-      ),
-      collapse = " to "
-    ),
-    all(
-      is.finite(
-        cv_predictions$Predicted
-      )
-    ),
-    all(
-      cv_metrics_by_fold$
-        Finite_metrics
-    ),
-    RAW_SAVED_SAMPLES,
-    min(
-      run_audit$
-        Observed_raw_saved_samples
-    ),
-    RETAINED_SAMPLES,
-    min(
-      run_audit$
-        Observed_retained_samples
-    )
-  )
-)
-```
-
-## 10. Saídas salvas da análise completa
-
-```{r save-complete-outputs}
-write.csv(
-  cv_predictions,
-  file.path(
-    OUTPUT_DIR,
-    "cv_predictions.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  genomic_values_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "genomic_values_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  cv_metrics_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "cv_metrics_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  cv_metrics_summary,
-  file.path(
-    OUTPUT_DIR,
-    "cv_metrics_summary.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  fixed_effects_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "fixed_effects_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  marker_effects_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "marker_effects_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  convergence_diagnostics,
-  file.path(
-    OUTPUT_DIR,
-    "convergence_diagnostics.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  convergence_summary,
-  file.path(
-    OUTPUT_DIR,
-    "convergence_summary.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  runtime_summary,
-  file.path(
-    OUTPUT_DIR,
-    "runtime_summary.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  bayesb2_audit,
-  file.path(
-    OUTPUT_DIR,
-    "bayesb2_probability_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  rrblup_gblup_audit,
-  file.path(
-    OUTPUT_DIR,
-    "rrblup_gblup_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  run_audit,
-  file.path(
-    OUTPUT_DIR,
-    "run_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  completion_audit,
-  file.path(
-    OUTPUT_DIR,
-    "completion_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-saveRDS(
-  list(
-    signature =
-      analysis_signature,
-    settings =
-      analysis_settings,
-    run_design =
-      run_design,
-    model_catalogue =
-      model_catalogue,
-    trait_dictionary =
-      trait_dictionary,
-    predictions =
-      cv_predictions,
-    genomic_values_by_fold =
-      genomic_values_by_fold,
-    metrics_by_fold =
-      cv_metrics_by_fold,
-    metrics_summary =
-      cv_metrics_summary,
-    fixed_effects_by_fold =
-      fixed_effects_by_fold,
-    marker_effects_by_fold =
-      marker_effects_by_fold,
-    convergence_diagnostics =
-      convergence_diagnostics,
-    convergence_summary =
-      convergence_summary,
-    runtime_summary =
-      runtime_summary,
-    bayesb2_audit =
-      bayesb2_audit,
-    rrblup_gblup_audit =
-      rrblup_gblup_audit,
-    run_audit =
-      run_audit,
-    completion_audit =
-      completion_audit
-  ),
-  file.path(
-    OUTPUT_DIR,
-    "models_object.rds"
-  )
-)
-```
-
-## 11. Auditoria da conclusão
-
-```{r completion-audit-table}
-completion_audit_display <- completion_audit
-
-completion_audit_display$Check <- c(
-  "Assinatura analítica",
-  "Ajustes planejados",
-  "Ajustes concluídos",
-  "Ajustes ausentes",
-  "Linhas de predição esperadas",
-  "Linhas de predição observadas",
-  "Linhas de valores genômicos esperadas",
-  "Linhas de valores genômicos observadas",
-  "Predições de validação esperadas por característica e método",
-  "Predições de validação observadas por característica e método",
-  "Todas as predições são finitas",
-  "Todas as métricas primárias são finitas",
-  "Amostras brutas esperadas salvas por ajuste",
-  "Mínimo observado de amostras brutas salvas",
-  "Amostras posteriores esperadas por ajuste",
-  "Mínimo observado de amostras posteriores"
+fit_status <- data.frame(
+  Ajustes_planejados = nrow(run_design),
+  Ajustes_concluidos = sum(completed_after_build),
+  Ajustes_restantes = sum(!completed_after_build)
 )
 
 kable(
-  completion_audit_display,
-  caption = "Auditoria da conclusão dos 350 ajustes planejados"
+  fit_status,
+  col.names = c("Ajustes planejados", "Ajustes concluídos", "Ajustes restantes"),
+  caption = "Situação dos ajustes de predição genômica planejados"
 )
 ```
 
-## 12. Desempenho preditivo com validação cruzada
+## 10. Saídas analíticas
 
-As métricas combinadas utilizam a predição de cada indivíduo no fold em que
-ele foi retirado. Consequentemente, cada combinação de característica e método
-contém 150 predições fora da amostra.
+Os arquivos em nível de fold são mantidos como exportações analíticas diretas.
+Efeitos fixos detalhados, efeitos individuais dos marcadores, auditorias de
+conclusão, inventários dos arquivos nativos e resumos preditivos ou de tempo
+duplicados não integram o objeto consolidado final porque não são necessários
+ao fluxo científico posterior.
 
-Correlação preditiva, RMSE, MAE, viés e inclinação da regressão são os critérios
-principais de comparação. O DIC permanece como diagnóstico do ajuste dos
-modelos e é resumido entre os folds.
+```{r save-complete-outputs}
+write.csv(cv_predictions, file.path(OUTPUT_DIR, "cv_predictions.csv"), row.names = FALSE)
+write.csv(genomic_values_by_fold, file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"), row.names = FALSE)
+write.csv(cv_metrics_by_fold, file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"), row.names = FALSE)
+write.csv(convergence_diagnostics, file.path(OUTPUT_DIR, "convergence_diagnostics.csv"), row.names = FALSE)
+write.csv(convergence_summary, file.path(OUTPUT_DIR, "convergence_summary.csv"), row.names = FALSE)
 
-```{r predictive-summary-table}
-cv_metrics_summary |>
-  select(
-    Trait,
-    Description_pt,
-    Unit,
-    Method_label,
-    Validation_n,
-    Correlation,
-    RMSE,
-    MAE,
-    Prediction_bias,
-    Regression_slope,
-    Mean_DIC
-  ) |>
-  arrange(
-    Trait,
-    desc(
-      Correlation
-    )
-  ) |>
-  kable(
-    digits = 6,
-    caption = "Desempenho preditivo combinado fora da amostra"
-  )
+saveRDS(
+  list(
+    signature = analysis_signature,
+    settings = analysis_settings,
+    run_design = run_design,
+    model_catalogue = model_catalogue,
+    trait_dictionary = trait_dictionary,
+    predictions = cv_predictions,
+    genomic_values_by_fold = genomic_values_by_fold,
+    metrics_by_fold = cv_metrics_by_fold,
+    convergence_diagnostics = convergence_diagnostics
+  ),
+  file.path(OUTPUT_DIR, "models_object.rds")
+)
 ```
 
-```{r predictive-correlation-heatmap, fig.height=7}
-ggplot(
-  cv_metrics_summary,
-  aes(
-    x = Method_label,
-    y = Trait,
-    fill = Correlation
-  )
-) +
-  geom_tile() +
-  geom_text(
-    aes(
-      label = sprintf(
-        "%.3f",
-        Correlation
-      )
-    )
-  ) +
-  labs(
-    x = NULL,
-    y = "Característica",
-    fill = "Correlação",
-    title = "Correlação preditiva combinada fora da amostra"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(
-      angle = 45,
-      hjust = 1
-    )
-  )
-```
-
-## 13. Revisão da convergência MCMC
+## 11. Diagnósticos de convergência MCMC
 
 O ESS e a estatística de Geweke são diagnósticos de cadeia única. Eles não
 comprovam a convergência, mas identificam execuções e parâmetros escalares que
-exigem inspeção mais detalhada antes da interpretação biológica.
+exigem inspeção mais detalhada. Os limites de revisão são indicadores
+diagnósticos e não regras automáticas de exclusão dos modelos.
 
 ```{r convergence-summary-table}
 convergence_summary |>
   select(
-    Method_label,
-    Runs,
-    Parameters_reviewed,
-    Parameters_flagged,
-    Runs_with_flags,
-    Minimum_ESS,
-    Median_ESS,
-    Maximum_absolute_Geweke
+    Method_label, Runs, Parameters_reviewed, Parameters_flagged,
+    Runs_with_flags, Minimum_ESS, Median_ESS, Maximum_absolute_Geweke
   ) |>
   kable(
     digits = 3,
-    caption = "Revisão da convergência de cadeia única por método"
+    caption = "Diagnósticos MCMC de cadeia única por método"
   )
 ```
 
 ```{r convergence-flag-table}
 convergence_diagnostics |>
-  filter(
-    Review_flag
-  ) |>
-  arrange(
-    Method,
-    Trait,
-    Fold,
-    Parameter
-  ) |>
+  filter(Review_flag) |>
+  arrange(Method, Trait, Fold, Parameter) |>
   kable(
     digits = 4,
     caption = "Cadeias escalares indicadas para revisão adicional"
   )
 ```
 
-### 13.1 Inspeção representativa das cadeias a posteriori
+As cadeias nativas do BGLR permanecem em `output/models/bglr/` para inspeção
+posterior e para as apresentações gráficas finais. Elas não são duplicadas
+neste módulo.
 
-Os resumos de ESS e Geweke apresentados acima abrangem todos os ajustes
-oficiais. Para acrescentar a inspeção gráfica das cadeias MCMC utilizada no
-artigo de referência, as amostras a posteriori de um ajuste oficial
-representativo foram recuperadas por meio de um replay determinístico de
-`PRODCOM_F1_RRBLUP`. O replay utilizou os mesmos dados, fold, matrizes,
-fenótipos omitidos, semente, versão do BGLR e configurações MCMC do ajuste
-original. Ele foi necessário apenas porque o pipeline de produção descartou
-intencionalmente os arquivos brutos das cadeias do BGLR depois de calcular os
-resumos compactos de convergência.
+## 12. Próxima etapa
 
-O replay não constitui um resultado adicional de validação cruzada e não
-substitui nenhum dos 350 ajustes oficiais. Antes de sua inclusão neste módulo,
-suas predições, efeitos, estatísticas de ajuste e resumos de convergência foram
-comparados com o checkpoint compacto original, e todas as quantidades
-comparadas coincidiram exatamente. Apenas as cadeias posteriores compactas
-necessárias para a apresentação gráfica final são mantidas como saída
-permanente dos modelos.
-
-```{r mcmc-posterior-load}
-MCMC_POSTERIOR_DIR <- file.path(
-  OUTPUT_DIR,
-  "mcmc",
-  "PRODCOM_F1_RRBLUP"
-)
-
-mcmc_replay_summary <- read.csv(
-  file.path(
-    MCMC_POSTERIOR_DIR,
-    "posterior_chain_summary.csv"
-  ),
-  stringsAsFactors = FALSE,
-  check.names = FALSE
-)
-
-mcmc_replay_chains <- readRDS(
-  file.path(
-    MCMC_POSTERIOR_DIR,
-    "posterior_chains.rds"
-  )
-)
-
-```
-
-Nas 200.000 amostras posteriores retidas, a cadeia da variância residual
-apresentou média a posteriori de
-`r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Residual_variance"], 4)`,
-tamanho efetivo de amostra de
-`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Residual_variance"])`
-e estatística de Geweke igual a
-`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Residual_variance"], 3)`.
-A cadeia da variância dos marcadores apresentou média a posteriori de
-`r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Marker_variance"], 4)`,
-tamanho efetivo de amostra de
-`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Marker_variance"])`
-e estatística de Geweke igual a
-`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Marker_variance"], 3)`.
-Nenhum dos dois parâmetros foi sinalizado para revisão adicional da
-convergência.
-
-```{r mcmc-replay-summary-table}
-mcmc_replay_summary |>
-  select(
-    Parameter,
-    Retained_samples,
-    Posterior_mean,
-    Posterior_SD,
-    Effective_sample_size,
-    Geweke_Z,
-    Review_flag
-  ) |>
-  kable(
-    digits = 4,
-    caption = "Diagnósticos das cadeias a posteriori para o ajuste RR-BLUP/BRR oficial representativo"
-  )
-```
-
-```{r mcmc-replay-figure, fig.width=12, fig.height=7.6, fig.cap="Diagnósticos MCMC representativos para o ajuste oficial RR-BLUP/BRR de PRODCOM no fold 1. Os trace plots apresentam as 200.000 amostras retidas após o burn-in; as médias acumuladas mostram a estabilização das esperanças a posteriori; e as densidades resumem as distribuições marginais a posteriori. O replay determinístico reproduziu exatamente o checkpoint oficial original antes que essas cadeias fossem utilizadas para visualização."}
-par(
-  mfrow = c(2, 3),
-  mar = c(4.2, 4.5, 3.0, 1.0),
-  oma = c(0, 0, 0.5, 0)
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Residual_variance,
-  type = "l",
-  xlab = "Iteração",
-  ylab = expression(sigma[e]^2),
-  main = "Trace plot — variância residual"
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Residual_running_mean,
-  type = "l",
-  xlab = "Iteração",
-  ylab = "Média acumulada",
-  main = "Média acumulada — variância residual"
-)
-abline(
-  h = mean(
-    mcmc_replay_chains$Residual_variance
-  ),
-  lty = 2
-)
-
-plot(
-  density(
-    mcmc_replay_chains$Residual_variance
-  ),
-  xlab = expression(sigma[e]^2),
-  ylab = "Densidade",
-  main = "Distribuição a posteriori — variância residual"
-)
-abline(
-  v = mean(
-    mcmc_replay_chains$Residual_variance
-  ),
-  lty = 2
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Marker_variance,
-  type = "l",
-  xlab = "Iteração",
-  ylab = expression(sigma[b]^2),
-  main = "Trace plot — variância dos marcadores"
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Marker_running_mean,
-  type = "l",
-  xlab = "Iteração",
-  ylab = "Média acumulada",
-  main = "Média acumulada — variância dos marcadores"
-)
-abline(
-  h = mean(
-    mcmc_replay_chains$Marker_variance
-  ),
-  lty = 2
-)
-
-plot(
-  density(
-    mcmc_replay_chains$Marker_variance
-  ),
-  xlab = expression(sigma[b]^2),
-  ylab = "Densidade",
-  main = "Distribuição a posteriori — variância dos marcadores"
-)
-abline(
-  v = mean(
-    mcmc_replay_chains$Marker_variance
-  ),
-  lty = 2
-)
-```
-
-Os trace plots oscilam em regiões estáveis, sem deriva visível de longo prazo,
-enquanto as médias acumuladas se estabilizam rapidamente ao longo da amostra
-posterior retida. As distribuições marginais a posteriori são unimodais e
-assimétricas à direita, principalmente para a variância dos marcadores. Em
-conjunto com os elevados tamanhos efetivos de amostra e as estatísticas de
-Geweke bem dentro do limite de revisão, as cadeias representativas sustentam
-um comportamento MCMC adequado para esse ajuste oficial. Esses diagnósticos
-gráficos complementam, sem substituir, a revisão sistemática por ESS e Geweke
-dos 350 ajustes oficiais.
-
-## 14. Auditoria da probabilidade do BayesB2
-
-```{r bayesb2-audit-table}
-kable(
-  bayesb2_audit,
-  digits = 10,
-  caption = "Auditoria da probabilidade de efeito diferente de zero do BayesB2"
-)
-```
-
-## 15. Comparação diagnóstica entre RR-BLUP e GBLUP
-
-O RR-BLUP utiliza diretamente `M` por meio do componente `BRR`, enquanto o
-GBLUP utiliza `G` por meio do componente `RKHS`. Como `G` é derivada de `M`,
-espera-se associação entre suas predições, mas não se impõe igualdade
-numérica.
-
-```{r rrblup-gblup-table}
-kable(
-  rrblup_gblup_audit,
-  digits = 8,
-  caption = "Comparação das predições de RR-BLUP e GBLUP por característica e fold"
-)
-```
-
-## 16. Inventário do tempo de execução
-
-```{r runtime-summary-table}
-runtime_summary |>
-  select(
-    Method_label,
-    Fits,
-    Total_seconds,
-    Mean_seconds,
-    Median_seconds,
-    Maximum_seconds
-  ) |>
-  kable(
-    digits = 3,
-    caption = "Resumo do tempo de execução da análise completa"
-  )
-```
-
-## 17. Próxima etapa
-
-O Módulo 04 utilizará as predições fora da amostra e os componentes genômicos
-salvos aqui para:
-
-- comparar os métodos em cada característica;
-- examinar a estabilidade entre os folds;
-- resumir os efeitos dos marcadores;
-- calcular valores genômicos com validação cruzada;
-- construir rankings específicos por característica;
-- documentar a influência das observações fenotípicas destacadas anteriormente;
-- definir as saídas finais de seleção sem impor um índice econômico
-  multicaracterística não documentado.
+O Módulo 04 utiliza essas saídas oficiais, sem reajustar modelos, para comparar
+os sete métodos dentro de cada característica, integrar desempenho preditivo
+OOF, DIC e diagnósticos MCMC, obter os valores genômicos OOF selecionados e
+construir os rankings genômicos específicos por característica.

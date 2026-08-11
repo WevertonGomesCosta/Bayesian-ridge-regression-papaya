@@ -1,5 +1,5 @@
 ---
-title: "Complete fitting of seven genomic prediction methods in papaya"
+title: "Model fitting and MCMC diagnostics for genomic prediction in papaya"
 author:
   - Costa, W. G.^[Weverton Gomes da Costa, Postdoctoral Researcher, Department of Statistics - Federal University of Viçosa, weverton.costa@ufv.br]
 date: "`r Sys.Date()`"
@@ -103,19 +103,15 @@ Each trait-fold-method combination has:
 - a persistent directory containing the native files written by BGLR;
 - a row in the run manifest.
 
-The compact RDS remains the checkpoint that determines whether a statistical
-fit is missing during an ordinary rebuild. Completed checkpoints are skipped,
-so the model, seed, matrices, and cross-validation contract are not changed by
-this storage revision.
+The compact RDS is the checkpoint that determines whether a statistical fit is
+missing during an ordinary rebuild. Completed checkpoints are skipped, so an
+ordinary rebuild does not refit completed models.
 
-The native BGLR files are now preserved under
-`output/models/bglr/Trait/Fold/Method/`. They retain all files written
-by the current BGLR specification, including the thinned burn-in and posterior
-samples. The same files are read for the convergence diagnostics, but they are
-no longer deleted after the compact checkpoint is created. Historical native
-files that were deleted by earlier versions of the pipeline are reconstructed
-separately by deterministic replay and are accepted only after exact comparison
-with the corresponding official checkpoint.
+Native BGLR files are preserved under
+`output/models/bglr/Trait/Fold/Method/`. They contain the thinned chains written
+by BGLR and are used directly for posterior diagnostics and final graphical
+summaries. The compact RDS, rather than the native chain files, remains the
+criterion used to resume the 350-fit analysis.
 
 ## 4. Packages and complete-analysis settings
 
@@ -125,7 +121,6 @@ suppressPackageStartupMessages({
   library(coda)
   library(digest)
   library(dplyr)
-  library(ggplot2)
   library(knitr)
   library(here)
 })
@@ -250,59 +245,6 @@ method_labels <- c(
 )
 ```
 
-```{r input-audit}
-input_audit <- data.frame(
-  Check = c(
-    "Individuals",
-    "Traits",
-    "Folds",
-    "Methods",
-    "Planned fits",
-    "Validation individuals per fold",
-    "Training individuals per fold",
-    "Fixed-effect columns supplied to BGLR",
-    "Marker columns",
-    "Rank of M",
-    "Rows and columns of G",
-    "Rank of G",
-    "X row names aligned with IDs",
-    "M row names aligned with IDs",
-    "G row names aligned with IDs",
-    "G column names aligned with IDs"
-  ),
-  Value = c(
-    length(ids),
-    length(traits),
-    matrices_object$settings$n_folds,
-    length(method_names),
-    length(traits) *
-      matrices_object$settings$n_folds *
-      length(method_names),
-    unique(
-      matrices_object$fold_summary$
-        Validation_n
-    ),
-    unique(
-      matrices_object$fold_summary$
-        Training_n
-    ),
-    ncol(X_fixed),
-    ncol(M),
-    qr(M)$rank,
-    paste(dim(G), collapse = " x "),
-    qr(G)$rank,
-    identical(rownames(X), ids),
-    identical(rownames(M), ids),
-    identical(rownames(G), ids),
-    identical(colnames(G), ids)
-  )
-)
-
-kable(
-  input_audit,
-  caption = "Invariant input audit for the complete model fitting"
-)
-```
 
 ## 6. Model catalogue and BGLR specifications
 
@@ -1289,157 +1231,13 @@ for (run_index in pending_indices) {
 ```
 
 
-### 8.1 Native BGLR artifact audit
+## 9. Consolidation of the official results
 
-This block checks whether the four native files expected from each official
-BGLR fit are present and non-empty in the persistent run archive. It is a
-read-only completeness check: it does not refit any model and does not modify
-the existing compact checkpoints.
-
-```{r bglr-native-artifact-audit}
-bglr_run_dirs <- file.path(
-  BGLR_RUNS_DIR,
-  run_design$Trait,
-  paste0(
-    "F",
-    run_design$Fold
-  ),
-  run_design$Method
-)
-
-bglr_fixed_files <- file.path(
-  bglr_run_dirs,
-  "bglr_ETA_fixed_b.dat"
-)
-
-bglr_mu_files <- file.path(
-  bglr_run_dirs,
-  "bglr_mu.dat"
-)
-
-bglr_residual_files <- file.path(
-  bglr_run_dirs,
-  "bglr_varE.dat"
-)
-
-bglr_genomic_files <- file.path(
-  bglr_run_dirs,
-  paste0(
-    "bglr_",
-    unname(
-      genomic_trace_suffix[
-        run_design$Method
-      ]
-    )
-  )
-)
-
-bglr_fixed_sizes <- file.info(
-  bglr_fixed_files
-)$size
-
-bglr_mu_sizes <- file.info(
-  bglr_mu_files
-)$size
-
-bglr_residual_sizes <- file.info(
-  bglr_residual_files
-)$size
-
-bglr_genomic_sizes <- file.info(
-  bglr_genomic_files
-)$size
-
-bglr_artifact_audit <- data.frame(
-  Run_id = run_design$Run_id,
-  Signature = run_design$Signature,
-  Trait = run_design$Trait,
-  Fold = run_design$Fold,
-  Method = run_design$Method,
-  Fixed_file =
-    file.exists(
-      bglr_fixed_files
-    ) &
-    !is.na(
-      bglr_fixed_sizes
-    ) &
-    bglr_fixed_sizes > 0,
-  Mu_file =
-    file.exists(
-      bglr_mu_files
-    ) &
-    !is.na(
-      bglr_mu_sizes
-    ) &
-    bglr_mu_sizes > 0,
-  Residual_file =
-    file.exists(
-      bglr_residual_files
-    ) &
-    !is.na(
-      bglr_residual_sizes
-    ) &
-    bglr_residual_sizes > 0,
-  Genomic_file =
-    file.exists(
-      bglr_genomic_files
-    ) &
-    !is.na(
-      bglr_genomic_sizes
-    ) &
-    bglr_genomic_sizes > 0
-)
-
-bglr_artifact_audit$Artifacts_complete <-
-  bglr_artifact_audit$Fixed_file &
-  bglr_artifact_audit$Mu_file &
-  bglr_artifact_audit$Residual_file &
-  bglr_artifact_audit$Genomic_file
-
-write.csv(
-  bglr_artifact_audit,
-  file.path(
-    OUTPUT_DIR,
-    "bglr_artifact_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-bglr_artifact_summary <- data.frame(
-  Planned_runs = nrow(
-    bglr_artifact_audit
-  ),
-  Complete_native_archives = sum(
-    bglr_artifact_audit$Artifacts_complete
-  ),
-  Incomplete_native_archives = sum(
-    !bglr_artifact_audit$Artifacts_complete
-  ),
-  Expected_native_files = 4L *
-    nrow(
-      bglr_artifact_audit
-    ),
-  Present_native_files = sum(
-    bglr_artifact_audit$Fixed_file
-  ) +
-    sum(
-      bglr_artifact_audit$Mu_file
-    ) +
-    sum(
-      bglr_artifact_audit$Residual_file
-    ) +
-    sum(
-      bglr_artifact_audit$Genomic_file
-    )
-)
-
-kable(
-  bglr_artifact_summary,
-  caption = "Native BGLR artifact completeness for the 350 official fits"
-)
-```
-
-## 9. Consolidation of the 350 compact results
+The compact checkpoints are consolidated without refitting completed models.
+The final analytical object retains the fields required by the comparison and
+ranking modules: the analytical signature and settings, run design, model
+catalogue, OOF predictions, fold-specific metrics, genomic values by fold, and
+formal convergence diagnostics.
 
 ```{r consolidate-results}
 completed_after_build <- file.exists(
@@ -1450,996 +1248,119 @@ completed_indices <- which(
   completed_after_build
 )
 
-result_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
+metric_parts <- vector("list", length(completed_indices))
+prediction_parts <- vector("list", length(completed_indices))
+genomic_value_parts <- vector("list", length(completed_indices))
+convergence_parts <- vector("list", length(completed_indices))
 
-metric_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-prediction_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-genomic_value_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-fixed_effect_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-marker_effect_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-convergence_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-run_audit_parts <- vector(
-  mode = "list",
-  length = length(
-    completed_indices
-  )
-)
-
-for (part_index in seq_along(
-  completed_indices
-)) {
-  run_index <- completed_indices[
-    part_index
-  ]
-
-  result_parts[[part_index]] <- readRDS(
-    result_files[
-      run_index
-    ]
-  )
-
-  metric_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      metrics
-
-  prediction_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      predictions
-
-  genomic_value_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      genomic_values
-
-  fixed_effect_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      fixed_effects
-
-  marker_effect_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      marker_effects
-
-  convergence_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      convergence
-
-  run_audit_parts[[part_index]] <-
-    result_parts[[part_index]]$
-      run_audit
+for (part_index in seq_along(completed_indices)) {
+  run_index <- completed_indices[part_index]
+  compact_result <- readRDS(result_files[run_index])
+  metric_parts[[part_index]] <- compact_result$metrics
+  prediction_parts[[part_index]] <- compact_result$predictions
+  genomic_value_parts[[part_index]] <- compact_result$genomic_values
+  convergence_parts[[part_index]] <- compact_result$convergence
 }
 
-cv_metrics_by_fold <- bind_rows(
-  metric_parts
-)
-
-cv_predictions <- bind_rows(
-  prediction_parts
-)
-
-genomic_values_by_fold <- bind_rows(
-  genomic_value_parts
-)
-
-fixed_effects_by_fold <- bind_rows(
-  fixed_effect_parts
-)
-
-marker_effects_by_fold <- bind_rows(
-  marker_effect_parts
-)
-
-convergence_diagnostics <- bind_rows(
-  convergence_parts
-)
-
-run_audit <- bind_rows(
-  run_audit_parts
-)
-
-cv_fold_summary <- cv_metrics_by_fold |>
-  group_by(
-    Trait,
-    Method
-  ) |>
-  summarise(
-    Mean_fold_correlation = mean(
-      Correlation
-    ),
-    SD_fold_correlation = sd(
-      Correlation
-    ),
-    Mean_fold_RMSE = mean(
-      RMSE
-    ),
-    SD_fold_RMSE = sd(
-      RMSE
-    ),
-    Mean_fold_MAE = mean(
-      MAE
-    ),
-    SD_fold_MAE = sd(
-      MAE
-    ),
-    Mean_fold_bias = mean(
-      Prediction_bias
-    ),
-    Mean_fold_slope = mean(
-      Regression_slope
-    ),
-    Mean_DIC = mean(
-      DIC
-    ),
-    Mean_elapsed_seconds = mean(
-      Elapsed_seconds
-    ),
-    .groups = "drop"
-  )
-
-cv_pooled_summary <- cv_predictions |>
-  group_by(
-    Trait,
-    Method
-  ) |>
-  summarise(
-    Validation_n = n(),
-    Correlation = cor(
-      Observed,
-      Predicted
-    ),
-    RMSE = sqrt(
-      mean(
-        (
-          Observed -
-            Predicted
-        )^2
-      )
-    ),
-    MAE = mean(
-      abs(
-        Observed -
-          Predicted
-      )
-    ),
-    Prediction_bias = mean(
-      Predicted -
-        Observed
-    ),
-    Regression_slope =
-      cov(
-        Observed,
-        Predicted
-      ) /
-      var(
-        Predicted
-      ),
-    .groups = "drop"
-  )
-
-cv_metrics_summary <- left_join(
-  cv_pooled_summary,
-  cv_fold_summary,
-  by = c(
-    "Trait",
-    "Method"
-  )
-)
-
-cv_metrics_summary <- left_join(
-  cv_metrics_summary,
-  trait_dictionary,
-  by = "Trait"
-)
-
-cv_metrics_summary$Method_label <-
-  unname(
-    method_labels[
-      cv_metrics_summary$Method
-    ]
-  )
+cv_metrics_by_fold <- bind_rows(metric_parts)
+cv_predictions <- bind_rows(prediction_parts)
+genomic_values_by_fold <- bind_rows(genomic_value_parts)
+convergence_diagnostics <- bind_rows(convergence_parts)
 
 convergence_summary <- convergence_diagnostics |>
-  group_by(
-    Method
-  ) |>
+  group_by(Method) |>
   summarise(
-    Runs = n_distinct(
-      Run_id
-    ),
+    Runs = n_distinct(Run_id),
     Parameters_reviewed = n(),
-    Parameters_flagged = sum(
-      Review_flag
-    ),
-    Runs_with_flags = n_distinct(
-      Run_id[
-        Review_flag
-      ]
-    ),
-    Minimum_ESS = min(
-      Effective_sample_size,
-      na.rm = TRUE
-    ),
-    Median_ESS = median(
-      Effective_sample_size,
-      na.rm = TRUE
-    ),
-    Maximum_absolute_Geweke = max(
-      abs(
-        Geweke_Z
-      ),
-      na.rm = TRUE
-    ),
+    Parameters_flagged = sum(Review_flag),
+    Runs_with_flags = n_distinct(Run_id[Review_flag]),
+    Minimum_ESS = min(Effective_sample_size, na.rm = TRUE),
+    Median_ESS = median(Effective_sample_size, na.rm = TRUE),
+    Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
     .groups = "drop"
   )
 
 convergence_summary$Method_label <-
-  unname(
-    method_labels[
-      convergence_summary$Method
-    ]
-  )
+  unname(method_labels[convergence_summary$Method])
 
-runtime_summary <- cv_metrics_by_fold |>
-  group_by(
-    Method
-  ) |>
-  summarise(
-    Fits = n(),
-    Total_seconds = sum(
-      Elapsed_seconds
-    ),
-    Mean_seconds = mean(
-      Elapsed_seconds
-    ),
-    Median_seconds = median(
-      Elapsed_seconds
-    ),
-    Maximum_seconds = max(
-      Elapsed_seconds
-    ),
-    .groups = "drop"
-  )
+fit_status <- data.frame(
+  Planned_fits = nrow(run_design),
+  Completed_fits = sum(completed_after_build),
+  Remaining_fits = sum(!completed_after_build)
+)
 
-runtime_summary$Method_label <-
-  unname(
-    method_labels[
-      runtime_summary$Method
-    ]
-  )
-
-bayesb2_audit <- cv_metrics_by_fold |>
-  filter(
-    Method == "BayesB2"
-  ) |>
-  summarise(
-    Runs = n(),
-    Target_probIn =
-      BAYESB2_PROB_IN,
-    Minimum_posterior_probIn = min(
-      Posterior_probIn
-    ),
-    Maximum_posterior_probIn = max(
-      Posterior_probIn
-    ),
-    Mean_posterior_probIn = mean(
-      Posterior_probIn
-    ),
-    Maximum_absolute_deviation = max(
-      abs(
-        Posterior_probIn -
-          BAYESB2_PROB_IN
-      )
-    )
-  )
-
-rrblup_predictions <- cv_predictions |>
-  filter(
-    Method == "RRBLUP"
-  ) |>
-  select(
-    IND,
-    Trait,
-    Fold,
-    RRBLUP_prediction = Predicted
-  )
-
-gblup_predictions <- cv_predictions |>
-  filter(
-    Method == "GBLUP"
-  ) |>
-  select(
-    IND,
-    Trait,
-    Fold,
-    GBLUP_prediction = Predicted
-  )
-
-rrblup_gblup_audit <- inner_join(
-  rrblup_predictions,
-  gblup_predictions,
-  by = c(
-    "IND",
-    "Trait",
-    "Fold"
-  )
-) |>
-  group_by(
-    Trait,
-    Fold
-  ) |>
-  summarise(
-    Prediction_correlation = cor(
-      RRBLUP_prediction,
-      GBLUP_prediction
-    ),
-    Maximum_absolute_difference = max(
-      abs(
-        RRBLUP_prediction -
-          GBLUP_prediction
-      )
-    ),
-    Mean_absolute_difference = mean(
-      abs(
-        RRBLUP_prediction -
-          GBLUP_prediction
-      )
-    ),
-    .groups = "drop"
-  )
-
-completion_audit <- data.frame(
-  Check = c(
-    "Analytical signature",
-    "Planned fits",
-    "Completed fits",
-    "Missing fits",
-    "Expected prediction rows",
-    "Observed prediction rows",
-    "Expected genomic-value rows",
-    "Observed genomic-value rows",
-    "Expected validation predictions per trait and method",
-    "Observed validation predictions per trait and method",
-    "All predictions finite",
-    "All primary metrics finite",
-    "Expected raw saved samples per run",
-    "Minimum raw saved samples observed",
-    "Expected retained samples per run",
-    "Minimum retained samples observed"
-  ),
-  Expected = c(
-    analysis_signature,
-    nrow(
-      run_design
-    ),
-    nrow(
-      run_design
-    ),
-    0,
-    nrow(
-      run_design
-    ) * 30,
-    nrow(
-      run_design
-    ) * 30,
-    nrow(
-      run_design
-    ) *
-      length(ids),
-    nrow(
-      run_design
-    ) *
-      length(ids),
-    length(ids),
-    length(ids),
-    TRUE,
-    TRUE,
-    RAW_SAVED_SAMPLES,
-    RAW_SAVED_SAMPLES,
-    RETAINED_SAMPLES,
-    RETAINED_SAMPLES
-  ),
-  Observed = c(
-    analysis_signature,
-    nrow(
-      run_design
-    ),
-    sum(
-      completed_after_build
-    ),
-    sum(
-      !completed_after_build
-    ),
-    nrow(
-      run_design
-    ) * 30,
-    nrow(
-      cv_predictions
-    ),
-    nrow(
-      run_design
-    ) *
-      length(ids),
-    nrow(
-      genomic_values_by_fold
-    ),
-    length(ids),
-    paste(
-      range(
-        table(
-          cv_predictions$Trait,
-          cv_predictions$Method
-        )
-      ),
-      collapse = " to "
-    ),
-    all(
-      is.finite(
-        cv_predictions$Predicted
-      )
-    ),
-    all(
-      cv_metrics_by_fold$
-        Finite_metrics
-    ),
-    RAW_SAVED_SAMPLES,
-    min(
-      run_audit$
-        Observed_raw_saved_samples
-    ),
-    RETAINED_SAMPLES,
-    min(
-      run_audit$
-        Observed_retained_samples
-    )
-  )
+kable(
+  fit_status,
+  caption = "Status of the planned genomic-prediction fits"
 )
 ```
 
-## 10. Saved complete-analysis outputs
+## 10. Analytical outputs
+
+The fold-level files are kept as direct analytical exports. Detailed fixed
+effects, marker effects, run-completion audits, native-file inventories, and
+duplicated predictive or runtime summaries are not part of the final
+consolidated object because they are not required by the downstream scientific
+workflow.
 
 ```{r save-complete-outputs}
-write.csv(
-  cv_predictions,
-  file.path(
-    OUTPUT_DIR,
-    "cv_predictions.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  genomic_values_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "genomic_values_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  cv_metrics_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "cv_metrics_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  cv_metrics_summary,
-  file.path(
-    OUTPUT_DIR,
-    "cv_metrics_summary.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  fixed_effects_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "fixed_effects_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  marker_effects_by_fold,
-  file.path(
-    OUTPUT_DIR,
-    "marker_effects_by_fold.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  convergence_diagnostics,
-  file.path(
-    OUTPUT_DIR,
-    "convergence_diagnostics.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  convergence_summary,
-  file.path(
-    OUTPUT_DIR,
-    "convergence_summary.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  runtime_summary,
-  file.path(
-    OUTPUT_DIR,
-    "runtime_summary.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  bayesb2_audit,
-  file.path(
-    OUTPUT_DIR,
-    "bayesb2_probability_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  rrblup_gblup_audit,
-  file.path(
-    OUTPUT_DIR,
-    "rrblup_gblup_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  run_audit,
-  file.path(
-    OUTPUT_DIR,
-    "run_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  completion_audit,
-  file.path(
-    OUTPUT_DIR,
-    "completion_audit.csv"
-  ),
-  row.names = FALSE
-)
+write.csv(cv_predictions, file.path(OUTPUT_DIR, "cv_predictions.csv"), row.names = FALSE)
+write.csv(genomic_values_by_fold, file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"), row.names = FALSE)
+write.csv(cv_metrics_by_fold, file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"), row.names = FALSE)
+write.csv(convergence_diagnostics, file.path(OUTPUT_DIR, "convergence_diagnostics.csv"), row.names = FALSE)
+write.csv(convergence_summary, file.path(OUTPUT_DIR, "convergence_summary.csv"), row.names = FALSE)
 
 saveRDS(
   list(
-    signature =
-      analysis_signature,
-    settings =
-      analysis_settings,
-    run_design =
-      run_design,
-    model_catalogue =
-      model_catalogue,
-    trait_dictionary =
-      trait_dictionary,
-    predictions =
-      cv_predictions,
-    genomic_values_by_fold =
-      genomic_values_by_fold,
-    metrics_by_fold =
-      cv_metrics_by_fold,
-    metrics_summary =
-      cv_metrics_summary,
-    fixed_effects_by_fold =
-      fixed_effects_by_fold,
-    marker_effects_by_fold =
-      marker_effects_by_fold,
-    convergence_diagnostics =
-      convergence_diagnostics,
-    convergence_summary =
-      convergence_summary,
-    runtime_summary =
-      runtime_summary,
-    bayesb2_audit =
-      bayesb2_audit,
-    rrblup_gblup_audit =
-      rrblup_gblup_audit,
-    run_audit =
-      run_audit,
-    completion_audit =
-      completion_audit
+    signature = analysis_signature,
+    settings = analysis_settings,
+    run_design = run_design,
+    model_catalogue = model_catalogue,
+    trait_dictionary = trait_dictionary,
+    predictions = cv_predictions,
+    genomic_values_by_fold = genomic_values_by_fold,
+    metrics_by_fold = cv_metrics_by_fold,
+    convergence_diagnostics = convergence_diagnostics
   ),
-  file.path(
-    OUTPUT_DIR,
-    "models_object.rds"
-  )
+  file.path(OUTPUT_DIR, "models_object.rds")
 )
 ```
 
-## 11. Completion audit
+## 11. MCMC convergence diagnostics
 
-```{r completion-audit-table}
-kable(
-  completion_audit,
-  caption = "Completion audit for the 350 planned fits"
-)
-```
-
-## 12. Cross-validated predictive performance
-
-The pooled metrics use each individual's prediction from the fold in which that
-individual was withheld. Consequently, every trait-method combination contains
-150 out-of-fold predictions.
-
-Predictive correlation, RMSE, MAE, bias, and regression slope are the primary
-comparison criteria. DIC remains a model-fit diagnostic and is summarized
-across folds.
-
-```{r predictive-summary-table}
-cv_metrics_summary |>
-  select(
-    Trait,
-    Description_en,
-    Unit,
-    Method_label,
-    Validation_n,
-    Correlation,
-    RMSE,
-    MAE,
-    Prediction_bias,
-    Regression_slope,
-    Mean_DIC
-  ) |>
-  arrange(
-    Trait,
-    desc(
-      Correlation
-    )
-  ) |>
-  kable(
-    digits = 6,
-    caption = "Pooled out-of-fold predictive performance"
-  )
-```
-
-```{r predictive-correlation-heatmap, fig.height=7}
-ggplot(
-  cv_metrics_summary,
-  aes(
-    x = Method_label,
-    y = Trait,
-    fill = Correlation
-  )
-) +
-  geom_tile() +
-  geom_text(
-    aes(
-      label = sprintf(
-        "%.3f",
-        Correlation
-      )
-    )
-  ) +
-  labs(
-    x = NULL,
-    y = "Trait",
-    fill = "Correlation",
-    title = "Pooled out-of-fold predictive correlation"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(
-      angle = 45,
-      hjust = 1
-    )
-  )
-```
-
-## 13. MCMC convergence review
-
-ESS and Geweke statistics are single-chain diagnostics. They do not prove
+ESS and the Geweke statistic are single-chain diagnostics. They do not prove
 convergence, but they identify runs and scalar parameters that require closer
-inspection before biological interpretation.
+inspection. The review thresholds are diagnostic indicators and are not
+automatic model-exclusion rules.
 
 ```{r convergence-summary-table}
 convergence_summary |>
   select(
-    Method_label,
-    Runs,
-    Parameters_reviewed,
-    Parameters_flagged,
-    Runs_with_flags,
-    Minimum_ESS,
-    Median_ESS,
-    Maximum_absolute_Geweke
+    Method_label, Runs, Parameters_reviewed, Parameters_flagged,
+    Runs_with_flags, Minimum_ESS, Median_ESS, Maximum_absolute_Geweke
   ) |>
   kable(
     digits = 3,
-    caption = "Single-chain convergence review by method"
+    caption = "Single-chain MCMC diagnostics by method"
   )
 ```
 
 ```{r convergence-flag-table}
 convergence_diagnostics |>
-  filter(
-    Review_flag
-  ) |>
-  arrange(
-    Method,
-    Trait,
-    Fold,
-    Parameter
-  ) |>
+  filter(Review_flag) |>
+  arrange(Method, Trait, Fold, Parameter) |>
   kable(
     digits = 4,
     caption = "Scalar chains flagged for additional review"
   )
 ```
 
-### 13.1 Representative posterior-chain inspection
+The native BGLR chains remain in `output/models/bglr/` for posterior inspection
+and for the final graphical summaries. They are not duplicated in this module.
 
-The scalar ESS and Geweke summaries above cover all official fits. To provide
-the graphical MCMC inspection used in the reference study, the posterior draws
-for one representative official fit were recovered by a deterministic replay
-of `PRODCOM_F1_RRBLUP`. The replay used the same data, fold, matrices, withheld
-phenotypes, seed, BGLR version, and MCMC settings as the original fit. It was
-performed only because the production pipeline intentionally discarded the raw
-BGLR chain files after calculating the compact convergence summaries.
+## 12. Next step
 
-The replay is not an additional cross-validation result and does not replace
-any of the 350 official fits. Before inclusion in this module, its predictions,
-effects, model-fit statistics, and convergence summaries were compared with
-the original compact checkpoint, and all compared quantities matched exactly.
-Only the compact retained posterior chains required for the final graphical
-report are kept as a permanent model output.
-
-```{r mcmc-posterior-load}
-MCMC_POSTERIOR_DIR <- file.path(
-  OUTPUT_DIR,
-  "mcmc",
-  "PRODCOM_F1_RRBLUP"
-)
-
-mcmc_replay_summary <- read.csv(
-  file.path(
-    MCMC_POSTERIOR_DIR,
-    "posterior_chain_summary.csv"
-  ),
-  stringsAsFactors = FALSE,
-  check.names = FALSE
-)
-
-mcmc_replay_chains <- readRDS(
-  file.path(
-    MCMC_POSTERIOR_DIR,
-    "posterior_chains.rds"
-  )
-)
-
-```
-
-For the 200,000 retained posterior draws, the residual-variance chain had a
-posterior mean of `r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Residual_variance"], 4)`,
-an effective sample size of
-`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Residual_variance"])`,
-and a Geweke statistic of
-`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Residual_variance"], 3)`.
-The marker-variance chain had a posterior mean of
-`r round(mcmc_replay_summary$Posterior_mean[mcmc_replay_summary$Parameter == "Marker_variance"], 4)`,
-an effective sample size of
-`r round(mcmc_replay_summary$Effective_sample_size[mcmc_replay_summary$Parameter == "Marker_variance"])`,
-and a Geweke statistic of
-`r round(mcmc_replay_summary$Geweke_Z[mcmc_replay_summary$Parameter == "Marker_variance"], 3)`.
-Neither parameter was flagged for additional convergence review.
-
-```{r mcmc-replay-summary-table}
-mcmc_replay_summary |>
-  select(
-    Parameter,
-    Retained_samples,
-    Posterior_mean,
-    Posterior_SD,
-    Effective_sample_size,
-    Geweke_Z,
-    Review_flag
-  ) |>
-  kable(
-    digits = 4,
-    caption = "Posterior-chain diagnostics for the representative official RR-BLUP/BRR fit"
-  )
-```
-
-```{r mcmc-replay-figure, fig.width=12, fig.height=7.6, fig.cap="Representative MCMC diagnostics for the official PRODCOM fold-1 RR-BLUP/BRR fit. Trace plots show the 200,000 retained post-burn-in draws; running means illustrate stabilization of posterior expectations; posterior densities summarize marginal posterior distributions. The deterministic replay reproduced the original official checkpoint exactly before these chains were used for visualization."}
-par(
-  mfrow = c(2, 3),
-  mar = c(4.2, 4.5, 3.0, 1.0),
-  oma = c(0, 0, 0.5, 0)
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Residual_variance,
-  type = "l",
-  xlab = "Iteration",
-  ylab = expression(sigma[e]^2),
-  main = "Trace plot — residual variance"
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Residual_running_mean,
-  type = "l",
-  xlab = "Iteration",
-  ylab = "Running mean",
-  main = "Running mean — residual variance"
-)
-abline(
-  h = mean(
-    mcmc_replay_chains$Residual_variance
-  ),
-  lty = 2
-)
-
-plot(
-  density(
-    mcmc_replay_chains$Residual_variance
-  ),
-  xlab = expression(sigma[e]^2),
-  ylab = "Density",
-  main = "Posterior distribution — residual variance"
-)
-abline(
-  v = mean(
-    mcmc_replay_chains$Residual_variance
-  ),
-  lty = 2
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Marker_variance,
-  type = "l",
-  xlab = "Iteration",
-  ylab = expression(sigma[b]^2),
-  main = "Trace plot — marker variance"
-)
-
-plot(
-  mcmc_replay_chains$Iteration,
-  mcmc_replay_chains$Marker_running_mean,
-  type = "l",
-  xlab = "Iteration",
-  ylab = "Running mean",
-  main = "Running mean — marker variance"
-)
-abline(
-  h = mean(
-    mcmc_replay_chains$Marker_variance
-  ),
-  lty = 2
-)
-
-plot(
-  density(
-    mcmc_replay_chains$Marker_variance
-  ),
-  xlab = expression(sigma[b]^2),
-  ylab = "Density",
-  main = "Posterior distribution — marker variance"
-)
-abline(
-  v = mean(
-    mcmc_replay_chains$Marker_variance
-  ),
-  lty = 2
-)
-```
-
-The trace plots fluctuate around stable regions without visible long-term
-drift, while the running means stabilize rapidly over the retained posterior
-sample. The marginal posterior distributions are unimodal and right-skewed,
-especially for marker variance. Together with the large effective sample sizes
-and Geweke statistics well within the review threshold, the representative
-chains support adequate MCMC behavior for this official fit. These graphical
-diagnostics complement, rather than replace, the systematic ESS and Geweke
-review of all 350 official fits.
-
-## 14. BayesB2 probability audit
-
-```{r bayesb2-audit-table}
-kable(
-  bayesb2_audit,
-  digits = 10,
-  caption = "BayesB2 non-zero-effect probability audit"
-)
-```
-
-## 15. RR-BLUP and GBLUP diagnostic comparison
-
-RR-BLUP uses `M` directly through the `BRR` component, while GBLUP uses `G`
-through the `RKHS` component. Because `G` is derived from `M`, their predictions
-are expected to be related, but exact equality is not imposed.
-
-```{r rrblup-gblup-table}
-kable(
-  rrblup_gblup_audit,
-  digits = 8,
-  caption = "RR-BLUP and GBLUP prediction comparison by trait and fold"
-)
-```
-
-## 16. Runtime inventory
-
-```{r runtime-summary-table}
-runtime_summary |>
-  select(
-    Method_label,
-    Fits,
-    Total_seconds,
-    Mean_seconds,
-    Median_seconds,
-    Maximum_seconds
-  ) |>
-  kable(
-    digits = 3,
-    caption = "Runtime summary for the complete analysis"
-  )
-```
-
-## 17. Next step
-
-Module 04 will use the out-of-fold predictions and genomic components saved
-here to:
-
-- compare methods within each trait;
-- examine fold stability;
-- summarize marker effects;
-- calculate cross-validated genomic values;
-- construct trait-specific rankings;
-- document the influence of previously highlighted phenotypic observations;
-- define the final selection outputs without imposing an undocumented
-  multi-trait economic index.
+Module 04 uses these official outputs, without refitting models, to compare the
+seven methods within each trait, integrate OOF predictive performance, DIC and
+MCMC diagnostics, derive the selected OOF genomic values, and construct
+trait-specific genomic rankings.
