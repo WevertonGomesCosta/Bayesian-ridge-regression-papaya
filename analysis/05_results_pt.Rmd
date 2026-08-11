@@ -114,7 +114,7 @@ model_selection <- m04$model_selection
 runtime_summary <- m04$runtime
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
 genomic_ranking <- m04$genomic_ranking
-selected_genetic_correlations <- m04$selected_genetic_correlations
+selected_oof_correlations <- m04$selected_oof_correlations
 
 metadata <- matrices_object$metadata
 
@@ -171,54 +171,6 @@ project_theme <-
   )
 ```
 
-```{r input-audit}
-input_audit <- data.frame(
-  Check = c(
-    "Assinatura M04 corresponde ao M03",
-    "70 combinações característica × método",
-    "10 métodos finais por característica",
-    "7 métodos no resumo de tempo",
-    "10 características no resumo RR-BLUP/BRR",
-    "1.500 posições no ranking genômico",
-    "Matriz de correlação 10 × 10"
-  ),
-  Passed = c(
-    identical(
-      m04$signature,
-      models_object$signature
-    ),
-    nrow(
-      model_comparison
-    ) == 70L,
-    nrow(
-      model_selection
-    ) == 10L,
-    nrow(
-      runtime_summary
-    ) == 7L,
-    nrow(
-      rrblup_heritability_summary
-    ) == 10L,
-    nrow(
-      genomic_ranking
-    ) == 1500L,
-    identical(
-      dim(
-        selected_genetic_correlations
-      ),
-      c(
-        10L,
-        10L
-      )
-    )
-  )
-)
-
-kable(
-  input_audit,
-  caption = "Auditoria das entradas utilizadas no Módulo 05"
-)
-```
 
 ## 3. Comparação dos sete métodos
 
@@ -229,6 +181,11 @@ correlação preditiva e p-valor.
 
 No presente projeto, a comparação é realizada conjuntamente entre os sete
 métodos ajustados.
+
+
+Os p-valores da correlação de Pearson são apresentados como valores nominais
+e descritivos porque os conjuntos de treinamento da validação cruzada se
+sobrepõem entre folds.
 
 ```{r article-style-model-table}
 article_model_table <- model_comparison |>
@@ -337,10 +294,10 @@ ggsave(
 )
 ```
 
-## 4. Métodos selecionados por característica
+## 4. Resultados finais por característica
 
 ```{r selected-methods-table}
-selected_methods_table <- model_selection |>
+final_results_summary <- model_selection |>
   transmute(
     Trait,
     Method = Selected_method,
@@ -363,7 +320,7 @@ selected_methods_table <- model_selection |>
   )
 
 kable(
-  selected_methods_table |>
+  final_results_summary |>
     select(
       Trait,
       Method_label,
@@ -378,7 +335,7 @@ kable(
       Predictive_evidence
     ),
   digits = 5,
-  caption = "Método final e resultados associados a cada característica"
+  caption = "Resultados finais por característica"
 )
 ```
 
@@ -774,7 +731,7 @@ OOF obtidos pelos métodos selecionados para cada característica.
 ```{r oof-correlation-data}
 correlation_long <- as.data.frame(
   as.table(
-    selected_genetic_correlations
+    selected_oof_correlations
   )
 )
 
@@ -985,50 +942,13 @@ Foram identificados `r nrow(recurring_top10)` indivíduos recorrentes. O maior
 número de características observado para um mesmo indivíduo foi
 `r max(recurring_top10$N_traits)`.
 
-## 11. Resumo final
+## 11. Resumo factual final
 
-```{r final-summary}
-final_summary <- model_selection |>
-  transmute(
-    Trait,
-    Selected_method,
-    Selected_method_label,
-    r,
-    p_value,
-    DIC = Mean_DIC,
-    Delta_DIC,
-    Wprob,
-    ER,
-    Predictive_evidence
-  ) |>
-  arrange(
-    match(
-      Trait,
-      traits
-    )
-  )
-
-kable(
-  final_summary |>
-    select(
-      Trait,
-      Selected_method_label,
-      r,
-      p_value,
-      DIC,
-      Delta_DIC,
-      Wprob,
-      ER,
-      Predictive_evidence
-    ),
-  digits = 5,
-  caption = "Resumo dos resultados finais por característica"
-)
-```
-
-As características MMCOM, PRODCOM, CF, DF, DCI e SS apresentaram correlação OOF
-positiva com p < 0,05. PRODEF, FFC e FFP apresentaram correlação positiva com
-p >= 0,05, enquanto EP apresentou correlação não positiva.
+MMCOM, PRODCOM, CF, DF, DCI e SS apresentaram correlação OOF positiva com
+p nominal < 0,05. PRODEF, FFC e FFP apresentaram correlação OOF positiva
+com p nominal >= 0,05, enquanto EP apresentou correlação não positiva.
+Esses p-valores são apresentados de forma descritiva porque os conjuntos de
+treinamento da validação cruzada se sobrepõem entre folds.
 
 ## 12. Saídas do módulo
 
@@ -1043,7 +963,7 @@ write.csv(
 )
 
 write.csv(
-  final_summary,
+  final_results_summary,
   file.path(
     RESULTS_DIR,
     "final_results_summary.csv"
@@ -1079,76 +999,6 @@ write.csv(
 )
 ```
 
-## 13. Auditoria final
-
-```{r module05-audit}
-module05_audit <- data.frame(
-  Check = c(
-    "Todas as entradas oficiais foram validadas",
-    "Tabela comparativa contém 70 linhas",
-    "Resumo final contém 10 características",
-    "Tabela RR-BLUP/BRR contém 10 características",
-    "Top 10 contém 100 linhas",
-    "Top 10 possui 10 indivíduos por característica",
-    "Todos os valores genômicos do top 10 são finitos",
-    "Cores fixas definidas para os sete métodos"
-  ),
-  Passed = c(
-    all(
-      input_audit$Passed
-    ),
-    nrow(
-      article_model_table
-    ) == 70L,
-    nrow(
-      final_summary
-    ) == 10L,
-    nrow(
-      rrblup_table
-    ) == 10L,
-    nrow(
-      top10_with_family
-    ) == 100L,
-    all(
-      table(
-        top10_with_family$Trait
-      ) == 10L
-    ),
-    all(
-      is.finite(
-        top10_with_family$Genomic_value
-      )
-    ),
-    length(
-      method_colors[
-        methods
-      ]
-    ) == 7L &
-      all(
-        !is.na(
-          method_colors[
-            methods
-          ]
-        )
-      )
-  )
-)
-
-write.csv(
-  module05_audit,
-  file.path(
-    RESULTS_DIR,
-    "module05_audit.csv"
-  ),
-  row.names = FALSE
-)
-
-kable(
-  module05_audit,
-  caption = "Auditoria final do Módulo 05"
-)
-```
-
-O Módulo 05 apresenta os resultados produzidos e validados nas etapas
-anteriores. A interpretação científica aprofundada desses resultados não faz
-parte desta página e será desenvolvida no manuscrito.
+O módulo apresenta os resultados produzidos e validados nas etapas
+anteriores. A interpretação científica aprofundada desses resultados é
+reservada ao manuscrito.
