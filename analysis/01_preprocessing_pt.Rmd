@@ -38,6 +38,10 @@ indivíduos e dos locos são organizados, os códigos de ausência são converti
 em `NA`, as duas fontes são alinhadas e os locos com baixa taxa de chamada ou
 sem variação genotípica são removidos.
 
+A coluna de bloco (`BL`) não integra mais o modelo estatístico e é removida
+imediatamente após a leitura dos dados fenotípicos. A família (`FAM`) é mantida
+como a única covariável categórica para uso posterior como efeito fixo.
+
 Os cinco folds da validação cruzada são criados após este pré-processamento.
 
 ## 2. Pacotes e caminhos dos arquivos
@@ -65,7 +69,6 @@ CALL_RATE_MIN <- 0.90
 PHENOTYPE_DISTANCE_THRESHOLD <- 4
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
-
 ```
 
 ## 3. Leitura das planilhas originais
@@ -73,6 +76,10 @@ dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 A planilha genotípica utiliza a aba `Genes` para armazenar os códigos numéricos
 dos marcadores SSR e a aba `Genealex` para armazenar os rótulos dos indivíduos
 e dos locos. Os fenótipos são lidos da aba `Médias_IND_artigo`.
+
+A coluna `BL` é descartada no momento da leitura porque bloco não participa
+mais dos modelos. Em seguida, são mostradas amostras simples das duas fontes
+para que o leitor visualize diretamente a estrutura dos dados utilizados.
 
 ```{r leitura-dados}
 genes <- read_excel(
@@ -93,14 +100,21 @@ pheno_raw <- read_excel(
   PHENOTYPE_FILE,
   sheet = "Médias_IND_artigo",
   na = c("", "NA")
-)
+) |>
+  select(-BL)
+
+# Amostra dos dados genotípicos lidos.
+genes[1:6, 1:6]
+
+# Amostra dos dados fenotípicos após a remoção de BL.
+head(pheno_raw)
 
 data.frame(
-  Fonte = c("Genes", "Genealex", "Médias_IND_artigo"),
+  Fonte = c("Genes", "Genealex", "Médias_IND_artigo sem BL"),
   Linhas = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
   Colunas = c(ncol(genes), ncol(genealex), ncol(pheno_raw))
 ) |>
-  kable(caption = "Dimensões dos dados originais")
+  kable(caption = "Dimensões dos dados após a leitura")
 ```
 
 ## 4. Organização dos dados SSR
@@ -138,15 +152,13 @@ ssr_raw[ssr_raw == -9] <- NA_real_
 
 rownames(ssr_raw) <- ids
 colnames(ssr_raw) <- locus_names
-
-ssr_raw[1:6, 1:6]
 ```
 
 ## 5. Organização e alinhamento dos fenótipos
 
-Dez características são utilizadas na análise. O bloco (`BL`) e a família
-(`FAM`) são mantidos como variáveis categóricas para uso posterior como efeitos
-fixos.
+Dez características são utilizadas na análise. A família (`FAM`) é mantida
+como variável categórica e será o único efeito fixo além do intercepto dos
+modelos.
 
 A tabela fenotípica é ordenada de acordo com os identificadores da matriz SSR.
 Assim, cada linha fenotípica representa o mesmo indivíduo da linha
@@ -158,7 +170,7 @@ TRAITS <- c(
   "DCI", "EP", "FFC", "FFP", "SS"
 )
 
-required_columns <- c("IND", "BL", "FAM", TRAITS)
+required_columns <- c("IND", "FAM", TRAITS)
 
 missing_columns <- setdiff(
   required_columns,
@@ -231,7 +243,6 @@ for (trait in TRAITS) {
 
 metadata <- data.frame(
   IND = pheno$IND,
-  BL = factor(pheno$BL),
   FAM = factor(pheno$FAM),
   row.names = pheno$IND
 )
@@ -239,7 +250,6 @@ metadata <- data.frame(
 phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
-
 ```
 
 ## 6. Controle de qualidade dos marcadores
@@ -560,7 +570,8 @@ ggplot(phenotype_long, aes(x = Value)) +
 
 A matriz fenotípica alinhada, as matrizes SSR, os metadados, os resumos e o
 dicionário das características são armazenados em um único objeto para as
-etapas seguintes. Os principais resumos também são salvos em arquivos CSV.
+etapas seguintes. Os metadados contêm apenas o identificador do indivíduo e a
+família utilizada como efeito fixo.
 
 ```{r salvamento-saidas}
 preprocessing_object <- list(
@@ -577,7 +588,8 @@ preprocessing_object <- list(
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold =
-      PHENOTYPE_DISTANCE_THRESHOLD
+      PHENOTYPE_DISTANCE_THRESHOLD,
+    fixed_effects = "FAM"
   )
 )
 
@@ -633,6 +645,7 @@ data.frame(
     "Características fenotípicas",
     "Locos SSR originais",
     "Locos SSR mantidos",
+    "Famílias (efeito fixo)",
     "Chamadas SSR ausentes",
     "Observações fenotípicas destacadas"
   ),
@@ -641,6 +654,7 @@ data.frame(
     ncol(phenotypes),
     ncol(ssr_raw),
     ncol(ssr),
+    nlevels(metadata$FAM),
     sum(is.na(ssr_raw)),
     nrow(phenotype_extremes)
   )
@@ -651,5 +665,6 @@ data.frame(
 ## 9. Próxima etapa
 
 O próximo módulo converte os locos SSR mantidos em colunas de dosagem alélica,
-constrói as matrizes de marcadores e de relacionamento genômico e define os
-cinco folds da validação cruzada.
+constrói as matrizes de marcadores e de relacionamento genômico, cria a matriz
+de efeitos fixos contendo apenas família e define os cinco folds da validação
+cruzada.
