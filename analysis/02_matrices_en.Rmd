@@ -33,15 +33,15 @@ knitr::opts_chunk$set(
 Genomic prediction models require numerical matrices that describe fixed
 effects and genetic similarity among individuals.
 
-In this step, the SSR genotypes are converted into allele dosages, the fixed
-effects of block and family are represented in a design matrix, the additive
-genomic relationship matrix is constructed, and five cross-validation folds
-are defined.
+In this step, SSR genotypes are converted into allele dosages, **family is
+represented as the only categorical fixed effect**, the additive genomic
+relationship matrix is constructed, and five cross-validation folds are
+defined. Block does not enter the matrices or the models.
 
 The fixed-effect matrix, marker matrix, and genomic relationship matrix are
 constructed once using the complete preprocessed dataset. They remain
 unchanged across folds. Cross-validation is implemented in the model-fitting
-module by replacing the phenotypes of the validation individuals with missing
+module by replacing the phenotypes of validation individuals with missing
 values.
 
 ## 2. Packages and input object
@@ -97,16 +97,14 @@ data.frame(
     "Phenotype traits",
     "Raw SSR loci",
     "Retained SSR loci",
-    "Families",
-    "Blocks"
+    "Families"
   ),
   Value = c(
     length(ids),
     ncol(phenotypes),
     ncol(ssr_raw),
     sum(locus_audit_full$Keep_locus),
-    nlevels(metadata$FAM),
-    nlevels(metadata$BL)
+    nlevels(metadata$FAM)
   )
 ) |>
   kable(
@@ -316,7 +314,6 @@ M_full <- sweep(
   marker_means_full,
   FUN = "-"
 )
-
 ```
 
 ## 6. Complete genomic relationship matrix
@@ -358,17 +355,17 @@ eigenvalues_G_full <- eigen(
   symmetric = TRUE,
   only.values = TRUE
 )$values
-
 ```
 
 ## 7. Fixed-effect matrix
 
-Block and family are represented as categorical fixed effects. The intercept
-is included automatically.
+Family is represented as the only categorical fixed effect. The intercept is
+included automatically by `model.matrix()` and will be handled by BGLR in the
+next module.
 
 ```{r fixed-effect-matrix}
 X <- model.matrix(
-  ~ BL + FAM,
+  ~ FAM,
   data = metadata
 )
 
@@ -473,7 +470,6 @@ family_balance <- apply(
 
 cv_folds <- data.frame(
   IND = ids,
-  BL = as.character(metadata$BL),
   FAM = as.character(metadata$FAM),
   Fold = folds
 )
@@ -521,7 +517,9 @@ round. It does not define fold-specific marker or genomic matrices.
 
 The matrices used by all models remain fixed:
 
-- `X` contains the block and family effects;
+- `X` contains the intercept and family; in Module 03 the intercept is removed
+  from `X` because BGLR already fits it by default, leaving family only in the
+  `FIXED` component;
 - `M` contains the centered allele-dosage columns;
 - `G` contains the additive genomic relationships.
 
@@ -583,9 +581,9 @@ ggplot(
 
 ## 11. Saved objects and matrix diagnostics
 
-The output object contains one fixed-effect matrix, one marker matrix, one
-genomic relationship matrix, and the fold assignment table. No matrix-specific
-cross-validation objects are created.
+The output object contains a family-only fixed-effect matrix, a marker matrix,
+a genomic relationship matrix, and the fold-assignment table. No fold-specific
+matrix object is created.
 
 ```{r save-matrix-objects}
 theoretical_rank_M <-
@@ -654,9 +652,9 @@ maximum_dosage_sum_error <-
 matrix_inventory <- data.frame(
   Item = c(
     "Individuals",
-    "Fixed-effect rows",
-    "Fixed-effect columns",
-    "Fixed-effect rank",
+    "Fixed-effect matrix rows",
+    "Fixed-effect matrix columns",
+    "Fixed-effect matrix rank",
     "Marker-matrix rows",
     "Marker-matrix columns",
     "Marker-matrix rank",
@@ -670,7 +668,7 @@ matrix_inventory <- data.frame(
     "Cross-validation folds",
     "Training individuals per fold",
     "Validation individuals per fold",
-    "Maximum symmetry difference of G",
+    "Maximum G symmetry difference",
     "Mean diagonal of G",
     "Minimum eigenvalue of G"
   ),
@@ -718,7 +716,8 @@ matrices_object <- list(
     seed_cv = SEED_CV,
     call_rate_min = CALL_RATE_MIN,
     allele_frequency_min =
-      ALLELE_FREQUENCY_MIN
+      ALLELE_FREQUENCY_MIN,
+    fixed_effects = "FAM"
   )
 )
 
@@ -766,7 +765,6 @@ write.csv(
   row.names = FALSE
 )
 
-
 kable(
   matrix_inventory,
   digits = 6,
@@ -774,18 +772,17 @@ kable(
 )
 ```
 
-The 72 retained allele-dosage columns do not imply 72 independent marker
-dimensions. Within a multi-allelic SSR locus, allele dosages are linearly
-dependent because their copy numbers are constrained by diploidy. Therefore,
-the marker matrix can have rank lower than its number of columns. Because
-`G` is constructed from `M`, its rank is also limited by the rank of the
-marker matrix.
+The retained 72 allele-dosage columns do not represent 72 independent marker
+dimensions. Within a multiallelic SSR locus, allele dosages are linearly
+dependent only up to the diploid dosage constraint. Therefore, the marker
+matrix can have a rank smaller than its number of columns. Since `G` is built
+from `M`, its rank is also bounded by the rank of the marker matrix.
 
 ## 12. Next step
 
-The next step fits RR-BLUP, BayesA, BayesB, BayesB with the specified
-zero-effect probability, BayesC, Bayesian Lasso, and GBLUP using the same
-five validation folds. RR-BLUP is implemented with the BGLR `BRR` component
-and `M`, whereas GBLUP is implemented with `G` and the `RKHS` component.
-For every fold, only the phenotype vector is masked; `X`, `M`, and `G`
-remain unchanged.
+The next stage fits RR-BLUP, BayesA, BayesB, BayesB with the specified
+near-zero probability of a zero effect, BayesC, Bayesian Lasso, and GBLUP using
+the same five validation folds. RR-BLUP is implemented with the BGLR `BRR`
+component and `M`, whereas GBLUP is implemented with `G` and the `RKHS`
+component. In every fold, only the phenotype vector is masked; family is the
+only categorical fixed effect, while `M` and `G` remain unchanged.
