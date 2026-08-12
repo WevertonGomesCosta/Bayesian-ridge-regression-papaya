@@ -33,9 +33,13 @@ knitr::opts_chunk$set(
 Genomic selection requires phenotype records and marker information to refer
 to the same individuals and to follow the same order.
 
-This step reads the phenotype and SSR data, organizes the individual and locus
+This step reads the phenotype and SSR data, organizes individual and locus
 labels, converts missing SSR codes to `NA`, aligns the two data sources, and
 removes loci with insufficient call rate or no genotypic variation.
+
+The block column (`BL`) is no longer part of the statistical model and is
+removed immediately after the phenotype data are read. Family (`FAM`) is kept
+as the only categorical covariate for later use as a fixed effect.
 
 The five cross-validation folds are created after this preprocessing step.
 
@@ -64,14 +68,17 @@ CALL_RATE_MIN <- 0.90
 PHENOTYPE_DISTANCE_THRESHOLD <- 4
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
-
 ```
 
 ## 3. Read the original workbooks
 
-The genotype workbook uses the `Genes` sheet for the numerical SSR codes and
-the `Genealex` sheet for individual and locus labels. Phenotypes are read from
-the `Médias_IND_artigo` sheet.
+The genotype workbook uses the `Genes` sheet for numerical SSR codes and the
+`Genealex` sheet for individual and locus labels. Phenotypes are read from the
+`Médias_IND_artigo` sheet.
+
+The `BL` column is discarded during reading because block is no longer included
+in the models. Simple samples of both data sources are then shown so readers
+can directly inspect the structure of the data used in the analysis.
 
 ```{r read-data}
 genes <- read_excel(
@@ -92,14 +99,21 @@ pheno_raw <- read_excel(
   PHENOTYPE_FILE,
   sheet = "Médias_IND_artigo",
   na = c("", "NA")
-)
+) |>
+  select(-BL)
+
+# Sample of the genotype data as read from the workbook.
+genes[1:6, 1:6]
+
+# Sample of the phenotype data after removing BL.
+head(pheno_raw)
 
 data.frame(
-  Source = c("Genes", "Genealex", "Médias_IND_artigo"),
+  Source = c("Genes", "Genealex", "Médias_IND_artigo without BL"),
   Rows = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
   Columns = c(ncol(genes), ncol(genealex), ncol(pheno_raw))
 ) |>
-  kable(caption = "Dimensions of the original data")
+  kable(caption = "Dimensions of the data after reading")
 ```
 
 ## 4. Organize the SSR data
@@ -137,14 +151,13 @@ ssr_raw[ssr_raw == -9] <- NA_real_
 
 rownames(ssr_raw) <- ids
 colnames(ssr_raw) <- locus_names
-
-ssr_raw[1:6, 1:6]
 ```
 
 ## 5. Organize and align the phenotype data
 
-Ten traits are used in the analysis. Block (`BL`) and family (`FAM`) are kept
-as categorical variables for later use as fixed effects.
+Ten traits are used in the analysis. Family (`FAM`) is retained as a
+categorical variable and will be the only fixed effect in addition to the model
+intercept.
 
 The phenotype table is reordered according to the SSR identifiers. This
 guarantees that each phenotype row refers to the same individual as the
@@ -156,7 +169,7 @@ TRAITS <- c(
   "DCI", "EP", "FFC", "FFP", "SS"
 )
 
-required_columns <- c("IND", "BL", "FAM", TRAITS)
+required_columns <- c("IND", "FAM", TRAITS)
 
 missing_columns <- setdiff(
   required_columns,
@@ -229,7 +242,6 @@ for (trait in TRAITS) {
 
 metadata <- data.frame(
   IND = pheno$IND,
-  BL = factor(pheno$BL),
   FAM = factor(pheno$FAM),
   row.names = pheno$IND
 )
@@ -237,7 +249,6 @@ metadata <- data.frame(
 phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
-
 ```
 
 ## 6. Marker quality control
@@ -547,8 +558,8 @@ ggplot(phenotype_long, aes(x = Value)) +
 ## 8. Preprocessing outputs
 
 The aligned phenotype matrix, SSR matrices, metadata, summaries, and trait
-dictionary are stored in one object for the following stages. The main
-summaries are also written as CSV files.
+dictionary are stored in one object for the following stages. Metadata contain
+only the individual identifier and family used as the fixed effect.
 
 ```{r save-outputs}
 preprocessing_object <- list(
@@ -565,7 +576,8 @@ preprocessing_object <- list(
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold =
-      PHENOTYPE_DISTANCE_THRESHOLD
+      PHENOTYPE_DISTANCE_THRESHOLD,
+    fixed_effects = "FAM"
   )
 )
 
@@ -619,16 +631,18 @@ data.frame(
   Item = c(
     "Individuals",
     "Phenotype traits",
-    "Original SSR loci",
+    "Raw SSR loci",
     "Retained SSR loci",
+    "Families (fixed effect)",
     "Missing SSR calls",
-    "Phenotypic observations highlighted"
+    "Flagged phenotype observations"
   ),
   Value = c(
     length(ids),
     ncol(phenotypes),
     ncol(ssr_raw),
     ncol(ssr),
+    nlevels(metadata$FAM),
     sum(is.na(ssr_raw)),
     nrow(phenotype_extremes)
   )
@@ -638,6 +652,6 @@ data.frame(
 
 ## 9. Next step
 
-The next module converts the retained SSR loci into allele-dosage columns,
-constructs the marker and genomic relationship matrices, and defines the five
-cross-validation folds.
+The next module converts retained SSR loci into allele-dosage columns, builds
+the marker and genomic relationship matrices, creates the fixed-effect matrix
+containing family only, and defines the five cross-validation folds.
