@@ -33,10 +33,10 @@ knitr::opts_chunk$set(
 Os modelos de predição genômica utilizam matrizes numéricas que representam os
 efeitos fixos e a semelhança genética entre os indivíduos.
 
-Nesta etapa, os genótipos SSR são convertidos em dosagens alélicas, os
-efeitos fixos de bloco e família são representados em uma matriz de
-delineamento, a matriz de relacionamento genômico aditivo é construída e cinco
-folds de validação cruzada são definidos.
+Nesta etapa, os genótipos SSR são convertidos em dosagens alélicas, **família é
+representada como o único efeito fixo categórico**, a matriz de relacionamento
+genômico aditivo é construída e cinco folds de validação cruzada são definidos.
+Bloco não participa das matrizes nem dos modelos.
 
 As matrizes de efeitos fixos, de marcadores e de relacionamento genômico são
 construídas uma única vez com o conjunto pré-processado completo. Elas
@@ -97,16 +97,14 @@ data.frame(
     "Características fenotípicas",
     "Locos SSR originais",
     "Locos SSR mantidos",
-    "Famílias",
-    "Blocos"
+    "Famílias"
   ),
   Valor = c(
     length(ids),
     ncol(phenotypes),
     ncol(ssr_raw),
     sum(locus_audit_full$Keep_locus),
-    nlevels(metadata$FAM),
-    nlevels(metadata$BL)
+    nlevels(metadata$FAM)
   )
 ) |>
   kable(
@@ -315,7 +313,6 @@ M_full <- sweep(
   marker_means_full,
   FUN = "-"
 )
-
 ```
 
 ## 6. Matriz completa de relacionamento genômico
@@ -357,17 +354,17 @@ eigenvalues_G_full <- eigen(
   symmetric = TRUE,
   only.values = TRUE
 )$values
-
 ```
 
 ## 7. Matriz de efeitos fixos
 
-Bloco e família são representados como efeitos fixos categóricos. O intercepto
-é incluído automaticamente.
+Família é representada como o único efeito fixo categórico. O intercepto é
+incluído automaticamente por `model.matrix()` e será tratado pelo BGLR no
+módulo seguinte.
 
 ```{r matriz-efeitos-fixos}
 X <- model.matrix(
-  ~ BL + FAM,
+  ~ FAM,
   data = metadata
 )
 
@@ -472,7 +469,6 @@ family_balance <- apply(
 
 cv_folds <- data.frame(
   IND = ids,
-  BL = as.character(metadata$BL),
   FAM = as.character(metadata$FAM),
   Fold = folds
 )
@@ -526,7 +522,9 @@ específicas por fold.
 
 As matrizes utilizadas pelos modelos permanecem fixas:
 
-- `X` contém os efeitos de bloco e família;
+- `X` contém intercepto e família; no Módulo 03 o intercepto é removido de `X`
+  porque o BGLR já o ajusta por padrão, restando apenas família no componente
+  `FIXED`;
 - `M` contém as colunas centralizadas de dosagens alélicas;
 - `G` contém os relacionamentos genômicos aditivos.
 
@@ -593,9 +591,9 @@ ggplot(
 
 ## 11. Objetos salvos e diagnóstico das matrizes
 
-O objeto de saída contém uma matriz de efeitos fixos, uma matriz de marcadores,
-uma matriz de relacionamento genômico e a tabela de atribuição dos folds.
-Nenhum objeto de matriz específico por fold é criado.
+O objeto de saída contém uma matriz de efeitos fixos baseada apenas em família,
+uma matriz de marcadores, uma matriz de relacionamento genômico e a tabela de
+atribuição dos folds. Nenhum objeto de matriz específico por fold é criado.
 
 ```{r salvamento-objetos-matriciais}
 theoretical_rank_M <-
@@ -728,7 +726,8 @@ matrices_object <- list(
     seed_cv = SEED_CV,
     call_rate_min = CALL_RATE_MIN,
     allele_frequency_min =
-      ALLELE_FREQUENCY_MIN
+      ALLELE_FREQUENCY_MIN,
+    fixed_effects = "FAM"
   )
 )
 
@@ -776,7 +775,6 @@ write.csv(
   row.names = FALSE
 )
 
-
 kable(
   matrix_inventory,
   digits = 6,
@@ -801,5 +799,5 @@ A próxima etapa ajusta RR-BLUP, BayesA, BayesB, BayesB com a probabilidade
 especificada de efeito zero, BayesC, Lasso Bayesiano e GBLUP utilizando os
 mesmos cinco folds de validação. O RR-BLUP é implementado com o componente
 `BRR` do BGLR e `M`, enquanto o GBLUP é implementado com `G` e o componente
-`RKHS`. Em todos os folds, apenas o vetor fenotípico será mascarado; `X`,
-`M` e `G` permanecerão inalteradas.
+`RKHS`. Em todos os folds, apenas o vetor fenotípico será mascarado; o único
+efeito fixo categórico será família e `M` e `G` permanecerão inalteradas.
