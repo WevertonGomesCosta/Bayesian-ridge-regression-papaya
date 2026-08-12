@@ -34,7 +34,7 @@ This module transforms the official outputs from Module 03 into derived analytic
 
 Derived outputs include OOF predictive performance; DIC, DIC delta, `Wprob`, and `ER`; trait-specific method decisions; fold stability; computational time; heritability and accuracy in the RR-BLUP/BRR analogue; OOF genomic values; rankings; top 10 individuals; recurrence across rankings; and correlations among genomic values.
 
-Method selection integrates OOF performance, relative fit by DIC, and chain stability. The choices are explicitly stored in `selection_spec` and **must be reviewed whenever Module 03 is rerun with corrected data or specifications**.
+Method selection follows a reproducible hierarchical rule integrating OOF performance, relative DIC fit, and chain stability. When methods are practically equivalent, RR-BLUP is preferred; decisions involving criterion conflicts or convergence flags remain explicitly marked for review.
 
 Genomic values used for ranking are strictly OOF: each individual receives the genomic component from the fold in which its phenotype was masked. No multi-trait selection is performed.
 
@@ -137,12 +137,89 @@ model_comparison <- pooled_metrics |>
 
 ## 5. Method selection by trait
 
-The highest OOF `r` is the predictive reference and the minimum DIC is the relative-fit reference. The decision remains explicit, allowing prediction, DIC, and stability to be compared without imposing an arbitrary scalar function.
+Selection follows an **explicit hierarchy** rather than combining the criteria
+into a single score. Out-of-sample predictive ability is the primary
+criterion; DIC provides complementary evidence about fit and complexity; fold
+stability and MCMC diagnostics indicate the robustness of the decision.
+
+### Interpretation of the model-selection parameters
+
+- `r`: Pearson correlation between observed and OOF-predicted values. Higher is
+  better and this is the primary predictive reference.
+- `p_value`: nominal test of \(r=0\). It is descriptive only because
+  cross-validation training sets overlap across folds.
+- `RMSE`: root mean squared error in the trait's original unit. Lower is better
+  and large errors receive greater penalty.
+- `MAE`: mean absolute error in the trait's original unit. Lower is better and
+  it is less sensitive to extreme errors than RMSE.
+- `Bias`: mean of `Predicted - Observed`. Values close to zero are preferred.
+- `Slope`: slope from regressing observed on predicted values. Values close to
+  1 indicate better calibration.
+- `Mean_DIC`: mean DIC across folds. Lower values indicate a better compromise
+  between fit and complexity; DIC is not a direct measure of prediction.
+- `Delta_DIC`: difference from the minimum mean DIC for the trait. Zero
+  identifies the best mean DIC.
+- `Wprob`: normalized approximate weight derived from `Delta_DIC`. Larger
+  values indicate stronger relative DIC support; it is not interpreted as an
+  exact posterior probability of the model.
+- `ER`: ratio of the largest `Wprob` to the method's `Wprob`. The best value is
+  1; larger values indicate weaker relative support.
+- `Mean_fold_r` and `SD_fold_r`: mean and variability of fold correlations.
+- `Mean_fold_RMSE` and `SD_fold_RMSE`: mean and variability of fold RMSE.
+- `Minimum_ESS`, `Maximum_absolute_Geweke`, `Parameters_flagged`, and
+  `Runs_with_flags`: chain diagnostics. They indicate when review is required
+  and are not biological criteria.
+- computational time is a secondary operational criterion and should decide
+  only between scientifically equivalent methods.
+
+### Operational equivalence criterion
+
+To avoid selecting a different method because of a negligible numerical
+advantage, the project uses an **operational equivalence criterion based on one
+standard error across folds**. Because cross-validation training sets overlap,
+this criterion is not a formal equivalence test between models.
+
+A method is predictively competitive when:
+
+1. its mean `r` is no more than one standard error below the best mean `r`; and
+2. its mean RMSE is no more than one standard error above the best mean RMSE.
+
+DIC fit is considered similar under the operational threshold
+`Delta_DIC <= 2`. This threshold is also not a formal equivalence test.
+
+The competitive set for selection is the intersection of predictive
+equivalence and DIC similarity.
+
+### RR-BLUP preference and convergence review
+
+RR-BLUP preference is applied only when RR-BLUP belongs to the competitive set
+**and has no convergence flags**.
+
+- If RR-BLUP is also the predictive winner, it is selected on predictive merit
+  and `RRBLUP_preference_applied = FALSE`.
+- If another method is the predictive winner but RR-BLUP belongs to the
+  competitive set without flags, RR-BLUP is preferred and
+  `RRBLUP_preference_applied = TRUE`.
+- If RR-BLUP is not an automatic candidate, the best flag-free competitive
+  method is selected by `r`, followed by RMSE, MAE, and DIC.
+- If no method simultaneously satisfies predictive equivalence, DIC similarity,
+  and absence of convergence flags, the predictive winner is retained only
+  provisionally and `Selection_requires_review = TRUE`.
+
+The preference for RR-BLUP in equivalent situations is deliberate. In the
+current workflow it uses a common marker-effect variance and a residual
+variance, allowing a direct decomposition of additive variance and
+heritability. This does not mean that the other Bayesian models cannot provide
+variance information; the advantage here is the simpler and more directly
+interpretable parameterization used by this project.
 
 ```{r model-selection}
+DIC_EQUIVALENCE_THRESHOLD <- 2
+N_FOLDS <- matrices_object$settings$n_folds
+
 predictive_winners <- model_comparison |>
   group_by(Trait) |>
-  arrange(desc(r), RMSE, MAE, .by_group = TRUE) |>
+  arrange(desc(r), RMSE, MAE, Mean_DIC, .by_group = TRUE) |>
   slice(1L) |>
   ungroup() |>
   transmute(
@@ -156,7 +233,7 @@ predictive_winners <- model_comparison |>
 
 dic_winners <- model_comparison |>
   group_by(Trait) |>
-  arrange(Mean_DIC, .by_group = TRUE) |>
+  arrange(Mean_DIC, desc(r), RMSE, MAE, .by_group = TRUE) |>
   slice(1L) |>
   ungroup() |>
   transmute(
@@ -178,52 +255,225 @@ convergence_by_trait_method <- convergence |>
     .groups = "drop"
   )
 
-# Decisions from the currently published analysis.
-# Explicitly review after any new Module 03 run.
-selection_spec <- data.frame(
-  Trait = c("MMCOM", "PRODCOM", "PRODEF", "CF", "DF", "DCI", "EP", "FFC", "FFP", "SS"),
-  Selected_method = c("RRBLUP", "BL", "GBLUP", "BayesB", "RRBLUP", "RRBLUP", "BL", "RRBLUP", "BL", "BayesC"),
-  Decision_code = c(
-    "prefer_dic_stability_small_predictive_loss",
-    "predictive_and_dic_winner_convergence_review",
-    "prefer_stable_dic_winner_weak_prediction",
-    "predictive_and_dic_winner",
-    "predictive_and_dic_winner",
-    "best_prediction_similar_dic_stable",
-    "predictive_and_dic_winner_no_positive_signal",
-    "best_prediction_similar_dic_stable_weak_signal",
-    "predictive_and_dic_winner_weak_signal_convergence_review",
-    "prefer_stable_dic_winner_negligible_predictive_loss"
-  ),
-  stringsAsFactors = FALSE
-)
+model_selection_support <- model_comparison |>
+  left_join(
+    convergence_by_trait_method,
+    by = c("Trait", "Method")
+  ) |>
+  left_join(
+    predictive_winners |>
+      select(Trait, Predictive_winner),
+    by = "Trait"
+  ) |>
+  group_by(Trait) |>
+  mutate(
+    Best_mean_fold_r = max(Mean_fold_r, na.rm = TRUE),
+    Best_mean_fold_r_SE =
+      SD_fold_r[which.max(Mean_fold_r)] / sqrt(N_FOLDS),
+    Best_mean_fold_RMSE = min(Mean_fold_RMSE, na.rm = TRUE),
+    Best_mean_fold_RMSE_SE =
+      SD_fold_RMSE[which.min(Mean_fold_RMSE)] / sqrt(N_FOLDS),
+    Within_one_SE_r =
+      Mean_fold_r >=
+      Best_mean_fold_r - Best_mean_fold_r_SE,
+    Within_one_SE_RMSE =
+      Mean_fold_RMSE <=
+      Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE,
+    Predictively_competitive =
+      Within_one_SE_r & Within_one_SE_RMSE,
+    DIC_equivalence_threshold =
+      DIC_EQUIVALENCE_THRESHOLD,
+    DIC_competitive =
+      Delta_DIC <= DIC_EQUIVALENCE_THRESHOLD,
+    Competitive_for_selection =
+      Predictively_competitive & DIC_competitive,
+    Convergence_review =
+      Parameters_flagged > 0,
+    Automatic_candidate =
+      Competitive_for_selection & !Convergence_review,
+    Competitive_set_n =
+      sum(Competitive_for_selection),
+    Automatic_candidate_n =
+      sum(Automatic_candidate),
+    RRBLUP_competitive =
+      any(
+        Method == "RRBLUP" &
+          Competitive_for_selection
+      ),
+    RRBLUP_automatic_candidate =
+      any(
+        Method == "RRBLUP" &
+          Automatic_candidate
+      ),
+    Automatic_selection_available =
+      any(Automatic_candidate),
+    Selection_priority = case_when(
+      Automatic_candidate &
+        Method == "RRBLUP" ~ 1L,
+      Automatic_candidate ~ 2L,
+      TRUE ~ 3L
+    )
+  ) |>
+  ungroup() |>
+  arrange(
+    match(Trait, traits),
+    Selection_priority,
+    desc(r),
+    RMSE,
+    MAE,
+    Mean_DIC
+  )
 
-selected_performance <- model_comparison |>
-  inner_join(selection_spec |> select(Trait, Selected_method), by = "Trait") |>
+automatic_selections <- model_selection_support |>
+  filter(Automatic_candidate) |>
+  group_by(Trait) |>
+  arrange(
+    Selection_priority,
+    desc(r),
+    RMSE,
+    MAE,
+    Mean_DIC,
+    .by_group = TRUE
+  ) |>
+  slice(1L) |>
+  ungroup() |>
+  transmute(
+    Trait,
+    Automatic_selected_method = Method
+  )
+
+selection_spec <- predictive_winners |>
+  select(Trait, Predictive_winner) |>
+  left_join(
+    automatic_selections,
+    by = "Trait"
+  ) |>
+  mutate(
+    Selected_method = coalesce(
+      Automatic_selected_method,
+      Predictive_winner
+    )
+  ) |>
+  select(Trait, Selected_method, Predictive_winner) |>
+  left_join(
+    model_selection_support |>
+      select(
+        Trait,
+        Method,
+        Automatic_selection_available,
+        Automatic_candidate_n,
+        Competitive_set_n,
+        RRBLUP_competitive,
+        RRBLUP_automatic_candidate,
+        Convergence_review
+      ),
+    by = c(
+      "Trait",
+      "Selected_method" = "Method"
+    )
+  ) |>
+  mutate(
+    RRBLUP_preference_applied =
+      Selected_method == "RRBLUP" &
+      Predictive_winner != "RRBLUP" &
+      RRBLUP_automatic_candidate,
+    Selection_requires_review =
+      !Automatic_selection_available |
+      Convergence_review,
+    Selection_status = if_else(
+      Selection_requires_review,
+      "provisional_review_required",
+      "automatic_supported"
+    ),
+    Decision_code = case_when(
+      Selection_requires_review ~
+        "predictive_winner_provisional_review_required",
+      Selected_method == "RRBLUP" &
+        RRBLUP_preference_applied ~
+        "rrblup_preferred_among_equivalent_models",
+      Selected_method == "RRBLUP" &
+        Predictive_winner == "RRBLUP" ~
+        "rrblup_best_predictive_model",
+      TRUE ~
+        "best_non_rrblup_equivalent_model"
+    ),
+    Operational_equivalence_rule =
+      "one_se_r_and_rmse_plus_delta_dic_le_2"
+  ) |>
+  select(
+    -Predictive_winner,
+    -Convergence_review
+  ) |>
+  arrange(match(Trait, traits))
+
+selected_performance <- model_selection_support |>
+  inner_join(
+    selection_spec |>
+      select(Trait, Selected_method),
+    by = "Trait"
+  ) |>
   filter(Method == Selected_method) |>
   transmute(
-    Trait, Selected_method,
-    r, p_value, RMSE, MAE, Bias, Slope,
-    Mean_DIC, Delta_DIC, Wprob, ER, Mean_fold_r, SD_fold_r
+    Trait,
+    Selected_method,
+    r,
+    p_value,
+    RMSE,
+    MAE,
+    Bias,
+    Slope,
+    Mean_DIC,
+    Delta_DIC,
+    Wprob,
+    ER,
+    Mean_fold_r,
+    SD_fold_r,
+    Mean_fold_RMSE,
+    SD_fold_RMSE,
+    Within_one_SE_r,
+    Within_one_SE_RMSE,
+    Predictively_competitive,
+    DIC_competitive,
+    Competitive_for_selection,
+    Automatic_candidate,
+    Competitive_set_n,
+    Automatic_candidate_n,
+    RRBLUP_competitive,
+    RRBLUP_automatic_candidate,
+    Parameters_flagged,
+    Runs_with_flags,
+    Minimum_ESS,
+    Maximum_absolute_Geweke,
+    Convergence_review
   )
 
 model_selection <- selection_spec |>
-  left_join(selected_performance, by = c("Trait", "Selected_method")) |>
-  left_join(predictive_winners, by = "Trait") |>
-  left_join(dic_winners, by = "Trait") |>
   left_join(
-    convergence_by_trait_method,
-    by = c("Trait", "Selected_method" = "Method")
+    selected_performance,
+    by = c("Trait", "Selected_method")
+  ) |>
+  left_join(
+    predictive_winners,
+    by = "Trait"
+  ) |>
+  left_join(
+    dic_winners,
+    by = "Trait"
   ) |>
   mutate(
-    Predictive_loss = Predictive_winner_r - r,
-    Predictive_winner_agrees = Selected_method == Predictive_winner,
-    DIC_winner_agrees = Selected_method == DIC_winner,
-    Convergence_review = Parameters_flagged > 0,
+    Predictive_loss =
+      Predictive_winner_r - r,
+    Predictive_winner_agrees =
+      Selected_method == Predictive_winner,
+    DIC_winner_agrees =
+      Selected_method == DIC_winner,
     Predictive_evidence = case_when(
-      r > 0 & p_value < 0.05 ~ "positive_p_lt_0.05",
-      r > 0 & p_value >= 0.05 ~ "positive_p_ge_0.05",
-      TRUE ~ "nonpositive_p_ge_0.05"
+      r > 0 & p_value < 0.05 ~
+        "positive_p_lt_0.05",
+      r > 0 & p_value >= 0.05 ~
+        "positive_p_ge_0.05",
+      TRUE ~
+        "nonpositive_p_ge_0.05"
     )
   ) |>
   arrange(match(Trait, traits))
@@ -379,6 +629,7 @@ Module 04 is the canonical source for derived results. The RDS object is languag
 
 ```{r save-results}
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
+write.csv(model_selection_support, file.path(RESULTS_DIR, "model_selection_support.csv"), row.names = FALSE)
 write.csv(model_selection, file.path(RESULTS_DIR, "model_selection.csv"), row.names = FALSE)
 write.csv(selection_spec, file.path(RESULTS_DIR, "selection_decision_spec.csv"), row.names = FALSE)
 write.csv(predictive_evidence_summary, file.path(RESULTS_DIR, "predictive_evidence_summary.csv"), row.names = FALSE)
@@ -399,6 +650,7 @@ saveRDS(
     traits = traits,
     methods = methods,
     model_comparison = model_comparison,
+    model_selection_support = model_selection_support,
     selection_spec = selection_spec,
     model_selection = model_selection,
     predictive_evidence_summary = predictive_evidence_summary,

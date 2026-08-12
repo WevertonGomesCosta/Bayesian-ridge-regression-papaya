@@ -160,12 +160,50 @@ ggsave(
 
 ```{r selected-methods-table}
 final_results_summary <- model_selection |>
-  mutate(Method_label = unname(method_labels[Selected_method])) |>
+  mutate(
+    Method_label =
+      unname(method_labels[Selected_method]),
+    Predictive_winner_label =
+      unname(method_labels[Predictive_winner]),
+    DIC_winner_label =
+      unname(method_labels[DIC_winner]),
+    Decision_label = case_when(
+      Decision_code ==
+        "rrblup_best_predictive_model" ~
+        "RR-BLUP foi o melhor modelo preditivo",
+      Decision_code ==
+        "rrblup_preferred_among_equivalent_models" ~
+        "RR-BLUP preferido entre métodos equivalentes",
+      Decision_code ==
+        "best_non_rrblup_equivalent_model" ~
+        "Melhor método competitivo não RR-BLUP",
+      Decision_code ==
+        "predictive_winner_provisional_review_required" ~
+        "Vencedor preditivo provisório; revisão necessária",
+      TRUE ~ Decision_code
+    ),
+    Selection_status_label = case_when(
+      Selection_status ==
+        "automatic_supported" ~
+        "Seleção automática sustentada",
+      Selection_status ==
+        "provisional_review_required" ~
+        "Seleção provisória; revisão necessária",
+      TRUE ~ Selection_status
+    )
+  ) |>
   transmute(
     Trait,
     Method_label,
+    Decision_label,
+    Selection_status_label,
+    RRBLUP_preference_applied,
+    Predictive_winner = Predictive_winner_label,
+    DIC_winner = DIC_winner_label,
+    Predictive_loss,
     r,
     p_value,
+    RMSE,
     DIC = Mean_DIC,
     Delta_DIC,
     Wprob,
