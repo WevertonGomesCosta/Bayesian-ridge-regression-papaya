@@ -10,7 +10,7 @@
 
 This repository contains a bilingual and reproducible `workflowr` tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers.
 
-The validated analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Block and family are included as categorical fixed effects.
+The validated analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is included as the only categorical fixed effect; block is removed during preprocessing and is not used in the models.
 
 Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
 
@@ -21,14 +21,14 @@ The website is organized into five bilingual modules:
 1. **Data preprocessing and diagnostics** — reading, alignment, missing data, SSR quality control, phenotype summaries, and descriptive diagnostics.
 2. **Matrix construction and diagnostics** — allele-dosage coding, construction of `X`, `M`, and `G`, and definition of the five family-stratified folds.
 3. **Model fitting and MCMC diagnostics** — fitting the seven genomic prediction methods with BGLR and summarizing posterior diagnostics.
-4. **Model comparison and genomic results** — OOF predictive performance, DIC-based comparison, model selection by trait, OOF genomic values, and trait-specific rankings.
-5. **Final results** — presentation of the final tables and figures used as the analytical basis for the manuscript.
+4. **Derivation and model selection** — OOF predictive performance, DIC-based comparison, model selection by trait, OOF genomic values, and trait-specific rankings.
+5. **Results presentation** — presentation of the final tables and figures used as the analytical basis for the manuscript.
 
 ### Core analytical contract
 
 The analytical matrices are constructed once using the complete aligned dataset:
 
-- `X`: fixed-effect matrix with intercept, block, and family;
+- `X`: fixed-effect matrix with intercept and family;
 - `M`: centered allele-dosage matrix;
 - `G`: additive genomic relationship matrix derived from `M`.
 
@@ -82,7 +82,7 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR
 
 Este repositório contém um tutorial bilíngue e reprodutível em `workflowr` para predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos.
 
-O conjunto analítico validado contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Bloco e família são incluídos como efeitos fixos categóricos.
+O conjunto analítico validado contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é incluída como o único efeito fixo categórico; bloco é removido durante o pré-processamento e não é utilizado nos modelos.
 
 Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
 
@@ -93,14 +93,14 @@ O site está organizado em cinco módulos bilíngues:
 1. **Pré-processamento e diagnóstico dos dados** — leitura, alinhamento, dados ausentes, controle de qualidade dos SSR, resumos fenotípicos e diagnósticos descritivos.
 2. **Construção e diagnóstico das matrizes** — codificação das dosagens alélicas, construção de `X`, `M` e `G` e definição dos cinco folds estratificados por família.
 3. **Ajuste dos modelos e diagnósticos MCMC** — ajuste dos sete métodos de predição genômica com BGLR e resumo dos diagnósticos posteriores.
-4. **Comparação dos modelos e resultados genômicos** — desempenho preditivo OOF, comparação por DIC, seleção do método por característica, valores genômicos OOF e rankings específicos por característica.
-5. **Resultados finais** — apresentação das tabelas e figuras finais utilizadas como base analítica para o manuscrito.
+4. **Derivação e seleção dos modelos** — desempenho preditivo OOF, comparação por DIC, seleção do método por característica, valores genômicos OOF e rankings específicos por característica.
+5. **Apresentação dos resultados** — apresentação das tabelas e figuras finais utilizadas como base analítica para o manuscrito.
 
 ### Contrato analítico central
 
 As matrizes analíticas são construídas uma única vez utilizando o conjunto completo de dados alinhados:
 
-- `X`: matriz de efeitos fixos com intercepto, bloco e família;
+- `X`: matriz de efeitos fixos com intercepto e família;
 - `M`: matriz centralizada de dosagens alélicas;
 - `G`: matriz de relacionamento genômico aditivo derivada de `M`.
 
