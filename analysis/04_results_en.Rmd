@@ -58,12 +58,265 @@ dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
 matrices_object <- readRDS(MATRICES_FILE)
 models_object <- readRDS(MODELS_FILE)
 
+# Integrity gate: M04 only accepts a complete M03 object generated from the
+# current M02 matrices and analytical settings.
+expected_traits <- colnames(matrices_object$phenotypes)
+expected_methods <- c(
+  "RRBLUP", "BayesA", "BayesB", "BayesB2",
+  "BayesC", "BL", "GBLUP"
+)
+expected_folds <- seq_len(
+  matrices_object$settings$n_folds
+)
+
+expected_signature <- substr(
+  digest::digest(
+    list(
+      ids = matrices_object$ids,
+      phenotypes = matrices_object$phenotypes,
+      X = matrices_object$X,
+      M = matrices_object$M,
+      G = matrices_object$G,
+      cv_folds = matrices_object$cv_folds,
+      settings = models_object$settings
+    ),
+    algo = "sha256"
+  ),
+  1,
+  16
+)
+
+if (
+  length(models_object$signature) != 1L ||
+  !identical(
+    as.character(models_object$signature),
+    expected_signature
+  )
+) {
+  stop(
+    paste0(
+      "M04 integrity gate failed: models_object.rds does not match ",
+      "the current matrices_object.rds analytical signature. ",
+      "Rebuild M03 from the current M02 outputs before running M04."
+    )
+  )
+}
+
+settings_contract_ok <-
+  identical(
+    as.character(models_object$settings$traits),
+    expected_traits
+  ) &&
+  identical(
+    as.integer(models_object$settings$folds),
+    as.integer(expected_folds)
+  ) &&
+  identical(
+    as.character(models_object$settings$methods),
+    expected_methods
+  )
+
+if (!settings_contract_ok) {
+  stop(
+    paste0(
+      "M04 integrity gate failed: the M03 trait/fold/method settings ",
+      "do not match the current project contract."
+    )
+  )
+}
+
 metrics <- models_object$metrics_by_fold
 predictions <- models_object$predictions
 convergence <- models_object$convergence_diagnostics
-traits <- colnames(matrices_object$phenotypes)
-methods <- c("RRBLUP", "BayesA", "BayesB", "BayesB2", "BayesC", "BL", "GBLUP")
+
+expected_runs <-
+  length(expected_traits) *
+  length(expected_folds) *
+  length(expected_methods)
+
+expected_predictions <-
+  length(matrices_object$ids) *
+  length(expected_traits) *
+  length(expected_methods)
+
+expected_convergence_rows <-
+  expected_runs * 2L
+
+if (nrow(metrics) != expected_runs) {
+  stop(
+    sprintf(
+      paste0(
+        "M04 integrity gate failed: M03 is incomplete. ",
+        "Expected %d trait-fold-method fits, found %d."
+      ),
+      expected_runs,
+      nrow(metrics)
+    )
+  )
+}
+
+if (nrow(predictions) != expected_predictions) {
+  stop(
+    sprintf(
+      paste0(
+        "M04 integrity gate failed: expected %d OOF predictions, found %d."
+      ),
+      expected_predictions,
+      nrow(predictions)
+    )
+  )
+}
+
+if (nrow(convergence) != expected_convergence_rows) {
+  stop(
+    sprintf(
+      paste0(
+        "M04 integrity gate failed: expected %d convergence records, found %d."
+      ),
+      expected_convergence_rows,
+      nrow(convergence)
+    )
+  )
+}
+
+signature_columns_ok <-
+  all(metrics$Signature == expected_signature) &&
+  all(predictions$Signature == expected_signature) &&
+  all(convergence$Signature == expected_signature)
+
+if (!signature_columns_ok) {
+  stop(
+    "M04 integrity gate failed: mixed analytical signatures were found in M03 outputs."
+  )
+}
+
+metric_keys <- metrics |>
+  distinct(Trait, Fold, Method)
+
+prediction_keys <- predictions |>
+  distinct(IND, Trait, Method)
+
+convergence_keys <- convergence |>
+  count(Trait, Fold, Method, name = "N_parameters")
+
+if (
+  nrow(metric_keys) != expected_runs ||
+  anyDuplicated(metric_keys) > 0L
+) {
+  stop(
+    "M04 integrity gate failed: duplicated or missing trait-fold-method metric keys."
+  )
+}
+
+if (
+  nrow(prediction_keys) != expected_predictions ||
+  anyDuplicated(prediction_keys) > 0L
+) {
+  stop(
+    "M04 integrity gate failed: OOF predictions are not unique by individual, trait, and method."
+  )
+}
+
+if (
+  nrow(convergence_keys) != expected_runs ||
+  any(convergence_keys$N_parameters != 2L)
+) {
+  stop(
+    "M04 integrity gate failed: each M03 fit must contribute exactly two convergence records."
+  )
+}
+
+metric_coverage_ok <-
+  setequal(unique(metrics$Trait), expected_traits) &&
+  setequal(unique(metrics$Fold), expected_folds) &&
+  setequal(unique(metrics$Method), expected_methods)
+
+if (!metric_coverage_ok) {
+  stop(
+    "M04 integrity gate failed: trait, fold, or method coverage is incomplete."
+  )
+}
+
+metrics_per_trait_method <- metrics |>
+  count(Trait, Method, name = "N_folds")
+
+predictions_per_trait_method <- predictions |>
+  count(Trait, Method, name = "N_predictions")
+
+if (
+  nrow(metrics_per_trait_method) !=
+    length(expected_traits) * length(expected_methods) ||
+  any(metrics_per_trait_method$N_folds != length(expected_folds))
+) {
+  stop(
+    "M04 integrity gate failed: every trait-method combination must contain all five folds."
+  )
+}
+
+if (
+  nrow(predictions_per_trait_method) !=
+    length(expected_traits) * length(expected_methods) ||
+  any(
+    predictions_per_trait_method$N_predictions !=
+      length(matrices_object$ids)
+  )
+) {
+  stop(
+    "M04 integrity gate failed: every trait-method combination must contain one OOF prediction per individual."
+  )
+}
+
+expected_training_n <- setNames(
+  matrices_object$fold_summary$Training_n,
+  matrices_object$fold_summary$Fold
+)
+
+expected_validation_n <- setNames(
+  matrices_object$fold_summary$Validation_n,
+  matrices_object$fold_summary$Fold
+)
+
+observed_training_expected <- unname(
+  expected_training_n[
+    as.character(metrics$Fold)
+  ]
+)
+
+observed_validation_expected <- unname(
+  expected_validation_n[
+    as.character(metrics$Fold)
+  ]
+)
+
+if (
+  any(metrics$Training_n != observed_training_expected) ||
+  any(metrics$Validation_n != observed_validation_expected)
+) {
+  stop(
+    "M04 integrity gate failed: training/validation sample sizes do not match the M02 fold contract."
+  )
+}
+
+if (
+  !all(metrics$Finite_predictions) ||
+  !all(metrics$Finite_metrics) ||
+  !all(is.finite(predictions$Observed)) ||
+  !all(is.finite(predictions$Predicted))
+) {
+  stop(
+    "M04 integrity gate failed: non-finite predictions or fit metrics require review before derivation."
+  )
+}
+
+traits <- expected_traits
+methods <- expected_methods
 ```
+
+Before any derivation, the module verifies the analytical signature, completion
+of all 350 fits, coverage of ten traits, five folds, and seven methods,
+uniqueness of OOF predictions, and training/validation sample sizes. Therefore,
+a partial Module 03 test cannot accidentally be used as a final analytical
+result.
 
 ## 3. OOF predictive performance
 

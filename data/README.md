@@ -1,13 +1,25 @@
 # Data contract
 
-The project uses two source workbooks. Their filenames were normalized to make
-paths portable across operating systems; the workbook contents were not
-altered.
+The project uses two canonical source workbooks. Their filenames were normalized
+to make paths portable across operating systems.
 
-| Project file | Uploaded source | SHA-256 |
-|---|---|---|
-| `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx` | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx` | `5fbbc48ecd934f9fffda65d28db5bf1c9a7921d5a6bed9f04df043073f5b77ef` |
+The genotype workbook is the normalized version of the originally supplied SSR
+workbook. The phenotype workbook is the **corrected canonical phenotype file**
+currently used by the analytical workflow; it was updated in commit
+`93d6bb9` (`Update papaya phenotype dataset`).
+
+Because the phenotype workbook was corrected after the initial import, this
+contract records fingerprints of the **current canonical files**, rather than
+reusing the SHA-256 value of the originally uploaded phenotype workbook.
+
+| Project file | Provenance | Current SHA-256 | Current Git blob SHA |
+|---|---|---|---|
+| `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; portable filename | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` | `0f310c634fc3f8f152a660efb6395491a21008c3` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; corrected canonical version committed in `93d6bb9` | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` | `7ea40c6a7bd4e54462ef3343c151c0a5194f7bc6` |
+
+The SHA-256 values identify the exact current workbook bytes for external
+verification and archiving. The Git blob SHA identifies the corresponding file
+object versioned in this repository.
 
 ## Genotypes
 
@@ -49,13 +61,17 @@ The canonical phenotype table is the `Médias_IND_artigo` sheet. It contains
 
 The source metadata reports evaluation from June 2024 through December 2025.
 Fruit-quality variables were obtained from five fruits per selected plant.
-The consolidated columns reproduce the corresponding source columns exactly;
-`PRODEF` is the sum of bananoid, carpelloid, and pentandric defective-fruit
-production.
+The consolidated columns reproduce the canonical phenotype table used by the
+current workflow; `PRODEF` is the sum of bananoid, carpelloid, and pentandric
+defective-fruit production.
 
 ## Alignment invariants
 
 - Genotype and phenotype tables each contain 150 unique identifiers.
-- Their identifier sets and row order are identical.
+- Their identifier sets and row order are identical after the M01 alignment.
 - No phenotype is missing for the ten canonical traits.
-- Block (`BL`) and family (`FAM`) are retained as categorical fixed effects.
+- Block (`BL`) may exist in the source phenotype worksheet, but it is removed
+  immediately when M01 reads the phenotype data and is not propagated to
+  metadata, `X`, cross-validation folds, or prediction models.
+- Family (`FAM`) is retained and is the only categorical fixed effect used in
+  the prediction models.

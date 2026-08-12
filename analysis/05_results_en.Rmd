@@ -60,6 +60,51 @@ dir.create(FIGURE_DIR, recursive = TRUE, showWarnings = FALSE)
 models_object <- readRDS(MODELS_FILE)
 m04 <- readRDS(M04_FILE)
 
+required_m04_fields <- c(
+  "signature",
+  "traits",
+  "methods",
+  "model_comparison",
+  "model_selection",
+  "selected_fold_diagnostics",
+  "runtime",
+  "rrblup_heritability_summary",
+  "top10_with_family",
+  "recurring_top10",
+  "selected_oof_correlations"
+)
+
+missing_m04_fields <- setdiff(
+  required_m04_fields,
+  names(m04)
+)
+
+if (length(missing_m04_fields) > 0L) {
+  stop(
+    paste0(
+      "M05 integrity gate failed: module04_results.rds is missing: ",
+      paste(missing_m04_fields, collapse = ", "),
+      ". Rebuild M04 before running M05."
+    )
+  )
+}
+
+if (
+  length(models_object$signature) != 1L ||
+  length(m04$signature) != 1L ||
+  !identical(
+    as.character(models_object$signature),
+    as.character(m04$signature)
+  )
+) {
+  stop(
+    paste0(
+      "M05 integrity gate failed: M03 and M04 analytical signatures differ. ",
+      "Rebuild M04 from the current complete M03 object."
+    )
+  )
+}
+
 traits <- m04$traits
 methods <- m04$methods
 model_comparison <- m04$model_comparison
@@ -71,6 +116,61 @@ top10_with_family <- m04$top10_with_family
 recurring_top10 <- m04$recurring_top10
 selected_oof_correlations <- m04$selected_oof_correlations
 
+expected_runs <-
+  length(traits) *
+  length(models_object$settings$folds) *
+  length(methods)
+
+expected_model_comparison_rows <-
+  length(traits) *
+  length(methods)
+
+if (
+  nrow(models_object$metrics_by_fold) != expected_runs ||
+  nrow(
+    distinct(
+      models_object$metrics_by_fold,
+      Trait,
+      Fold,
+      Method
+    )
+  ) != expected_runs
+) {
+  stop(
+    paste0(
+      "M05 integrity gate failed: the current M03 object is incomplete. ",
+      "M05 requires the complete set of trait-fold-method fits."
+    )
+  )
+}
+
+if (
+  nrow(model_comparison) != expected_model_comparison_rows ||
+  nrow(model_selection) != length(traits) ||
+  anyDuplicated(model_selection$Trait) > 0L ||
+  !setequal(model_selection$Trait, traits)
+) {
+  stop(
+    paste0(
+      "M05 integrity gate failed: M04 does not contain one complete model ",
+      "comparison and one selection decision for every trait."
+    )
+  )
+}
+
+if (
+  any(
+    !model_selection$Selected_method %in%
+      methods
+  )
+) {
+  stop(
+    "M05 integrity gate failed: M04 contains an unknown selected method."
+  )
+}
+
+# Presentation proceeds only when M03 and M04 belong to the same
+# complete analytical execution.
 method_labels <- c(
   RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
@@ -230,6 +330,23 @@ As a visual representation analogous to the reference article, the posterior cha
 ```{r selected-mu-data}
 burn_in_saved <- models_object$settings$burn_in / models_object$settings$thin
 selected_method_lookup <- setNames(model_selection$Selected_method, model_selection$Trait)
+
+selected_mu_files <- file.path(
+  here("output", "models", "bglr"),
+  traits,
+  "F1",
+  unname(selected_method_lookup[traits]),
+  "bglr_mu.dat"
+)
+
+if (!all(file.exists(selected_mu_files))) {
+  stop(
+    paste0(
+      "M05 integrity gate failed: native fold-1 MCMC files are missing ",
+      "for at least one selected method."
+    )
+  )
+}
 
 trace_parts <- vector("list", length(traits))
 density_parts <- vector("list", length(traits))
