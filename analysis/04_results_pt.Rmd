@@ -1,5 +1,5 @@
 ---
-title: "Comparação dos modelos e derivação dos resultados genômicos"
+title: "Derivação e seleção dos resultados genômicos"
 author:
   - Costa, W. G.^[Weverton Gomes da Costa, Pós-Doutorando, Departamento de Estatística - Universidade Federal de Viçosa, weverton.costa@ufv.br]
 date: "`r Sys.Date()`"
@@ -24,53 +24,19 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  cache = FALSE,
-  fig.align = "center",
-  out.width = "100%"
+  cache = FALSE
 )
 ```
 
 ## 1. Objetivo e contrato desta etapa
 
-Este módulo usa exclusivamente os resultados oficiais já produzidos no Módulo
-03. Nenhum modelo é reajustado.
+Este módulo transforma as saídas oficiais do Módulo 03 em resultados analíticos derivados. Nenhum modelo é reajustado e nenhuma figura de apresentação final é produzida aqui.
 
-A análise segue a estrutura de Silva et al. [@silva2021brrguava] e a adapta ao
-conjunto de métodos efetivamente utilizado neste projeto. O artigo comparou
-seis modelos Bayesianos; aqui são comparados conjuntamente os sete métodos
-ajustados:
+São derivados: desempenho preditivo OOF; DIC, delta de DIC, `Wprob` e `ER`; decisão do método por característica; estabilidade entre folds; tempo computacional; herdabilidade e acurácia no análogo RR-BLUP/BRR; valores genômicos OOF; rankings; top 10; recorrência de indivíduos; e correlações entre valores genômicos.
 
-1. RR-BLUP, implementado pelo componente `BRR` do BGLR;
-2. BayesA;
-3. BayesB;
-4. BayesB2;
-5. BayesC;
-6. Lasso Bayesiano;
-7. GBLUP.
+A decisão do método integra desempenho OOF, ajuste relativo por DIC e estabilidade das cadeias. As escolhas ficam explicitadas em `selection_spec` e **devem ser revistas quando o Módulo 03 for executado novamente com dados ou especificações corrigidos**.
 
-A comparação inclui DIC, delta de DIC, probabilidade aproximada do modelo
-(`Wprob`), razão de evidência (`ER`) e desempenho preditivo fora da amostra.
-
-O desenho de validação não é alterado para imitar o tamanho dos folds do
-artigo. Permanecem os cinco folds determinísticos e estratificados por família
-já validados neste projeto, com 120 indivíduos de treinamento e 30 de validação
-em cada fold.
-
-Como o artigo não fornece uma regra escalar única que combine DIC e capacidade
-preditiva, a decisão deste projeto integra explicitamente três fontes de
-evidência: desempenho OOF, ajuste relativo por DIC e estabilidade das cadeias.
-O maior `r` OOF continua sendo a referência preditiva, mas diferenças
-preditivas pequenas não são usadas para sobrepor, de forma automática, um
-modelo com pior DIC ou com sinais claros de instabilidade. A decisão final por
-característica é registrada em uma tabela explícita e auditável, sem
-reajuste seletivo dos modelos.
-
-Os valores genômicos usados no ordenamento seguem a lógica da validação
-cruzada: cada indivíduo recebe o valor genômico do fold em que seu fenótipo foi
-mascarado. Não é calculada média dos cinco ajustes e não é realizado ajuste
-adicional com todos os fenótipos.
-
-A seleção multicaracterística não é realizada nesta etapa.
+Os valores genômicos utilizados no ranking são estritamente OOF: cada indivíduo recebe o componente genômico do fold em que seu fenótipo foi mascarado. Não é realizada seleção multicaracterística.
 
 ## 2. Entradas oficiais
 
@@ -78,359 +44,107 @@ A seleção multicaracterística não é realizada nesta etapa.
 suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
-  library(ggplot2)
-  library(knitr)
   library(here)
 })
 ```
 
-```{r paths-and-inputs}
-MATRICES_FILE <- here(
-  "output",
-  "matrices",
-  "matrices_object.rds"
-)
+```{r inputs}
+MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
+MODELS_FILE <- here("output", "models", "models_object.rds")
+RESULTS_DIR <- here("output", "results", "m04")
 
-MODELS_DIR <- here(
-  "output",
-  "models"
-)
+dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
 
-MODELS_FILE <- file.path(
-  MODELS_DIR,
-  "models_object.rds"
-)
-
-RESULTS_DIR <- here(
-  "output",
-  "results",
-  "m04"
-)
-
-FIGURE_DIR <- file.path(
-  RESULTS_DIR,
-  "figures"
-)
-
-dir.create(
-  RESULTS_DIR,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-dir.create(
-  FIGURE_DIR,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-matrices_object <- readRDS(
-  MATRICES_FILE
-)
-
-models_object <- readRDS(
-  MODELS_FILE
-)
+matrices_object <- readRDS(MATRICES_FILE)
+models_object <- readRDS(MODELS_FILE)
 
 metrics <- models_object$metrics_by_fold
 predictions <- models_object$predictions
 convergence <- models_object$convergence_diagnostics
-
-traits <- colnames(
-  matrices_object$phenotypes
-)
-
-methods <- c(
-  "RRBLUP",
-  "BayesA",
-  "BayesB",
-  "BayesB2",
-  "BayesC",
-  "BL",
-  "GBLUP"
-)
-
-method_labels <- c(
-  RRBLUP = "RR-BLUP/BRR",
-  BayesA = "BayesA",
-  BayesB = "BayesB",
-  BayesB2 = "BayesB2",
-  BayesC = "BayesC",
-  BL = "Bayesian Lasso",
-  GBLUP = "GBLUP"
-)
-
+traits <- colnames(matrices_object$phenotypes)
+methods <- c("RRBLUP", "BayesA", "BayesB", "BayesB2", "BayesC", "BL", "GBLUP")
 ```
 
 ## 3. Desempenho preditivo OOF
 
-As métricas principais são calculadas com as 150 predições fora da amostra de
-cada combinação entre característica e método. Esta consolidação preserva uma
-única predição OOF por indivíduo.
+As métricas principais são calculadas com as 150 predições fora da amostra de cada combinação entre característica e método, preservando uma única predição OOF por indivíduo.
 
 ```{r pooled-oof-metrics}
 pooled_metrics <- predictions |>
-  group_by(
-    Trait,
-    Method
-  ) |>
+  group_by(Trait, Method) |>
   summarise(
     N = n(),
-    r = cor(
-      Observed,
-      Predicted
-    ),
-    RMSE = sqrt(
-      mean(
-        (
-          Observed -
-            Predicted
-        )^2
-      )
-    ),
-    MAE = mean(
-      abs(
-        Observed -
-          Predicted
-      )
-    ),
-    Bias = mean(
-      Predicted -
-        Observed
-    ),
-    Slope =
-      cov(
-        Observed,
-        Predicted
-      ) /
-      var(
-        Predicted
-      ),
+    r = cor(Observed, Predicted),
+    RMSE = sqrt(mean((Observed - Predicted)^2)),
+    MAE = mean(abs(Observed - Predicted)),
+    Bias = mean(Predicted - Observed),
+    Slope = cov(Observed, Predicted) / var(Predicted),
     .groups = "drop"
-  )
-
-pooled_metrics <- pooled_metrics |>
+  ) |>
   mutate(
-    t_value =
-      r *
-      sqrt(
-        (N - 2) /
-          (1 - r^2)
-      ),
-    p_value =
-      2 *
-      pt(
-        abs(t_value),
-        df = N - 2,
-        lower.tail = FALSE
-      )
+    t_value = r * sqrt((N - 2) / (1 - r^2)),
+    p_value = 2 * pt(abs(t_value), df = N - 2, lower.tail = FALSE)
   ) |>
-  select(
-    -t_value
-  )
-```
+  select(-t_value)
 
-
-Os p-valores da correlação de Pearson são mantidos para preservar a
-comparabilidade com a análise de referência. Como os conjuntos de treinamento
-da validação cruzada se sobrepõem entre folds, esses valores são tratados como
-nominais e descritivos, e não como testes inferenciais plenamente ajustados à
-estrutura da validação cruzada.
-
-```{r fold-summary}
 fold_summary <- metrics |>
-  group_by(
-    Trait,
-    Method
-  ) |>
+  group_by(Trait, Method) |>
   summarise(
-    Mean_DIC = mean(
-      DIC
-    ),
-    SD_DIC = sd(
-      DIC
-    ),
-    Mean_fold_r = mean(
-      Correlation
-    ),
-    SD_fold_r = sd(
-      Correlation
-    ),
-    Mean_fold_RMSE = mean(
-      RMSE
-    ),
-    SD_fold_RMSE = sd(
-      RMSE
-    ),
-    Mean_fold_MAE = mean(
-      MAE
-    ),
-    SD_fold_MAE = sd(
-      MAE
-    ),
+    Mean_DIC = mean(DIC),
+    SD_DIC = sd(DIC),
+    Mean_fold_r = mean(Correlation),
+    SD_fold_r = sd(Correlation),
+    Mean_fold_RMSE = mean(RMSE),
+    SD_fold_RMSE = sd(RMSE),
+    Mean_fold_MAE = mean(MAE),
+    SD_fold_MAE = sd(MAE),
     .groups = "drop"
   )
 ```
 
-## 4. DIC, delta, Wprob e razão de evidência
+Os p-valores da correlação de Pearson são mantidos apenas como medidas nominais e descritivas, pois os conjuntos de treinamento da validação cruzada se sobrepõem entre folds.
 
-Silva et al. [@silva2021brrguava] calcularam a probabilidade aproximada de cada
-modelo a partir da diferença entre seu DIC e o menor DIC. Neste projeto, a
-normalização é estendida dos seis modelos do artigo para os sete métodos
-efetivamente ajustados.
+## 4. Comparação dos métodos
 
-\[
-\Delta_j = DIC_j - \min(DIC)
-\]
+Silva et al. [@silva2021brrguava] calcularam probabilidades aproximadas a partir da diferença entre o DIC de cada modelo e o menor DIC. A mesma lógica é aplicada conjuntamente aos sete métodos deste projeto.
 
 \[
-Wprob_j =
-\frac{\exp(-\Delta_j/2)}
-{\sum_k \exp(-\Delta_k/2)}
-\]
-
-\[
-ER_j =
-\frac{Wprob_{\max}}
-{Wprob_j}
+\Delta_j=DIC_j-\min(DIC),\qquad
+Wprob_j=\frac{\exp(-\Delta_j/2)}{\sum_k\exp(-\Delta_k/2)},\qquad
+ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 \]
 
 ```{r model-comparison}
 model_comparison <- pooled_metrics |>
-  left_join(
-    fold_summary,
-    by = c(
-      "Trait",
-      "Method"
-    )
-  ) |>
+  left_join(fold_summary, by = c("Trait", "Method")) |>
+  group_by(Trait) |>
   mutate(
-    Method_label =
-      unname(
-        method_labels[
-          Method
-        ]
-      )
-  ) |>
-  group_by(
-    Trait
-  ) |>
-  mutate(
-    Delta_DIC =
-      Mean_DIC -
-      min(
-        Mean_DIC
-      ),
-    log_weight =
-      -0.5 *
-      Delta_DIC,
-    stable_weight =
-      exp(
-        log_weight -
-          max(
-            log_weight
-          )
-      ),
-    Wprob =
-      stable_weight /
-      sum(
-        stable_weight
-      ),
-    ER =
-      max(
-        Wprob
-      ) /
-      Wprob
+    Delta_DIC = Mean_DIC - min(Mean_DIC),
+    log_weight = -0.5 * Delta_DIC,
+    stable_weight = exp(log_weight - max(log_weight)),
+    Wprob = stable_weight / sum(stable_weight),
+    ER = max(Wprob) / Wprob
   ) |>
   ungroup() |>
   select(
-    Trait,
-    Method,
-    Method_label,
-    Mean_DIC,
-    SD_DIC,
-    Delta_DIC,
-    Wprob,
-    ER,
-    N,
-    r,
-    p_value,
-    RMSE,
-    MAE,
-    Bias,
-    Slope,
-    Mean_fold_r,
-    SD_fold_r,
-    Mean_fold_RMSE,
-    SD_fold_RMSE,
-    Mean_fold_MAE,
-    SD_fold_MAE
+    Trait, Method, Mean_DIC, SD_DIC, Delta_DIC, Wprob, ER,
+    N, r, p_value, RMSE, MAE, Bias, Slope,
+    Mean_fold_r, SD_fold_r, Mean_fold_RMSE, SD_fold_RMSE,
+    Mean_fold_MAE, SD_fold_MAE
   ) |>
-  arrange(
-    match(
-      Trait,
-      traits
-    ),
-    Delta_DIC
-  )
-
-kable(
-  model_comparison,
-  digits = 5,
-  caption = "Comparação conjunta dos sete métodos por característica"
-)
+  arrange(match(Trait, traits), Delta_DIC)
 ```
 
+## 5. Seleção do método por característica
 
-
-## 5. Seleção final do método por característica
-
-A maior correlação OOF é registrada como referência preditiva, enquanto o menor
-DIC identifica o melhor ajuste relativo. A decisão final não aplica uma
-penalização numérica arbitrária entre essas duas quantidades. Em vez disso, ela
-documenta explicitamente os casos em que uma diferença preditiva muito pequena
-não compensa pior ajuste relativo ou sinais de instabilidade das cadeias.
-
-A comparação integrada do desempenho OOF, DIC e convergência definiu a seguinte decisão final:
-
-- `MMCOM`: RR-BLUP, porque a vantagem de `r` do BL foi pequena, enquanto
-  RR-BLUP apresentou o menor DIC e nenhuma flag;
-- `PRODCOM`: BL, vencedor simultaneamente em predição e DIC, mantendo a
-  sinalização de convergência;
-- `PRODEF`: GBLUP, pois a vantagem preditiva do BL foi fraca e acompanhada por
-  instabilidade extrema, enquanto GBLUP apresentou o menor DIC e nenhuma flag;
-- `CF`: BayesB, vencedor em predição e DIC sem flags;
-- `DF`: RR-BLUP, vencedor em predição e DIC sem flags;
-- `DCI`: RR-BLUP, com maior `r`, DIC próximo ao BayesC e nenhuma flag;
-- `EP`: BL, vencedor relativo entre os métodos e por DIC, embora sem sinal
-  preditivo positivo;
-- `FFC`: RR-BLUP, maior `r`, DIC muito próximo ao melhor e nenhuma flag;
-- `FFP`: BL, vencedor em predição e DIC, mas com evidência preditiva fraca e
-  flags de convergência;
-- `SS`: BayesC, porque sua correlação foi praticamente igual à do BayesB, com
-  menor DIC e nenhuma flag.
+O maior `r` OOF é a referência preditiva e o menor DIC é a referência de ajuste relativo. A decisão permanece explícita, permitindo confrontar predição, DIC e estabilidade sem criar uma função escalar arbitrária.
 
 ```{r model-selection}
-predictive_ranking <- model_comparison |>
-  group_by(
-    Trait
-  ) |>
-  arrange(
-    desc(r),
-    RMSE,
-    MAE,
-    .by_group = TRUE
-  ) |>
-  mutate(
-    Predictive_rank =
-      row_number()
-  ) |>
-  ungroup()
-
-predictive_winners <- predictive_ranking |>
-  filter(
-    Predictive_rank == 1L
-  ) |>
+predictive_winners <- model_comparison |>
+  group_by(Trait) |>
+  arrange(desc(r), RMSE, MAE, .by_group = TRUE) |>
+  slice(1L) |>
+  ungroup() |>
   transmute(
     Trait,
     Predictive_winner = Method,
@@ -441,88 +155,34 @@ predictive_winners <- predictive_ranking |>
   )
 
 dic_winners <- model_comparison |>
-  group_by(
-    Trait
-  ) |>
-  arrange(
-    Mean_DIC,
-    .by_group = TRUE
-  ) |>
-  slice(
-    1L
-  ) |>
+  group_by(Trait) |>
+  arrange(Mean_DIC, .by_group = TRUE) |>
+  slice(1L) |>
   ungroup() |>
   transmute(
     Trait,
     DIC_winner = Method,
-    Minimum_DIC =
-      Mean_DIC,
-    DIC_winner_Wprob =
-      Wprob
+    Minimum_DIC = Mean_DIC,
+    DIC_winner_Wprob = Wprob
   )
 
 convergence_by_trait_method <- convergence |>
-  group_by(
-    Trait,
-    Method
-  ) |>
+  group_by(Trait, Method) |>
   summarise(
-    Runs =
-      n_distinct(
-        Run_id
-      ),
-    Parameters_reviewed =
-      n(),
-    Parameters_flagged =
-      sum(
-        Review_flag
-      ),
-    Runs_with_flags =
-      n_distinct(
-        Run_id[
-          Review_flag
-        ]
-      ),
-    Minimum_ESS =
-      min(
-        Effective_sample_size,
-        na.rm = TRUE
-      ),
-    Maximum_absolute_Geweke =
-      max(
-        abs(
-          Geweke_Z
-        ),
-        na.rm = TRUE
-      ),
+    Runs = n_distinct(Run_id),
+    Parameters_reviewed = n(),
+    Parameters_flagged = sum(Review_flag),
+    Runs_with_flags = n_distinct(Run_id[Review_flag]),
+    Minimum_ESS = min(Effective_sample_size, na.rm = TRUE),
+    Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
     .groups = "drop"
   )
 
+# Decisões da análise atualmente publicada.
+# Revisar explicitamente após qualquer nova execução do M03.
 selection_spec <- data.frame(
-  Trait = c(
-    "MMCOM",
-    "PRODCOM",
-    "PRODEF",
-    "CF",
-    "DF",
-    "DCI",
-    "EP",
-    "FFC",
-    "FFP",
-    "SS"
-  ),
-  Selected_method = c(
-    "RRBLUP",
-    "BL",
-    "GBLUP",
-    "BayesB",
-    "RRBLUP",
-    "RRBLUP",
-    "BL",
-    "RRBLUP",
-    "BL",
-    "BayesC"
-  ),
+  Trait = c("MMCOM", "PRODCOM", "PRODEF", "CF", "DF", "DCI", "EP", "FFC", "FFP", "SS"),
+  Selected_method = c("RRBLUP", "BL", "GBLUP", "BayesB", "RRBLUP", "RRBLUP", "BL", "RRBLUP", "BL", "BayesC"),
   Decision_code = c(
     "prefer_dic_stability_small_predictive_loss",
     "predictive_and_dic_winner_convergence_review",
@@ -539,728 +199,224 @@ selection_spec <- data.frame(
 )
 
 selected_performance <- model_comparison |>
-  inner_join(
-    selection_spec |>
-      select(
-        Trait,
-        Selected_method
-      ),
-    by = "Trait"
-  ) |>
-  filter(
-    Method ==
-      Selected_method
-  ) |>
+  inner_join(selection_spec |> select(Trait, Selected_method), by = "Trait") |>
+  filter(Method == Selected_method) |>
   transmute(
-    Trait,
-    Selected_method,
-    Selected_method_label =
-      Method_label,
-    r,
-    p_value,
-    RMSE,
-    MAE,
-    Bias,
-    Slope,
-    Mean_DIC,
-    Delta_DIC,
-    Wprob,
-    ER,
-    Mean_fold_r,
-    SD_fold_r
+    Trait, Selected_method,
+    r, p_value, RMSE, MAE, Bias, Slope,
+    Mean_DIC, Delta_DIC, Wprob, ER, Mean_fold_r, SD_fold_r
   )
 
 model_selection <- selection_spec |>
-  left_join(
-    selected_performance,
-    by = c(
-      "Trait",
-      "Selected_method"
-    )
-  ) |>
-  left_join(
-    predictive_winners,
-    by = "Trait"
-  ) |>
-  left_join(
-    dic_winners,
-    by = "Trait"
-  ) |>
+  left_join(selected_performance, by = c("Trait", "Selected_method")) |>
+  left_join(predictive_winners, by = "Trait") |>
+  left_join(dic_winners, by = "Trait") |>
   left_join(
     convergence_by_trait_method,
-    by = c(
-      "Trait",
-      "Selected_method" = "Method"
-    )
+    by = c("Trait", "Selected_method" = "Method")
   ) |>
   mutate(
-    Predictive_loss =
-      Predictive_winner_r -
-      r,
-    Predictive_winner_agrees =
-      Selected_method ==
-      Predictive_winner,
-    DIC_winner_agrees =
-      Selected_method ==
-      DIC_winner,
-    Convergence_review =
-      Parameters_flagged >
-      0,
-    Predictive_evidence =
-      case_when(
-        r > 0 &
-          p_value < 0.05 ~
-          "positive_p_lt_0.05",
-        r > 0 &
-          p_value >= 0.05 ~
-          "positive_p_ge_0.05",
-        TRUE ~
-          "nonpositive_p_ge_0.05"
-      )
-  ) |>
-  arrange(
-    match(
-      Trait,
-      traits
+    Predictive_loss = Predictive_winner_r - r,
+    Predictive_winner_agrees = Selected_method == Predictive_winner,
+    DIC_winner_agrees = Selected_method == DIC_winner,
+    Convergence_review = Parameters_flagged > 0,
+    Predictive_evidence = case_when(
+      r > 0 & p_value < 0.05 ~ "positive_p_lt_0.05",
+      r > 0 & p_value >= 0.05 ~ "positive_p_ge_0.05",
+      TRUE ~ "nonpositive_p_ge_0.05"
     )
-  )
-
-decision_labels <- c(
-  prefer_dic_stability_small_predictive_loss =
-    "Menor DIC e maior estabilidade com perda preditiva pequena",
-  predictive_and_dic_winner_convergence_review =
-    "Vencedor preditivo e por DIC; convergência requer revisão",
-  prefer_stable_dic_winner_weak_prediction =
-    "Menor DIC e cadeia estável sob capacidade preditiva fraca",
-  predictive_and_dic_winner =
-    "Vencedor preditivo e por DIC, sem flags",
-  best_prediction_similar_dic_stable =
-    "Maior predição, DIC próximo ao melhor e cadeia estável",
-  predictive_and_dic_winner_no_positive_signal =
-    "Vencedor relativo e por DIC, mas sem sinal preditivo positivo",
-  best_prediction_similar_dic_stable_weak_signal =
-    "Maior predição e estabilidade, mas evidência preditiva fraca",
-  predictive_and_dic_winner_weak_signal_convergence_review =
-    "Vencedor preditivo e por DIC, com evidência fraca e flags",
-  prefer_stable_dic_winner_negligible_predictive_loss =
-    "Menor DIC e maior estabilidade com perda preditiva desprezível"
-)
-
-predictive_evidence_labels <- c(
-  positive_p_lt_0.05 =
-    "Correlação positiva com p nominal < 0,05",
-  positive_p_ge_0.05 =
-    "Correlação positiva, mas p nominal >= 0,05",
-  nonpositive_p_ge_0.05 =
-    "Correlação não positiva e p nominal >= 0,05"
-)
-
-model_selection_display <- model_selection |>
-  mutate(
-    Decision =
-      unname(
-        decision_labels[
-          Decision_code
-        ]
-      ),
-    Predictive_evidence_label =
-      unname(
-        predictive_evidence_labels[
-          Predictive_evidence
-        ]
-      )
   ) |>
-  select(
-    Trait,
-    Selected_method,
-    Predictive_winner,
-    DIC_winner,
-    r,
-    p_value,
-    Predictive_loss,
-    Delta_DIC,
-    Wprob,
-    ER,
-    Parameters_flagged,
-    Runs_with_flags,
-    Minimum_ESS,
-    Maximum_absolute_Geweke,
-    Predictive_evidence_label,
-    Decision
-  )
+  arrange(match(Trait, traits))
 
-kable(
-  model_selection_display,
-  digits = 5,
-  caption = "Decisão final por característica integrando predição, DIC e convergência"
-)
-```
-
-### 5.1. Evidência preditiva dos métodos finais
-
-A decisão de um método final não implica que a característica possua capacidade
-preditiva útil. Para separar essas duas questões, o resultado é classificado
-somente pela direção de `r` e pelo p-valor da correlação OOF, sem transformar
-essa classificação em um novo critério de ajuste.
-
-```{r predictive-evidence-summary}
 predictive_evidence_summary <- model_selection |>
-  count(
-    Predictive_evidence,
-    name = "Traits"
-  )
-
-predictive_evidence_summary$Evidence <- unname(
-  predictive_evidence_labels[
-    predictive_evidence_summary$
-      Predictive_evidence
-  ]
-)
-
-kable(
-  predictive_evidence_summary |>
-    select(
-      Evidence,
-      Traits
-    ),
-  caption = "Resumo da evidência preditiva dos métodos finais"
-)
+  count(Predictive_evidence, name = "Traits") |>
+  arrange(Predictive_evidence)
 ```
-
-Os rankings são calculados para todas as características para preservar a
-completude analítica. Entretanto, `PRODEF`, `FFC` e `FFP` apresentam correlação
-positiva com `p >= 0,05`, enquanto `EP` apresenta correlação não positiva. Esses
-rankings devem, portanto, ser interpretados com cautela e não com a mesma força
-de evidência observada para `MMCOM`, `PRODCOM`, `CF`, `DF`, `DCI` e `SS`.
 
 ## 6. Estabilidade entre folds dos métodos selecionados
 
-Como diagnóstico compacto da estabilidade dos resultados, a correlação de
-validação é apresentada separadamente nos cinco folds do método selecionado
-para cada característica. Esse diagnóstico não altera a seleção dos modelos;
-ele mostra como o resultado OOF combinado se distribui entre os folds
-estratificados por família previamente definidos.
+Os valores são derivados aqui; sua apresentação gráfica fica exclusivamente no Módulo 05.
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
   inner_join(
-    selection_spec |>
-      select(
-        Trait,
-        Selected_method
-      ),
-    by = c(
-      "Trait" = "Trait",
-      "Method" = "Selected_method"
-    )
+    selection_spec |> select(Trait, Selected_method),
+    by = c("Trait" = "Trait", "Method" = "Selected_method")
   ) |>
-  transmute(
-    Trait,
-    Fold,
-    Method,
-    Method_label =
-      unname(
-        method_labels[
-          Method
-        ]
-      ),
-    Correlation,
-    RMSE,
-    MAE
-  ) |>
-  arrange(
-    match(
-      Trait,
-      traits
-    ),
-    Fold
-  )
-
-selected_fold_diagnostics$Facet <- paste0(
-  selected_fold_diagnostics$Trait,
-  " — ",
-  selected_fold_diagnostics$Method_label
-)
-```
-
-```{r selected-fold-figure, fig.width=12, fig.height=10}
-fold_stability_plot <- ggplot(
-  selected_fold_diagnostics,
-  aes(
-    x = Fold,
-    y = Correlation,
-    group = Trait
-  )
-) +
-  geom_hline(
-    yintercept = 0,
-    linetype = 2,
-    linewidth = 0.4
-  ) +
-  geom_line(
-    linewidth = 0.6
-  ) +
-  geom_point(
-    size = 2
-  ) +
-  facet_wrap(
-    ~ Facet,
-    ncol = 2
-  ) +
-  scale_x_continuous(
-    breaks = 1:5
-  ) +
-  coord_cartesian(
-    ylim = c(-1, 1)
-  ) +
-  labs(
-    x = "Fold",
-    y = "Correlação de validação",
-    title = "Correlação preditiva por fold dos métodos selecionados"
-  ) +
-  theme_bw(
-    base_size = 12
-  ) +
-  theme(
-    strip.text = element_text(
-      face = "bold"
-    ),
-    plot.title = element_text(
-      face = "bold"
-    )
-  )
-
-fold_stability_plot
-
-ggsave(
-  filename = file.path(
-    FIGURE_DIR,
-    "selected_method_fold_stability_pt.png"
-  ),
-  plot = fold_stability_plot,
-  width = 12,
-  height = 10,
-  dpi = 300
-)
+  transmute(Trait, Fold, Method, Correlation, RMSE, MAE) |>
+  arrange(match(Trait, traits), Fold)
 ```
 
 ## 7. Tempo computacional
 
-O artigo mediu tempo repetindo cadeias especificamente para essa finalidade.
-Aqui não são executadas repetições adicionais. A adaptação usa o tempo real dos
-50 ajustes oficiais já realizados para cada método
-(\(10\) características \(\times 5\) folds).
+São utilizados apenas os tempos dos 350 ajustes oficiais do Módulo 03; não são executadas repetições adicionais para mensuração de tempo.
 
 ```{r runtime}
-runtime_summary_module04 <- metrics |>
-  group_by(
-    Method
-  ) |>
+runtime_summary <- metrics |>
+  group_by(Method) |>
   summarise(
     Fits = n(),
-    Total_seconds =
-      sum(
-        Elapsed_seconds
-      ),
-    Mean_seconds =
-      mean(
-        Elapsed_seconds
-      ),
-    SD_seconds =
-      sd(
-        Elapsed_seconds
-      ),
-    Median_seconds =
-      median(
-        Elapsed_seconds
-      ),
-    Minimum_seconds =
-      min(
-        Elapsed_seconds
-      ),
-    Maximum_seconds =
-      max(
-        Elapsed_seconds
-      ),
+    Total_seconds = sum(Elapsed_seconds),
+    Mean_seconds = mean(Elapsed_seconds),
+    SD_seconds = sd(Elapsed_seconds),
+    Median_seconds = median(Elapsed_seconds),
+    Minimum_seconds = min(Elapsed_seconds),
+    Maximum_seconds = max(Elapsed_seconds),
     .groups = "drop"
   ) |>
-  mutate(
-    Method_label =
-      unname(
-        method_labels[
-          Method
-        ]
-      )
-  ) |>
-  arrange(
-    match(
-      Method,
-      methods
-    )
-  )
-
+  arrange(match(Method, methods))
 ```
 
 ## 8. Herdabilidade e acurácia no análogo RR-BLUP/BRR
 
-Silva et al. [@silva2021brrguava] estimaram a variância genética aditiva por
-
-\[
-\sigma_a^2 =
-\sum_j 2p_jq_j
-\operatorname{Var}(m_j)
-\]
-
-e a herdabilidade por
-
-\[
-H^2 =
-\frac{\sigma_a^2}
-{\sigma_a^2+\sigma_e^2}.
-\]
-
-No artigo, BRR foi o método selecionado para todas as características. Neste
-projeto, métodos diferentes podem vencer a regra preditiva. Os arquivos nativos
-preservados para BL e BayesB contêm seus hiperparâmetros de contração/escala,
-mas não a mesma cadeia direta de variância de marcador usada pelo BRR.
-Portanto, para não introduzir um novo ajuste nem substituir o estimando, a
-reprodução direta da Tabela 3 é apresentada como **análogo RR-BLUP/BRR** para
-as dez características.
-
-No RR-BLUP/BRR, a variância comum dos marcadores está armazenada diretamente
-como `Marker_variance`. Como a matriz de marcadores é global, o denominador
-\(\sum 2pq\) também é o mesmo nos cinco folds.
-
-A acurácia é calculada por fold como no artigo:
-
-\[
-Accuracy_f =
-\frac{r_f}
-{\sqrt{H_f^2}}.
-\]
+Seguindo Silva et al. [@silva2021brrguava], a variância genética aditiva do análogo RR-BLUP/BRR é calculada a partir da variância comum dos marcadores e do denominador \(\sum 2pq\). A acurácia por fold é \(r_f/\sqrt{H_f^2}\).
 
 ```{r rrblup-heritability}
 rrblup_variance_components <- convergence |>
   filter(
     Method == "RRBLUP",
-    Parameter %in%
-      c(
-        "Residual_variance",
-        "Marker_variance"
-      )
+    Parameter %in% c("Residual_variance", "Marker_variance")
   ) |>
-  select(
-    Run_id,
-    Trait,
-    Fold,
-    Method,
-    Parameter,
-    Posterior_mean
-  ) |>
-  pivot_wider(
-    names_from = Parameter,
-    values_from = Posterior_mean
-  )
+  select(Run_id, Trait, Fold, Method, Parameter, Posterior_mean) |>
+  pivot_wider(names_from = Parameter, values_from = Posterior_mean)
 
 rrblup_fold_correlations <- metrics |>
-  filter(
-    Method == "RRBLUP"
-  ) |>
-  select(
-    Trait,
-    Fold,
-    Correlation
-  )
+  filter(Method == "RRBLUP") |>
+  select(Trait, Fold, Correlation)
 
-rrblup_heritability_by_fold <-
-  rrblup_variance_components |>
-  left_join(
-    rrblup_fold_correlations,
-    by = c(
-      "Trait",
-      "Fold"
-    )
-  ) |>
+rrblup_heritability_by_fold <- rrblup_variance_components |>
+  left_join(rrblup_fold_correlations, by = c("Trait", "Fold")) |>
   mutate(
-    Marker_variance_denominator =
-      matrices_object$denominator,
-    Additive_variance =
-      Marker_variance *
-      Marker_variance_denominator,
-    H2 =
-      Additive_variance /
-      (
-        Additive_variance +
-          Residual_variance
-      ),
-    Predictive_accuracy =
-      Correlation /
-      sqrt(
-        H2
-      )
+    Marker_variance_denominator = matrices_object$denominator,
+    Additive_variance = Marker_variance * Marker_variance_denominator,
+    H2 = Additive_variance / (Additive_variance + Residual_variance),
+    Predictive_accuracy = Correlation / sqrt(H2)
   ) |>
-  arrange(
-    match(
-      Trait,
-      traits
-    ),
-    Fold
-  )
+  arrange(match(Trait, traits), Fold)
 
-rrblup_heritability_summary <-
-  rrblup_heritability_by_fold |>
-  group_by(
-    Trait
-  ) |>
+rrblup_heritability_summary <- rrblup_heritability_by_fold |>
+  group_by(Trait) |>
   summarise(
-    Mean_H2 =
-      mean(
-        H2
-      ),
-    SD_H2 =
-      sd(
-        H2
-      ),
-    Mean_fold_r =
-      mean(
-        Correlation
-      ),
-    SD_fold_r =
-      sd(
-        Correlation
-      ),
-    Mean_predictive_accuracy =
-      mean(
-        Predictive_accuracy
-      ),
-    SD_predictive_accuracy =
-      sd(
-        Predictive_accuracy
-      ),
+    Mean_H2 = mean(H2),
+    SD_H2 = sd(H2),
+    Mean_fold_r = mean(Correlation),
+    SD_fold_r = sd(Correlation),
+    Mean_predictive_accuracy = mean(Predictive_accuracy),
+    SD_predictive_accuracy = sd(Predictive_accuracy),
     .groups = "drop"
   ) |>
-  arrange(
-    match(
-      Trait,
-      traits
-    )
-  )
-
+  arrange(match(Trait, traits))
 ```
 
-## 9. Valores genômicos OOF dos métodos selecionados
-
-Para cada característica, o método selecionado é associado às 150 linhas OOF.
-O valor utilizado é `Genomic_component`, isto é, o componente genômico
-proveniente do ajuste em que o fenótipo daquele indivíduo estava mascarado.
+## 9. Valores genômicos OOF
 
 ```{r selected-oof-genomic-values}
 selected_oof_genomic_values <- predictions |>
   inner_join(
-    model_selection |>
-      select(
-        Trait,
-        Selected_method,
-        Predictive_evidence
-      ),
+    model_selection |> select(Trait, Selected_method, Predictive_evidence),
     by = "Trait"
   ) |>
-  filter(
-    Method ==
-      Selected_method
-  ) |>
+  filter(Method == Selected_method) |>
   transmute(
-    IND,
-    Trait,
-    Fold,
-    Method,
-    Predictive_evidence,
-    Genomic_value =
-      Genomic_component
+    IND, Trait, Fold, Method, Predictive_evidence,
+    Genomic_value = Genomic_component
   ) |>
-  arrange(
-    match(
-      Trait,
-      traits
-    ),
-    IND
-  )
-
+  arrange(match(Trait, traits), IND)
 ```
 
-## 10. Ordenamento genômico por característica
-
-O ordenamento é decrescente pelo valor genômico. Ele representa a regra
-estatística de classificação e não impõe, nesta etapa, pesos econômicos,
-direções de melhoramento específicas ou um índice multicaracterístico. A coluna
-`Predictive_evidence` deve ser mantida na interpretação do ranking, especialmente
-para características sem correlação OOF positiva com `p < 0,05`.
+## 10. Ranking, top 10 e recorrência
 
 ```{r genomic-ranking}
 genomic_ranking <- selected_oof_genomic_values |>
-  group_by(
-    Trait
-  ) |>
-  arrange(
-    desc(
-      Genomic_value
-    ),
-    IND,
-    .by_group = TRUE
-  ) |>
-  mutate(
-    Rank =
-      row_number()
-  ) |>
+  group_by(Trait) |>
+  arrange(desc(Genomic_value), IND, .by_group = TRUE) |>
+  mutate(Rank = row_number()) |>
   ungroup() |>
-  arrange(
-    match(
-      Trait,
-      traits
-    ),
-    Rank
-  )
+  arrange(match(Trait, traits), Rank)
 
+top10_with_family <- genomic_ranking |>
+  filter(Rank <= 10L) |>
+  left_join(
+    matrices_object$metadata |> select(IND, FAM),
+    by = "IND"
+  ) |>
+  select(
+    Trait, Rank, IND, FAM, Method, Genomic_value, Predictive_evidence
+  ) |>
+  arrange(match(Trait, traits), Rank)
+
+recurring_top10 <- top10_with_family |>
+  filter(Predictive_evidence == "positive_p_lt_0.05") |>
+  group_by(IND, FAM) |>
+  summarise(
+    N_traits = n(),
+    Traits = paste(Trait, collapse = ", "),
+    .groups = "drop"
+  ) |>
+  filter(N_traits >= 2L) |>
+  arrange(desc(N_traits), FAM, IND)
 ```
+
+A recorrência entre rankings é apenas descritiva e não constitui um índice de seleção multicaracterística.
 
 ## 11. Correlações entre valores genômicos OOF
 
-A matriz abaixo corresponde à correlação de Pearson entre os valores genômicos
-OOF obtidos pelo método selecionado para cada característica. Essas são
-correlações descritivas entre valores genômicos preditos; não são estimativas
-de correlação genética obtidas por um modelo multivariado.
+Estas correlações são descritivas entre valores genômicos preditos; não são estimativas de correlação genética de um modelo multivariado.
 
 ```{r oof-correlations}
-selected_genomic_wide <-
-  selected_oof_genomic_values |>
-  select(
-    IND,
-    Trait,
-    Genomic_value
-  ) |>
-  pivot_wider(
-    names_from = Trait,
-    values_from = Genomic_value
-  )
+selected_genomic_wide <- selected_oof_genomic_values |>
+  select(IND, Trait, Genomic_value) |>
+  pivot_wider(names_from = Trait, values_from = Genomic_value)
 
 selected_oof_correlations <- cor(
-  as.matrix(
-    selected_genomic_wide[
-      ,
-      traits,
-      drop = FALSE
-    ]
-  )
+  as.matrix(selected_genomic_wide[, traits, drop = FALSE])
 )
 ```
 
-## 12. Saídas analíticas
+## 12. Saídas analíticas canônicas
+
+O Módulo 04 é a fonte canônica dos resultados derivados. O objeto RDS permanece neutro em idioma; rótulos de apresentação são adicionados somente no Módulo 05.
 
 ```{r save-results}
-write.csv(
-  model_comparison,
-  file.path(RESULTS_DIR, "model_comparison.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  model_selection,
-  file.path(RESULTS_DIR, "model_selection.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  selection_spec,
-  file.path(RESULTS_DIR, "selection_decision_spec.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  convergence_by_trait_method,
-  file.path(RESULTS_DIR, "convergence_by_trait_method.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  selected_fold_diagnostics,
-  file.path(RESULTS_DIR, "selected_fold_diagnostics.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  runtime_summary_module04,
-  file.path(RESULTS_DIR, "runtime_summary.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  rrblup_heritability_by_fold,
-  file.path(RESULTS_DIR, "rrblup_heritability_by_fold.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  rrblup_heritability_summary,
-  file.path(RESULTS_DIR, "rrblup_heritability_summary.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  selected_oof_genomic_values,
-  file.path(RESULTS_DIR, "selected_oof_genomic_values.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  genomic_ranking,
-  file.path(RESULTS_DIR, "genomic_ranking.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  as.data.frame(
-    selected_oof_correlations
-  ),
-  file.path(RESULTS_DIR, "selected_oof_correlations.csv"),
-  row.names = TRUE
-)
+write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
+write.csv(model_selection, file.path(RESULTS_DIR, "model_selection.csv"), row.names = FALSE)
+write.csv(selection_spec, file.path(RESULTS_DIR, "selection_decision_spec.csv"), row.names = FALSE)
+write.csv(predictive_evidence_summary, file.path(RESULTS_DIR, "predictive_evidence_summary.csv"), row.names = FALSE)
+write.csv(convergence_by_trait_method, file.path(RESULTS_DIR, "convergence_by_trait_method.csv"), row.names = FALSE)
+write.csv(selected_fold_diagnostics, file.path(RESULTS_DIR, "selected_fold_diagnostics.csv"), row.names = FALSE)
+write.csv(runtime_summary, file.path(RESULTS_DIR, "runtime_summary.csv"), row.names = FALSE)
+write.csv(rrblup_heritability_by_fold, file.path(RESULTS_DIR, "rrblup_heritability_by_fold.csv"), row.names = FALSE)
+write.csv(rrblup_heritability_summary, file.path(RESULTS_DIR, "rrblup_heritability_summary.csv"), row.names = FALSE)
+write.csv(selected_oof_genomic_values, file.path(RESULTS_DIR, "selected_oof_genomic_values.csv"), row.names = FALSE)
+write.csv(genomic_ranking, file.path(RESULTS_DIR, "genomic_ranking.csv"), row.names = FALSE)
+write.csv(top10_with_family, file.path(RESULTS_DIR, "top10_genomic_values_with_family.csv"), row.names = FALSE)
+write.csv(recurring_top10, file.path(RESULTS_DIR, "recurring_top10_individuals.csv"), row.names = FALSE)
+write.csv(as.data.frame(selected_oof_correlations), file.path(RESULTS_DIR, "selected_oof_correlations.csv"), row.names = TRUE)
 
 saveRDS(
   list(
-    signature =
-      models_object$signature,
-    model_comparison =
-      model_comparison,
-    selection_spec =
-      selection_spec,
-    model_selection =
-      model_selection,
-    convergence_by_trait_method =
-      convergence_by_trait_method,
-    selected_fold_diagnostics =
-      selected_fold_diagnostics,
-    runtime =
-      runtime_summary_module04,
-    rrblup_heritability_by_fold =
-      rrblup_heritability_by_fold,
-    rrblup_heritability_summary =
-      rrblup_heritability_summary,
-    selected_oof_genomic_values =
-      selected_oof_genomic_values,
-    genomic_ranking =
-      genomic_ranking,
-    selected_oof_correlations =
-      selected_oof_correlations
+    signature = models_object$signature,
+    traits = traits,
+    methods = methods,
+    model_comparison = model_comparison,
+    selection_spec = selection_spec,
+    model_selection = model_selection,
+    predictive_evidence_summary = predictive_evidence_summary,
+    convergence_by_trait_method = convergence_by_trait_method,
+    selected_fold_diagnostics = selected_fold_diagnostics,
+    runtime = runtime_summary,
+    rrblup_heritability_by_fold = rrblup_heritability_by_fold,
+    rrblup_heritability_summary = rrblup_heritability_summary,
+    selected_oof_genomic_values = selected_oof_genomic_values,
+    genomic_ranking = genomic_ranking,
+    top10_with_family = top10_with_family,
+    recurring_top10 = recurring_top10,
+    selected_oof_correlations = selected_oof_correlations
   ),
-  file.path(
-    RESULTS_DIR,
-    "module04_results.rds"
-  )
+  file.path(RESULTS_DIR, "module04_results.rds")
 )
 ```
 
 ## 13. Próxima etapa
 
-O Módulo 05 apresenta os resultados derivados aqui utilizando o padrão
-gráfico final. Nenhum modelo é reajustado e nenhuma decisão de seleção é
-redefinida nessa etapa.
+O Módulo 05 consome os resultados derivados aqui para construir as tabelas e figuras finais. Nenhuma decisão analítica é redefinida nessa etapa.
