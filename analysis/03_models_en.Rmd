@@ -57,7 +57,8 @@ All methods are fitted exclusively with BGLR [@perez2014bglr]:
 4. BayesB2 with `M` and a zero-effect probability operationally fixed near
    \(10^{-5}\);
 5. BayesC with `M`;
-6. Bayesian Lasso with `M`;
+6. Bayesian Lasso with `M`, with the shrinkage parameter `lambda` fixed at
+   the global value deterministically calibrated by the BGLR default rule;
 7. GBLUP with the genomic relationship matrix `G` and the BGLR `RKHS`
    component.
 
@@ -92,6 +93,11 @@ The MCMC settings follow the main methods section of the reference article
 - 200,000 retained posterior samples.
 
 The BGLR default prior allocation parameter is made explicit with `R2 = 0.5`.
+For the Bayesian Lasso, `lambda` is held fixed at the deterministic `lambda0`
+obtained from BGLR's own calibration. Because the predictor contains two
+`ETA` terms (family `FIXED` and genomic `BL`), BGLR allocates `R2/2` to the
+BL component. Matrix `M` is global, so `MSx` and `lambda0` are also global
+and identical across traits and folds.
 
 ## 3. Reproducible and resumable execution
 
@@ -106,6 +112,12 @@ Each trait-fold-method combination has:
 The compact RDS is the checkpoint that determines whether a statistical fit is
 missing during an ordinary rebuild. Completed checkpoints are skipped, so an
 ordinary rebuild does not refit completed models.
+
+During the controlled transition from `module03-full-v3` to the fixed-lambda
+BL specification, only BL changes statistically. The 300 non-BL compact
+checkpoints are promoted to the new signature after validation of the previous
+signature while preserving their numerical results; the 50 BL fits are never
+promoted and must be fully regenerated.
 
 Native BGLR files are preserved under
 `output/models/bglr/Trait/Fold/Method/`. They contain the thinned chains written
@@ -166,7 +178,7 @@ RETAINED_SAMPLES <-
   BURN_IN_SAVED_SAMPLES
 
 PIPELINE_VERSION <-
-  "module03-full-v3"
+  "module03-full-v4-bl-fixed"
 
 MAX_NEW_RUNS_PER_BUILD <- as.integer(
   Sys.getenv(
@@ -184,6 +196,9 @@ BAYESB2_COUNTS <- 1e6
 
 ESS_REVIEW_THRESHOLD <- 1000
 GEWEKE_REVIEW_THRESHOLD <- 2
+
+BL_LAMBDA_TYPE <- "FIXED"
+BL_LAMBDA_TOLERANCE_REL <- 1e-10
 
 dir.create(
   RUNS_DIR,
@@ -303,7 +318,7 @@ model_catalogue <- data.frame(
     "Scaled-t slab and a point mass at zero",
     "BayesB with zero-effect probability near 1e-5",
     "Common Gaussian slab and a point mass at zero",
-    "Double-exponential marginal prior",
+    "Double-exponential marginal prior; lambda fixed at BGLR-calibrated lambda0",
     "Genomic values structured by G"
   )
 )
@@ -315,6 +330,50 @@ kable(
 ```
 
 ```{r eta-specifications}
+# BGLR counts both ETA terms when it allocates R2 to the BL component:
+# one family FIXED term and one genomic BL term.
+BL_N_LINEAR_TERMS <- 2L
+BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
+
+# Exact BGLR default calibration used by setLT.BL when lambda is omitted.
+# M is global, so MSx and lambda0 are global constants across traits/folds.
+BL_MSX <-
+  sum(
+    apply(
+      M,
+      2,
+      function(x) sum(x^2)
+    )
+  ) / nrow(M) -
+  sum(
+    colMeans(M)^2
+  )
+
+BL_LAMBDA_SQUARED <-
+  2 *
+  (1 - R2_PRIOR) /
+  BL_COMPONENT_R2 *
+  BL_MSX
+
+BL_LAMBDA <- sqrt(
+  BL_LAMBDA_SQUARED
+)
+
+BL_LAMBDA_TOLERANCE <- max(
+  1e-12,
+  abs(BL_LAMBDA) *
+    BL_LAMBDA_TOLERANCE_REL
+)
+
+stopifnot(
+  is.finite(BL_COMPONENT_R2),
+  BL_COMPONENT_R2 > 0,
+  is.finite(BL_MSX),
+  BL_MSX > 0,
+  is.finite(BL_LAMBDA),
+  BL_LAMBDA > 0
+)
+
 ETA_models <- list(
   RRBLUP = list(
     fixed = list(
@@ -375,7 +434,9 @@ ETA_models <- list(
     ),
     genomic = list(
       X = M,
-      model = "BL"
+      model = "BL",
+      type = BL_LAMBDA_TYPE,
+      lambda = BL_LAMBDA
     )
   ),
   GBLUP = list(
@@ -392,10 +453,12 @@ ETA_models <- list(
 ```
 
 The official BGLR implementation writes a residual-variance chain for every
-model. The genomic scalar used for convergence review differs by method:
-marker variance for RR-BLUP, scale for BayesA and BayesB, common marker
-variance for BayesC, shrinkage parameter for the Bayesian Lasso, and genomic
-variance for GBLUP.
+model. The second stochastic scalar used for convergence review differs by
+method: marker variance for RR-BLUP, scale for BayesA and BayesB, common
+marker variance for BayesC, the intercept for the Bayesian Lasso with fixed
+`lambda`, and genomic variance for GBLUP. The BL `lambda` chain is validated
+separately against the deterministic global value and is not assigned ESS or
+Geweke diagnostics.
 
 ```{r trace-contract}
 genomic_trace_suffix <- c(
@@ -404,7 +467,7 @@ genomic_trace_suffix <- c(
   BayesB = "ETA_genomic_parBayesB.dat",
   BayesB2 = "ETA_genomic_parBayesB.dat",
   BayesC = "ETA_genomic_parBayesC.dat",
-  BL = "ETA_genomic_lambda.dat",
+  BL = "mu.dat",
   GBLUP = "ETA_genomic_varU.dat"
 )
 
@@ -434,7 +497,7 @@ genomic_trace_parameter <- c(
   BayesB = "Scale",
   BayesB2 = "Scale",
   BayesC = "Marker_variance",
-  BL = "Lambda",
+  BL = "Intercept",
   GBLUP = "Genomic_variance"
 )
 ```
@@ -489,6 +552,22 @@ analysis_settings <- list(
     BAYESB2_PROB_IN,
   bayesb2_counts =
     BAYESB2_COUNTS,
+  bl_lambda_type =
+    BL_LAMBDA_TYPE,
+  bl_n_linear_terms =
+    BL_N_LINEAR_TERMS,
+  bl_component_R2 =
+    BL_COMPONENT_R2,
+  bl_msx =
+    BL_MSX,
+  bl_lambda_squared =
+    BL_LAMBDA_SQUARED,
+  bl_lambda =
+    BL_LAMBDA,
+  bl_lambda_tolerance =
+    BL_LAMBDA_TOLERANCE,
+  bl_tau2_warning_policy =
+    "review_not_structural",
   traits = traits,
   folds = seq_len(
     matrices_object$settings$n_folds
@@ -506,6 +585,47 @@ analysis_signature <- substr(
       G = G,
       cv_folds = cv_folds,
       settings = analysis_settings
+    ),
+    algo = "sha256"
+  ),
+  1,
+  16
+)
+
+# Reconstruct the immediately preceding analytical signature exactly.
+# It is used only to promote unchanged non-BL compact results without
+# repeating their statistical fits. BL is never promoted.
+previous_analysis_settings <- list(
+  pipeline_version =
+    "module03-full-v3",
+  n_iter = N_ITER,
+  burn_in = BURN_IN,
+  thin = THIN,
+  R2 = R2_PRIOR,
+  seed_base = SEED_BASE,
+  bayesb2_zero_probability =
+    BAYESB2_ZERO_PROBABILITY,
+  bayesb2_prob_in =
+    BAYESB2_PROB_IN,
+  bayesb2_counts =
+    BAYESB2_COUNTS,
+  traits = traits,
+  folds = seq_len(
+    matrices_object$settings$n_folds
+  ),
+  methods = method_names
+)
+
+previous_analysis_signature <- substr(
+  digest::digest(
+    list(
+      ids = ids,
+      phenotypes = phenotypes,
+      X = X,
+      M = M,
+      G = G,
+      cv_folds = cv_folds,
+      settings = previous_analysis_settings
     ),
     algo = "sha256"
   ),
@@ -542,6 +662,157 @@ result_files <- file.path(
   here(),
   run_design$Result_relative_file
 )
+
+previous_result_relative_file <- file.path(
+  "output",
+  "models",
+  "runs",
+  paste0(
+    run_design$Run_id,
+    "_",
+    previous_analysis_signature,
+    ".rds"
+  )
+)
+
+previous_result_files <- file.path(
+  here(),
+  previous_result_relative_file
+)
+
+# Controlled promotion of the 300 unchanged non-BL fits.
+# Only metadata/signature fields are rewritten; numeric fit results are
+# preserved byte-for-value at the R object level. BL is intentionally
+# excluded so that all 50 BL fits are regenerated under the FIXED contract.
+promote_indices <- which(
+  run_design$Method != "BL" &
+    !file.exists(result_files) &
+    file.exists(previous_result_files)
+)
+
+replace_compact_signature <- function(
+  x,
+  old_signature,
+  new_signature
+) {
+  if (
+    is.data.frame(x) &&
+      "Signature" %in% names(x)
+  ) {
+    # Zero-row tables are legitimate compact-result components. For example,
+    # GBLUP has no marker-effect rows because it uses K rather than M.
+    if (nrow(x) == 0L) {
+      x$Signature <- character(0)
+      return(x)
+    }
+
+    observed <- unique(
+      as.character(x$Signature)
+    )
+
+    if (
+      length(observed) != 1L ||
+        observed != old_signature
+    ) {
+      stop(
+        "Previous compact result has an unexpected signature."
+      )
+    }
+
+    x$Signature <- new_signature
+  }
+
+  x
+}
+
+for (promote_index in promote_indices) {
+  previous_compact <- readRDS(
+    previous_result_files[
+      promote_index
+    ]
+  )
+
+  if (
+    !identical(
+      as.character(
+        previous_compact$run$Method[1]
+      ),
+      as.character(
+        run_design$Method[
+          promote_index
+        ]
+      )
+    ) ||
+      run_design$Method[
+        promote_index
+      ] == "BL"
+  ) {
+    stop(
+      "Unsafe compact-result promotion was blocked."
+    )
+  }
+
+  for (
+    component_name in c(
+      "run",
+      "metrics",
+      "predictions",
+      "genomic_values",
+      "fixed_effects",
+      "marker_effects",
+      "convergence",
+      "run_audit"
+    )
+  ) {
+    previous_compact[[component_name]] <-
+      replace_compact_signature(
+        previous_compact[[component_name]],
+        previous_analysis_signature,
+        analysis_signature
+      )
+  }
+
+  previous_compact$run$Result_relative_file <-
+    run_design$Result_relative_file[
+      promote_index
+    ]
+
+  previous_compact$settings <-
+    analysis_settings
+
+  promoted_temporary_file <- paste0(
+    result_files[
+      promote_index
+    ],
+    ".tmp"
+  )
+
+  saveRDS(
+    previous_compact,
+    promoted_temporary_file
+  )
+
+  promoted_ok <- file.rename(
+    promoted_temporary_file,
+    result_files[
+      promote_index
+    ]
+  )
+
+  if (!promoted_ok) {
+    stop(
+      "Could not promote unchanged non-BL compact result: ",
+      run_design$Run_id[
+        promote_index
+      ]
+    )
+  }
+}
+
+run_design$Reused_from_previous_signature <-
+  run_design$Method != "BL" &
+  file.exists(result_files) &
+  file.exists(previous_result_files)
 
 run_design$Completed_before_build <-
   file.exists(
@@ -583,11 +854,14 @@ single-chain diagnostics used in this module, two of those saved chains are read
 directly:
 
 - residual variance;
-- one method-specific genomic scale or variance parameter.
+- one method-specific second stochastic scalar; for BL with fixed `lambda`,
+  this second scalar is the intercept.
 
-For each chain, effective sample size and the Geweke diagnostic are calculated
-with `coda`. The thresholds below are review flags rather than automatic model
-exclusion rules:
+For each stochastic chain, the effective sample size and the Geweke
+diagnostic are calculated with `coda`. For BL with fixed `lambda`, the two
+stochastic chains reviewed are residual variance and the intercept; `lambda`
+is validated directly against the deterministic contract. The limits below
+are review indicators rather than automatic model-exclusion rules:
 
 - ESS below 1,000;
 - absolute Geweke statistic above 2.
@@ -692,20 +966,148 @@ for (run_index in pending_indices) {
 
   fit_start <- proc.time()[["elapsed"]]
 
-  fit <- BGLR::BGLR(
-    y = y_model,
-    ETA = ETA_models[[method_name]],
-    response_type = "gaussian",
-    nIter = N_ITER,
-    burnIn = BURN_IN,
-    thin = THIN,
-    R2 = R2_PRIOR,
-    saveAt = save_prefix,
-    verbose = FALSE,
-    rmExistingFiles = TRUE
+  run_warning_messages <- character(0)
+
+  fit <- withCallingHandlers(
+    BGLR::BGLR(
+      y = y_model,
+      ETA = ETA_models[[method_name]],
+      response_type = "gaussian",
+      nIter = N_ITER,
+      burnIn = BURN_IN,
+      thin = THIN,
+      R2 = R2_PRIOR,
+      saveAt = save_prefix,
+      verbose = FALSE,
+      rmExistingFiles = TRUE
+    ),
+    warning = function(w) {
+      run_warning_messages <<- c(
+        run_warning_messages,
+        conditionMessage(w)
+      )
+      invokeRestart(
+        "muffleWarning"
+      )
+    }
   )
 
   fit_end <- proc.time()[["elapsed"]]
+
+  tau2_warning_count <- sum(
+    grepl(
+      "tau2 was not updated",
+      run_warning_messages,
+      fixed = TRUE
+    )
+  )
+
+  lambda_update_warning_count <- sum(
+    grepl(
+      "lambda was not updated",
+      run_warning_messages,
+      fixed = TRUE
+    )
+  )
+
+  bl_lambda_observed <- NA_real_
+  bl_lambda_max_abs_error <- NA_real_
+  bl_lambda_native_value <- NA_real_
+  bl_lambda_native_unique <- NA_integer_
+  bl_lambda_native_serialization_error <- NA_real_
+  bl_lambda_native_valid <- NA
+  bl_lambda_valid <- NA
+
+  if (method_name == "BL") {
+    # The analytical contract is checked against the in-memory BGLR object.
+    # The native text file is intentionally not used for full-precision
+    # equality because BGLR serializes this trace with limited text precision.
+    bl_lambda_observed <- as.numeric(
+      fit$ETA$genomic$lambda
+    )
+
+    bl_lambda_max_abs_error <- abs(
+      bl_lambda_observed -
+        BL_LAMBDA
+    )
+
+    bl_lambda_trace_full <- scan(
+      paste0(
+        save_prefix,
+        "ETA_genomic_lambda.dat"
+      ),
+      quiet = TRUE
+    )
+
+    bl_lambda_native_unique <- length(
+      unique(
+        bl_lambda_trace_full
+      )
+    )
+
+    bl_lambda_native_value <- if (
+      length(
+        bl_lambda_trace_full
+      ) > 0L
+    ) {
+      bl_lambda_trace_full[1]
+    } else {
+      NA_real_
+    }
+
+    bl_lambda_native_serialization_error <- if (
+      is.finite(
+        bl_lambda_native_value
+      )
+    ) {
+      abs(
+        bl_lambda_native_value -
+          BL_LAMBDA
+      )
+    } else {
+      Inf
+    }
+
+    bl_lambda_native_valid <-
+      length(
+        bl_lambda_trace_full
+      ) == RAW_SAVED_SAMPLES &&
+      all(
+        is.finite(
+          bl_lambda_trace_full
+        )
+      ) &&
+      all(
+        bl_lambda_trace_full > 0
+      ) &&
+      bl_lambda_native_unique == 1L
+
+    bl_lambda_valid <-
+      length(
+        bl_lambda_observed
+      ) == 1L &&
+      is.finite(
+        bl_lambda_observed
+      ) &&
+      bl_lambda_observed > 0 &&
+      bl_lambda_max_abs_error <=
+        BL_LAMBDA_TOLERANCE &&
+      bl_lambda_native_valid
+
+    if (!bl_lambda_valid) {
+      stop(
+        "BL FIXED-lambda contract failed for ",
+        run_id
+      )
+    }
+
+    if (lambda_update_warning_count > 0L) {
+      stop(
+        "Unexpected lambda-update warning under BL type=FIXED for ",
+        run_id
+      )
+    }
+  }
 
   predicted_validation <- fit$yHat[
     validation_index
@@ -839,6 +1241,24 @@ for (run_index in pending_indices) {
       fit$SD.varE,
       NA_real_
     )[1],
+    BL_lambda =
+      bl_lambda_observed,
+    BL_lambda_native_value =
+      bl_lambda_native_value,
+    BL_lambda_native_serialization_error =
+      bl_lambda_native_serialization_error,
+    BL_lambda_native_valid =
+      bl_lambda_native_valid,
+    BL_lambda_valid =
+      bl_lambda_valid,
+    BGLR_warning_count =
+      length(
+        run_warning_messages
+      ),
+    Tau2_warning_count =
+      tau2_warning_count,
+    Lambda_update_warning_count =
+      lambda_update_warning_count,
     Posterior_probIn =
       posterior_prob_in,
     Elapsed_seconds =
@@ -1168,6 +1588,34 @@ for (run_index in pending_indices) {
         convergence_table$
           Review_flag
       ),
+    BGLR_warning_count =
+      length(
+        run_warning_messages
+      ),
+    Tau2_warning_count =
+      tau2_warning_count,
+    Lambda_update_warning_count =
+      lambda_update_warning_count,
+    BL_lambda_expected =
+      ifelse(
+        method_name == "BL",
+        BL_LAMBDA,
+        NA_real_
+      ),
+    BL_lambda_observed =
+      bl_lambda_observed,
+    BL_lambda_max_abs_error =
+      bl_lambda_max_abs_error,
+    BL_lambda_native_value =
+      bl_lambda_native_value,
+    BL_lambda_native_unique =
+      bl_lambda_native_unique,
+    BL_lambda_native_serialization_error =
+      bl_lambda_native_serialization_error,
+    BL_lambda_native_valid =
+      bl_lambda_native_valid,
+    BL_lambda_valid =
+      bl_lambda_valid,
     Elapsed_seconds =
       fit_end - fit_start
   )
@@ -1186,6 +1634,7 @@ for (run_index in pending_indices) {
     marker_effects = marker_effect_table,
     convergence = convergence_table,
     run_audit = run_audit,
+    warnings = run_warning_messages,
     settings = analysis_settings
   )
 
