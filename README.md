@@ -1,4 +1,4 @@
-# Genomic Selection in Papaya with Bayesian Regression, RR-BLUP, and GBLUP
+# Genomic Selection in Papaya with Bayesian Regression, GBLUP, and RR-BLUP
 
 [English](#english) | [Português](#português)
 
@@ -24,17 +24,17 @@ The website is organized into five bilingual modules:
 4. **Derivation and model selection** — OOF predictive performance, DIC-based comparison, model selection by trait, OOF genomic values, and trait-specific rankings.
 5. **Results presentation** — presentation of the final tables and figures used as the analytical basis for the manuscript.
 
-### Core analytical contract
+### Repository structure
 
-The analytical matrices are constructed once using the complete aligned dataset:
+- `analysis/`: bilingual workflowr source pages for the site and Modules 01--05;
+- `data/`: canonical source workbooks and the data contract;
+- `docs/`: generated website;
+- `output/`: local analytical objects, checkpoints, diagnostics, tables, and figures;
+- `renv.lock` and `renv/`: reproducible R environment metadata.
 
-- `X`: fixed-effect matrix with intercept and family;
-- `M`: centered allele-dosage matrix;
-- `G`: additive genomic relationship matrix derived from `M`.
-
-The same `X`, `M`, and `G` are used in all five deterministic family-stratified folds. Each fold contains 120 training individuals and 30 validation individuals, with three validation individuals from each family.
-
-For each trait and fold, only the phenotype vector is masked for validation. The original validation phenotypes are retained separately for out-of-fold (OOF) predictive assessment.
+The detailed analytical contract, including fixed effects, matrix construction,
+cross-validation, fitting, selection, and presentation rules, is documented in
+the corresponding module pages.
 
 ### Reproduction
 
@@ -50,6 +50,7 @@ Build the complete bilingual workflow:
 ```r
 workflowr::wflow_build(
   c(
+    "analysis/index.Rmd",
     "analysis/01_preprocessing_en.Rmd",
     "analysis/01_preprocessing_pt.Rmd",
     "analysis/02_matrices_en.Rmd",
@@ -59,7 +60,9 @@ workflowr::wflow_build(
     "analysis/04_results_en.Rmd",
     "analysis/04_results_pt.Rmd",
     "analysis/05_results_en.Rmd",
-    "analysis/05_results_pt.Rmd"
+    "analysis/05_results_pt.Rmd",
+    "analysis/about.Rmd",
+    "analysis/license.Rmd"
   )
 )
 ```
@@ -96,17 +99,17 @@ O site está organizado em cinco módulos bilíngues:
 4. **Derivação e seleção dos modelos** — desempenho preditivo OOF, comparação por DIC, seleção do método por característica, valores genômicos OOF e rankings específicos por característica.
 5. **Apresentação dos resultados** — apresentação das tabelas e figuras finais utilizadas como base analítica para o manuscrito.
 
-### Contrato analítico central
+### Estrutura do repositório
 
-As matrizes analíticas são construídas uma única vez utilizando o conjunto completo de dados alinhados:
+- `analysis/`: páginas-fonte bilíngues do workflowr para o site e os Módulos 01--05;
+- `data/`: planilhas-fonte canônicas e contrato dos dados;
+- `docs/`: site gerado;
+- `output/`: objetos analíticos locais, checkpoints, diagnósticos, tabelas e figuras;
+- `renv.lock` e `renv/`: metadados do ambiente R reprodutível.
 
-- `X`: matriz de efeitos fixos com intercepto e família;
-- `M`: matriz centralizada de dosagens alélicas;
-- `G`: matriz de relacionamento genômico aditivo derivada de `M`.
-
-As mesmas `X`, `M` e `G` são utilizadas nos cinco folds determinísticos e estratificados por família. Cada fold contém 120 indivíduos de treinamento e 30 de validação, com três indivíduos de validação de cada família.
-
-Para cada característica e fold, apenas o vetor fenotípico é mascarado para a validação. Os fenótipos originais dos indivíduos de validação são mantidos separadamente para a avaliação preditiva fora da amostra (OOF).
+O contrato analítico detalhado, incluindo efeitos fixos, construção das matrizes,
+validação cruzada, ajuste, seleção e apresentação, está documentado nas páginas
+dos módulos correspondentes.
 
 ### Reprodução
 
@@ -122,6 +125,7 @@ Construa o fluxo bilíngue completo:
 ```r
 workflowr::wflow_build(
   c(
+    "analysis/index.Rmd",
     "analysis/01_preprocessing_en.Rmd",
     "analysis/01_preprocessing_pt.Rmd",
     "analysis/02_matrices_en.Rmd",
@@ -131,7 +135,9 @@ workflowr::wflow_build(
     "analysis/04_results_en.Rmd",
     "analysis/04_results_pt.Rmd",
     "analysis/05_results_en.Rmd",
-    "analysis/05_results_pt.Rmd"
+    "analysis/05_results_pt.Rmd",
+    "analysis/about.Rmd",
+    "analysis/license.Rmd"
   )
 )
 ```

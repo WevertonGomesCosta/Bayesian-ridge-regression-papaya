@@ -5,6 +5,8 @@ author:
 date: "`r Sys.Date()`"
 site: workflowr::wflow_site
 url: https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/
+bibliography: ../REFERENCES.bib
+link-citations: true
 output:
   workflowr::wflow_html:
     toc: true
@@ -90,6 +92,75 @@ locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
 
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
+
+EXPECTED_N_INDIVIDUALS <- 150L
+EXPECTED_N_ORIGINAL_LOCI <- 35L
+EXPECTED_N_FAMILIES <- 10L
+EXPECTED_FAMILY_SIZE <- 15L
+EXPECTED_N_MARKERS <- 72L
+EXPECTED_TRAITS <- c(
+  "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
+  "DCI", "EP", "FFC", "FFP", "SS"
+)
+NUMERICAL_TOLERANCE <- 1e-12
+
+matrix_input_checks <- c(
+  individual_count =
+    length(ids) == EXPECTED_N_INDIVIDUALS,
+  ids_complete =
+    !any(is.na(ids) | ids == ""),
+  ids_unique =
+    !anyDuplicated(ids),
+  metadata_ids_aligned =
+    identical(as.character(metadata$IND), ids),
+  phenotype_dimensions =
+    identical(
+      dim(phenotypes),
+      c(EXPECTED_N_INDIVIDUALS, length(EXPECTED_TRAITS))
+    ),
+  phenotype_traits_exact =
+    identical(colnames(phenotypes), EXPECTED_TRAITS),
+  phenotype_ids_aligned =
+    identical(rownames(phenotypes), ids),
+  phenotype_values_finite =
+    all(is.finite(phenotypes)),
+  ssr_raw_dimensions =
+    identical(
+      dim(ssr_raw),
+      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_ORIGINAL_LOCI)
+    ),
+  ssr_raw_ids_aligned =
+    identical(rownames(ssr_raw), ids),
+  locus_audit_count =
+    nrow(locus_audit_full) == EXPECTED_N_ORIGINAL_LOCI,
+  families_complete =
+    !anyNA(metadata$FAM),
+  family_levels_exact =
+    setequal(
+      unique(as.character(metadata$FAM)),
+      as.character(seq_len(EXPECTED_N_FAMILIES))
+    ),
+  family_sizes_exact =
+    length(table(metadata$FAM)) == EXPECTED_N_FAMILIES &&
+    all(table(metadata$FAM) == EXPECTED_FAMILY_SIZE),
+  trait_dictionary_exact =
+    identical(
+      as.character(trait_dictionary$Trait),
+      EXPECTED_TRAITS
+    )
+)
+
+if (!all(matrix_input_checks)) {
+  stop(
+    "Module 02 input contract failed: ",
+    paste(
+      names(matrix_input_checks)[
+        !matrix_input_checks
+      ],
+      collapse = ", "
+    )
+  )
+}
 
 data.frame(
   Item = c(
@@ -232,6 +303,55 @@ retained_markers_full <- allele_audit_full$Marker[
   allele_audit_full$Keep_allele
 ]
 
+retained_marker_checks <- c(
+  marker_count =
+    length(retained_markers_full) == EXPECTED_N_MARKERS,
+  marker_names_complete =
+    !any(is.na(retained_markers_full) | retained_markers_full == ""),
+  marker_names_unique =
+    !anyDuplicated(retained_markers_full),
+  retained_frequencies_finite =
+    all(
+      is.finite(
+        allele_audit_full$Allele_frequency[
+          allele_audit_full$Keep_allele
+        ]
+      )
+    ),
+  retained_frequencies_in_range =
+    all(
+      allele_audit_full$Allele_frequency[
+        allele_audit_full$Keep_allele
+      ] >= ALLELE_FREQUENCY_MIN &
+      allele_audit_full$Allele_frequency[
+        allele_audit_full$Keep_allele
+      ] <= (1 - ALLELE_FREQUENCY_MIN)
+    ),
+  retained_dosage_sd_positive =
+    all(
+      is.finite(
+        allele_audit_full$Dosage_sd[
+          allele_audit_full$Keep_allele
+        ]
+      ) &
+      allele_audit_full$Dosage_sd[
+        allele_audit_full$Keep_allele
+      ] > 0
+    )
+)
+
+if (!all(retained_marker_checks)) {
+  stop(
+    "Retained allele-column contract failed: ",
+    paste(
+      names(retained_marker_checks)[
+        !retained_marker_checks
+      ],
+      collapse = ", "
+    )
+  )
+}
+
 dosage_full <- dosage_full_raw[
   ,
   retained_markers_full,
@@ -318,8 +438,9 @@ M_full <- sweep(
 
 ## 6. Complete genomic relationship matrix
 
-Let \(p_j\) be the frequency of the allele represented by column \(j\). The
-additive genomic relationship matrix is calculated as
+Let \(p_j\) be the frequency of the allele represented by column \(j\).
+Using a VanRaden-type allele-frequency scaling [@vanraden2008efficient],
+the additive genomic relationship matrix is calculated as
 
 \[
 \mathbf{G} =
@@ -336,6 +457,14 @@ denominator_full <- sum(
     allele_frequencies_full *
     (1 - allele_frequencies_full)
 )
+
+if (
+  length(denominator_full) != 1L ||
+    !is.finite(denominator_full) ||
+    denominator_full <= 0
+) {
+  stop("The denominator of G must be finite and positive.")
+}
 
 G_full <- tcrossprod(
   M_full
@@ -695,6 +824,98 @@ matrix_inventory <- data.frame(
     min(eigenvalues_G_full)
   )
 )
+
+matrix_integrity_checks <- c(
+  X_dimensions =
+    identical(
+      dim(X),
+      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_FAMILIES)
+    ),
+  X_columns_exact =
+    identical(
+      colnames(X),
+      c("(Intercept)", paste0("FAM", 2:EXPECTED_N_FAMILIES))
+    ),
+  X_ids_aligned =
+    identical(rownames(X), ids),
+  X_finite =
+    all(is.finite(X)),
+  M_dimensions =
+    identical(
+      dim(M_full),
+      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_MARKERS)
+    ),
+  M_markers_exact =
+    identical(colnames(M_full), retained_markers_full),
+  M_ids_aligned =
+    identical(rownames(M_full), ids),
+  M_finite =
+    all(is.finite(M_full)),
+  M_centered =
+    maximum_M_column_mean <= NUMERICAL_TOLERANCE,
+  marker_means_finite =
+    all(is.finite(marker_means_full)),
+  allele_frequencies_finite =
+    all(is.finite(allele_frequencies_full)),
+  allele_frequencies_valid =
+    all(
+      allele_frequencies_full >= 0 &
+      allele_frequencies_full <= 1
+    ),
+  denominator_positive =
+    is.finite(denominator_full) && denominator_full > 0,
+  G_dimensions =
+    identical(
+      dim(G_full),
+      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_INDIVIDUALS)
+    ),
+  G_ids_aligned =
+    identical(rownames(G_full), ids) &&
+    identical(colnames(G_full), ids),
+  G_finite =
+    all(is.finite(G_full)),
+  G_symmetric =
+    max(abs(G_full - t(G_full))) <= NUMERICAL_TOLERANCE,
+  G_reconstruction_exact =
+    maximum_G_reconstruction_difference <= NUMERICAL_TOLERANCE,
+  dosage_sum_diagnostic_finite =
+    is.finite(maximum_dosage_sum_error),
+  fold_labels_exact =
+    setequal(unique(cv_folds$Fold), seq_len(N_FOLDS)),
+  fold_ids_aligned =
+    identical(as.character(cv_folds$IND), ids),
+  fold_families_aligned =
+    identical(
+      as.character(cv_folds$FAM),
+      as.character(metadata$FAM)
+    ),
+  fold_sizes_exact =
+    length(fold_sizes) == N_FOLDS &&
+    all(fold_sizes == 30L),
+  training_sizes_exact =
+    all(fold_summary$Training_n == 120L),
+  validation_sizes_exact =
+    all(fold_summary$Validation_n == 30L),
+  family_fold_balance_exact =
+    identical(
+      dim(family_fold_table),
+      c(EXPECTED_N_FAMILIES, N_FOLDS)
+    ) &&
+    all(family_fold_table == 3L) &&
+    all(family_balance == 0L)
+)
+
+if (!all(matrix_integrity_checks)) {
+  stop(
+    "Final matrix integrity gate failed: ",
+    paste(
+      names(matrix_integrity_checks)[
+        !matrix_integrity_checks
+      ],
+      collapse = ", "
+    )
+  )
+}
 
 matrices_object <- list(
   ids = ids,

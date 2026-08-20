@@ -5,17 +5,14 @@ to make paths portable across operating systems.
 
 The genotype workbook is the normalized version of the originally supplied SSR
 workbook. The phenotype workbook is the **corrected canonical phenotype file**
-currently used by the analytical workflow; it was updated in commit
-`93d6bb9` (`Update papaya phenotype dataset`).
-
-Because the phenotype workbook was corrected after the initial import, this
-contract records fingerprints of the **current canonical files**, rather than
-reusing the SHA-256 value of the originally uploaded phenotype workbook.
+currently used by the analytical workflow. The fingerprints below identify the
+exact current canonical workbooks and are the authoritative provenance record
+for reproducibility.
 
 | Project file | Provenance | Current SHA-256 | Current Git blob SHA |
 |---|---|---|---|
 | `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; portable filename | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` | `0f310c634fc3f8f152a660efb6395491a21008c3` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; corrected canonical version committed in `93d6bb9` | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` | `7ea40c6a7bd4e54462ef3343c151c0a5194f7bc6` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; corrected canonical phenotype workbook | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` | `7ea40c6a7bd4e54462ef3343c151c0a5194f7bc6` |
 
 The SHA-256 values identify the exact current workbook bytes for external
 verification and archiving. The Git blob SHA identifies the corresponding file
@@ -70,8 +67,8 @@ defective-fruit production.
 - Genotype and phenotype tables each contain 150 unique identifiers.
 - Their identifier sets and row order are identical after the M01 alignment.
 - No phenotype is missing for the ten canonical traits.
-- Block (`BL`) may exist in the source phenotype worksheet, but it is removed
-  immediately when M01 reads the phenotype data and is not propagated to
-  metadata, `X`, cross-validation folds, or prediction models.
+- Block (`BL`) is present in the canonical source phenotype worksheet and is
+  removed immediately when M01 reads the phenotype data; it is not propagated
+  to metadata, `X`, cross-validation folds, or prediction models.
 - Family (`FAM`) is retained and is the only categorical fixed effect used in
   the prediction models.

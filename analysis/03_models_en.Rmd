@@ -51,16 +51,21 @@ The complete analysis contains:
 All methods are fitted exclusively with BGLR [@perez2014bglr]:
 
 1. RR-BLUP, implemented with the BGLR `BRR` component and the complete marker
-   matrix `M`;
+   matrix `M` [@endelman2011rrblup];
 2. BayesA with `M`;
 3. BayesB with `M`;
 4. BayesB2 with `M` and a zero-effect probability operationally fixed near
    \(10^{-5}\);
 5. BayesC with `M`;
-6. Bayesian Lasso with `M`, with the shrinkage parameter `lambda` fixed at
-   the global value deterministically calibrated by the BGLR default rule;
+6. Bayesian Lasso with `M` [@park2008bayesianlasso], with the shrinkage
+   parameter `lambda` fixed at the global value deterministically calibrated
+   by the BGLR default rule;
 7. GBLUP with the genomic relationship matrix `G` and the BGLR `RKHS`
    component.
+
+BayesA and BayesB follow the genomic-prediction framework introduced by
+Meuwissen et al. and its subsequent Bayesian-alphabet development
+[@meuwissen2001prediction; @habier2011bayesianalphabet].
 
 RR-BLUP and Bayesian ridge regression are not treated as separate methods. The
 Gaussian marker-effect model implemented by `model = "BRR"` is the RR-BLUP
@@ -112,12 +117,6 @@ Each trait-fold-method combination has:
 The compact RDS is the checkpoint that determines whether a statistical fit is
 missing during an ordinary rebuild. Completed checkpoints are skipped, so an
 ordinary rebuild does not refit completed models.
-
-During the controlled transition from `module03-full-v3` to the fixed-lambda
-BL specification, only BL changes statistically. The 300 non-BL compact
-checkpoints are promoted to the new signature after validation of the previous
-signature while preserving their numerical results; the 50 BL fits are never
-promoted and must be fully regenerated.
 
 Native BGLR files are preserved under
 `output/models/bglr/Trait/Fold/Method/`. They contain the thinned chains written
@@ -592,47 +591,6 @@ analysis_signature <- substr(
   16
 )
 
-# Reconstruct the immediately preceding analytical signature exactly.
-# It is used only to promote unchanged non-BL compact results without
-# repeating their statistical fits. BL is never promoted.
-previous_analysis_settings <- list(
-  pipeline_version =
-    "module03-full-v3",
-  n_iter = N_ITER,
-  burn_in = BURN_IN,
-  thin = THIN,
-  R2 = R2_PRIOR,
-  seed_base = SEED_BASE,
-  bayesb2_zero_probability =
-    BAYESB2_ZERO_PROBABILITY,
-  bayesb2_prob_in =
-    BAYESB2_PROB_IN,
-  bayesb2_counts =
-    BAYESB2_COUNTS,
-  traits = traits,
-  folds = seq_len(
-    matrices_object$settings$n_folds
-  ),
-  methods = method_names
-)
-
-previous_analysis_signature <- substr(
-  digest::digest(
-    list(
-      ids = ids,
-      phenotypes = phenotypes,
-      X = X,
-      M = M,
-      G = G,
-      cv_folds = cv_folds,
-      settings = previous_analysis_settings
-    ),
-    algo = "sha256"
-  ),
-  1,
-  16
-)
-
 run_design$Signature <-
   analysis_signature
 
@@ -662,157 +620,6 @@ result_files <- file.path(
   here(),
   run_design$Result_relative_file
 )
-
-previous_result_relative_file <- file.path(
-  "output",
-  "models",
-  "runs",
-  paste0(
-    run_design$Run_id,
-    "_",
-    previous_analysis_signature,
-    ".rds"
-  )
-)
-
-previous_result_files <- file.path(
-  here(),
-  previous_result_relative_file
-)
-
-# Controlled promotion of the 300 unchanged non-BL fits.
-# Only metadata/signature fields are rewritten; numeric fit results are
-# preserved byte-for-value at the R object level. BL is intentionally
-# excluded so that all 50 BL fits are regenerated under the FIXED contract.
-promote_indices <- which(
-  run_design$Method != "BL" &
-    !file.exists(result_files) &
-    file.exists(previous_result_files)
-)
-
-replace_compact_signature <- function(
-  x,
-  old_signature,
-  new_signature
-) {
-  if (
-    is.data.frame(x) &&
-      "Signature" %in% names(x)
-  ) {
-    # Zero-row tables are legitimate compact-result components. For example,
-    # GBLUP has no marker-effect rows because it uses K rather than M.
-    if (nrow(x) == 0L) {
-      x$Signature <- character(0)
-      return(x)
-    }
-
-    observed <- unique(
-      as.character(x$Signature)
-    )
-
-    if (
-      length(observed) != 1L ||
-        observed != old_signature
-    ) {
-      stop(
-        "Previous compact result has an unexpected signature."
-      )
-    }
-
-    x$Signature <- new_signature
-  }
-
-  x
-}
-
-for (promote_index in promote_indices) {
-  previous_compact <- readRDS(
-    previous_result_files[
-      promote_index
-    ]
-  )
-
-  if (
-    !identical(
-      as.character(
-        previous_compact$run$Method[1]
-      ),
-      as.character(
-        run_design$Method[
-          promote_index
-        ]
-      )
-    ) ||
-      run_design$Method[
-        promote_index
-      ] == "BL"
-  ) {
-    stop(
-      "Unsafe compact-result promotion was blocked."
-    )
-  }
-
-  for (
-    component_name in c(
-      "run",
-      "metrics",
-      "predictions",
-      "genomic_values",
-      "fixed_effects",
-      "marker_effects",
-      "convergence",
-      "run_audit"
-    )
-  ) {
-    previous_compact[[component_name]] <-
-      replace_compact_signature(
-        previous_compact[[component_name]],
-        previous_analysis_signature,
-        analysis_signature
-      )
-  }
-
-  previous_compact$run$Result_relative_file <-
-    run_design$Result_relative_file[
-      promote_index
-    ]
-
-  previous_compact$settings <-
-    analysis_settings
-
-  promoted_temporary_file <- paste0(
-    result_files[
-      promote_index
-    ],
-    ".tmp"
-  )
-
-  saveRDS(
-    previous_compact,
-    promoted_temporary_file
-  )
-
-  promoted_ok <- file.rename(
-    promoted_temporary_file,
-    result_files[
-      promote_index
-    ]
-  )
-
-  if (!promoted_ok) {
-    stop(
-      "Could not promote unchanged non-BL compact result: ",
-      run_design$Run_id[
-        promote_index
-      ]
-    )
-  }
-}
-
-run_design$Reused_from_previous_signature <-
-  run_design$Method != "BL" &
-  file.exists(result_files) &
-  file.exists(previous_result_files)
 
 run_design$Completed_before_build <-
   file.exists(

@@ -176,6 +176,13 @@ missing_columns <- setdiff(
   names(pheno_raw)
 )
 
+if (length(missing_columns) > 0L) {
+  stop(
+    "Required phenotype columns are missing: ",
+    paste(missing_columns, collapse = ", ")
+  )
+}
+
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
 
 missing_in_pheno <- setdiff(ids, pheno_raw$IND)
@@ -221,6 +228,36 @@ identifier_summary <- data.frame(
     length(missing_columns)
   )
 )
+
+identifier_integrity_checks <- c(
+  genotype_ids_complete =
+    !any(is.na(ids) | ids == ""),
+  genotype_ids_unique =
+    !anyDuplicated(ids),
+  locus_names_complete =
+    !any(is.na(locus_names) | locus_names == ""),
+  locus_names_unique =
+    !anyDuplicated(locus_names),
+  phenotype_ids_complete =
+    !any(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
+  phenotype_ids_unique =
+    !anyDuplicated(pheno_raw$IND),
+  genotype_phenotype_id_sets_match =
+    length(missing_in_pheno) == 0L &&
+    length(missing_in_geno) == 0L
+)
+
+if (!all(identifier_integrity_checks)) {
+  stop(
+    "Identifier/alignment contract failed: ",
+    paste(
+      names(identifier_integrity_checks)[
+        !identifier_integrity_checks
+      ],
+      collapse = ", "
+    )
+  )
+}
 
 kable(
   identifier_summary,
@@ -562,6 +599,79 @@ dictionary are stored in one object for the following stages. Metadata contain
 only the individual identifier and family used as the fixed effect.
 
 ```{r save-outputs}
+EXPECTED_N_INDIVIDUALS <- 150L
+EXPECTED_N_ORIGINAL_LOCI <- 35L
+EXPECTED_N_FAMILIES <- 10L
+EXPECTED_FAMILY_SIZE <- 15L
+
+expected_locus_keep <-
+  locus_audit$Call_rate >= CALL_RATE_MIN &
+  locus_audit$N_genotype_classes >= 2
+
+preprocessing_integrity_checks <- c(
+  individual_count =
+    length(ids) == EXPECTED_N_INDIVIDUALS,
+  genotype_ids_unique =
+    !anyDuplicated(ids),
+  ssr_raw_dimensions =
+    identical(
+      dim(ssr_raw),
+      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_ORIGINAL_LOCI)
+    ),
+  ssr_raw_ids_aligned =
+    identical(rownames(ssr_raw), ids),
+  ssr_raw_observed_values_finite =
+    all(is.finite(ssr_raw[!is.na(ssr_raw)])),
+  locus_audit_count =
+    nrow(locus_audit) == EXPECTED_N_ORIGINAL_LOCI,
+  locus_filter_rule_exact =
+    identical(locus_audit$Keep_locus, expected_locus_keep),
+  retained_loci_match_ssr =
+    identical(
+      colnames(ssr),
+      locus_audit$Locus[locus_audit$Keep_locus]
+    ),
+  retained_ssr_ids_aligned =
+    identical(rownames(ssr), ids),
+  phenotype_dimensions =
+    identical(
+      dim(phenotypes),
+      c(EXPECTED_N_INDIVIDUALS, length(TRAITS))
+    ),
+  phenotype_traits_exact =
+    identical(colnames(phenotypes), TRAITS),
+  phenotype_ids_aligned =
+    identical(rownames(phenotypes), ids),
+  phenotype_values_finite =
+    all(is.finite(phenotypes)),
+  metadata_ids_aligned =
+    identical(as.character(metadata$IND), ids),
+  families_complete =
+    !anyNA(metadata$FAM),
+  family_levels_exact =
+    setequal(
+      unique(as.character(metadata$FAM)),
+      as.character(seq_len(EXPECTED_N_FAMILIES))
+    ),
+  family_sizes_exact =
+    length(table(metadata$FAM)) == EXPECTED_N_FAMILIES &&
+    all(table(metadata$FAM) == EXPECTED_FAMILY_SIZE),
+  trait_dictionary_exact =
+    identical(as.character(trait_dictionary$Trait), TRAITS)
+)
+
+if (!all(preprocessing_integrity_checks)) {
+  stop(
+    "Final preprocessing integrity gate failed: ",
+    paste(
+      names(preprocessing_integrity_checks)[
+        !preprocessing_integrity_checks
+      ],
+      collapse = ", "
+    )
+  )
+}
+
 preprocessing_object <- list(
   ids = ids,
   metadata = metadata,
