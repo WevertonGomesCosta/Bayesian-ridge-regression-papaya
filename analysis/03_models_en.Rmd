@@ -267,19 +267,20 @@ method_labels <- c(
 
 model_catalogue <- data.frame(
   Method = method_names,
+  Label = unname(method_labels[method_names]),
   BGLR_component = c(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
   Main_assumption = c(
-    "Gaussian marker effects with a common variance",
+    "Common Gaussian variance for all marker effects",
     "Marker-specific scaled-t variances",
-    "Point mass at zero plus marker-specific scaled-t slab",
+    "Scaled-t slab and a point mass at zero",
     "BayesB with zero-effect probability near 1e-5",
-    "Point mass at zero plus a common Gaussian slab variance",
-    "Double-exponential marker-effect prior; lambda fixed at lambda0",
-    "Genomic values structured by the genomic relationship matrix"
+    "Common Gaussian slab and a point mass at zero",
+    "Double-exponential marginal prior; lambda fixed at BGLR-calibrated lambda0",
+    "Genomic values structured by G"
   )
 )
 
@@ -520,10 +521,10 @@ run_design$Run_id <- paste(
 stopifnot(nrow(run_design) == 350L)
 ```
 
-The analytical signature used by downstream integrity checks is retained only
-as internal metadata. It is deliberately not part of the tutorial output.
+Metadata required only by downstream integrity checks are generated internally
+and are not part of the tutorial output.
 
-```{r internal-integrity-metadata, include=FALSE}
+```{r internal-integrity-metadata, include=FALSE, eval=RUN_M03_FIT}
 PIPELINE_VERSION <- "module03-full-v4-bl-fixed"
 
 analysis_settings <- list(
@@ -577,11 +578,84 @@ write.csv(
 )
 ```
 
-### 8.3 Fitting one combination
+### 8.3 Validate the fixed lambda during fitting
 
-The first helper prepares the masked phenotype vector, fits the requested BGLR
-model, captures warnings, and validates the fixed-lambda contract when the
-method is BL.
+The fixed BL value is checked directly in the fitted BGLR object and against
+the native lambda file. This validation is the same for every BL fit and is
+kept separate from the general fitting function.
+
+```{r bl-validation-helper}
+validate_fixed_bl <- function(
+  fit,
+  save_prefix,
+  run_id,
+  method_name,
+  lambda_update_warning_count
+) {
+  result <- list(
+    lambda = NA_real_,
+    native_value = NA_real_,
+    serialization_error = NA_real_,
+    native_valid = NA,
+    valid = NA
+  )
+
+  if (method_name != "BL") {
+    return(result)
+  }
+
+  result$lambda <- as.numeric(fit$ETA$genomic$lambda)
+  lambda_error <- abs(result$lambda - BL_LAMBDA)
+
+  lambda_trace <- scan(
+    paste0(save_prefix, "ETA_genomic_lambda.dat"),
+    quiet = TRUE
+  )
+
+  result$native_value <- if (length(lambda_trace) > 0L) {
+    lambda_trace[1]
+  } else {
+    NA_real_
+  }
+
+  result$serialization_error <- if (is.finite(result$native_value)) {
+    abs(result$native_value - BL_LAMBDA)
+  } else {
+    Inf
+  }
+
+  result$native_valid <-
+    length(lambda_trace) == RAW_SAVED_SAMPLES &&
+    all(is.finite(lambda_trace)) &&
+    all(lambda_trace > 0) &&
+    length(unique(lambda_trace)) == 1L
+
+  result$valid <-
+    length(result$lambda) == 1L &&
+    is.finite(result$lambda) &&
+    result$lambda > 0 &&
+    lambda_error <= BL_LAMBDA_TOLERANCE &&
+    result$native_valid
+
+  if (!result$valid) {
+    stop("BL FIXED-lambda contract failed for ", run_id)
+  }
+  if (lambda_update_warning_count > 0L) {
+    stop(
+      "Unexpected lambda-update warning under BL type=FIXED for ",
+      run_id
+    )
+  }
+
+  result
+}
+```
+
+### 8.4 Fit one combination
+
+The fitting helper prepares the masked phenotype vector, fits the requested
+BGLR model, captures warnings, and returns the information needed for the
+subsequent calculations.
 
 ```{r fit-one-run-helper}
 fit_one_run <- function(run_index) {
@@ -650,58 +724,13 @@ fit_one_run <- function(run_index) {
     fixed = TRUE
   ))
 
-  bl <- list(
-    lambda = NA_real_,
-    native_value = NA_real_,
-    serialization_error = NA_real_,
-    native_valid = NA,
-    valid = NA
+  bl <- validate_fixed_bl(
+    fit = fit,
+    save_prefix = save_prefix,
+    run_id = run_id,
+    method_name = method_name,
+    lambda_update_warning_count = lambda_update_warning_count
   )
-
-  if (method_name == "BL") {
-    bl$lambda <- as.numeric(fit$ETA$genomic$lambda)
-    lambda_error <- abs(bl$lambda - BL_LAMBDA)
-
-    lambda_trace <- scan(
-      paste0(save_prefix, "ETA_genomic_lambda.dat"),
-      quiet = TRUE
-    )
-
-    bl$native_value <- if (length(lambda_trace) > 0L) {
-      lambda_trace[1]
-    } else {
-      NA_real_
-    }
-
-    bl$serialization_error <- if (is.finite(bl$native_value)) {
-      abs(bl$native_value - BL_LAMBDA)
-    } else {
-      Inf
-    }
-
-    bl$native_valid <-
-      length(lambda_trace) == RAW_SAVED_SAMPLES &&
-      all(is.finite(lambda_trace)) &&
-      all(lambda_trace > 0) &&
-      length(unique(lambda_trace)) == 1L
-
-    bl$valid <-
-      length(bl$lambda) == 1L &&
-      is.finite(bl$lambda) &&
-      bl$lambda > 0 &&
-      lambda_error <= BL_LAMBDA_TOLERANCE &&
-      bl$native_valid
-
-    if (!bl$valid) {
-      stop("BL FIXED-lambda contract failed for ", run_id)
-    }
-    if (lambda_update_warning_count > 0L) {
-      stop(
-        "Unexpected lambda-update warning under BL type=FIXED for ",
-        run_id
-      )
-    }
-  }
 
   list(
     fit = fit,
@@ -723,7 +752,7 @@ fit_one_run <- function(run_index) {
 }
 ```
 
-### 8.4 OOF predictions and genomic values
+### 8.5 OOF predictions and genomic values
 
 For each fitted model,
 
@@ -782,7 +811,7 @@ extract_prediction_outputs <- function(run) {
 }
 ```
 
-### 8.5 Predictive and fit metrics
+### 8.6 Predictive and fit metrics
 
 Metrics are calculated separately within each trait-fold-method fit. The OOF
 correlation, RMSE, MAE, bias, and calibration slope quantify prediction; DIC
@@ -1030,9 +1059,8 @@ convergence_summary$Method_label <-
   unname(method_labels[convergence_summary$Method])
 ```
 
-Internal integrity metadata is added only after the scientific tables have been
-constructed. It is kept for compatibility with the downstream integrity gates
-and is not presented as a scientific result.
+Integrity metadata required by the later modules is added internally after the
+scientific tables have been constructed.
 
 ```{r add-internal-integrity-fields, include=FALSE, eval=RUN_M03_FIT}
 cv_metrics_by_fold$Signature <- analysis_signature
@@ -1057,7 +1085,7 @@ convergence_diagnostics <- convergence_diagnostics |>
 Before saving, the expected dimensions are checked. These checks protect the
 pipeline from an incomplete fit but are not part of model selection.
 
-```{r validate-and-save, eval=RUN_M03_FIT}
+```{r validate-results, eval=RUN_M03_FIT}
 expected_fits <- nrow(run_design)
 expected_predictions <-
   length(ids) * length(traits) * length(method_names)
@@ -1067,11 +1095,33 @@ stopifnot(
   nrow(cv_metrics_by_fold) == expected_fits,
   nrow(cv_predictions) == expected_predictions,
   nrow(genomic_values_by_fold) == length(ids) * expected_fits,
-  nrow(convergence_diagnostics) == 2L * expected_fits,
+  nrow(convergence_diagnostics) == 2L * expected_fits
+)
+```
+
+```{r validate-internal-integrity, include=FALSE, eval=RUN_M03_FIT}
+stopifnot(
   length(unique(cv_metrics_by_fold$Signature)) == 1L,
   identical(unique(cv_metrics_by_fold$Signature), analysis_signature)
 )
 
+models_object <- list(
+  signature = analysis_signature,
+  settings = analysis_settings,
+  run_design = run_design,
+  model_catalogue = model_catalogue,
+  trait_dictionary = trait_dictionary,
+  predictions = cv_predictions,
+  genomic_values_by_fold = genomic_values_by_fold,
+  metrics_by_fold = cv_metrics_by_fold,
+  convergence_diagnostics = convergence_diagnostics
+)
+```
+
+The analytical tables and the complete Module 03 object are then written to
+`output/models/`.
+
+```{r save-model-results, eval=RUN_M03_FIT}
 write.csv(
   cv_predictions,
   file.path(OUTPUT_DIR, "cv_predictions.csv"),
@@ -1098,20 +1148,7 @@ write.csv(
   row.names = FALSE
 )
 
-saveRDS(
-  list(
-    signature = analysis_signature,
-    settings = analysis_settings,
-    run_design = run_design,
-    model_catalogue = model_catalogue,
-    trait_dictionary = trait_dictionary,
-    predictions = cv_predictions,
-    genomic_values_by_fold = genomic_values_by_fold,
-    metrics_by_fold = cv_metrics_by_fold,
-    convergence_diagnostics = convergence_diagnostics
-  ),
-  MODELS_FILE
-)
+saveRDS(models_object, MODELS_FILE)
 
 cat("\nM03 fitting completed.\n")
 cat("Fits:", nrow(cv_metrics_by_fold), "\n")
