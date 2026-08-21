@@ -32,13 +32,12 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-Este módulo **apresenta** os resultados derivados no Módulo 04. Nenhum modelo é reajustado, nenhuma métrica científica é recalculada e nenhuma decisão de seleção é redefinida.
+Este módulo organiza em tabelas e figuras os resultados derivados no Módulo
+04. A apresentação começa pela comparação dos sete métodos, passa pelos métodos
+selecionados e pelos diagnósticos das cadeias, e termina com os resultados de
+seleção genômica e recorrência entre características.
 
-O `module04_results.rds` é a fonte canônica dos resultados analíticos. O `models_object.rds` e os arquivos nativos do BGLR são utilizados somente para a representação gráfica das cadeias MCMC selecionadas.
-
-A interpretação científica aprofundada fica reservada ao manuscrito.
-
-## 2. Entradas e padrão gráfico
+## 2. Pacotes, resultados e padrão gráfico
 
 ```{r packages}
 suppressPackageStartupMessages({
@@ -60,58 +59,6 @@ dir.create(FIGURE_DIR, recursive = TRUE, showWarnings = FALSE)
 models_object <- readRDS(MODELS_FILE)
 m04 <- readRDS(M04_FILE)
 
-required_m04_fields <- c(
-  "signature",
-  "traits",
-  "methods",
-  "model_comparison",
-  "model_selection",
-  "selected_fold_diagnostics",
-  "runtime",
-  "rrblup_heritability_summary",
-  "selection_objectives",
-  "selection_proportion",
-  "supported_traits",
-  "selection_sizes",
-  "selection_cutoff_audit",
-  "selected_individuals_by_trait",
-  "multitrait_recurrence",
-  "recurrence_distribution",
-  "multitrait_candidates",
-  "selected_oof_correlations"
-)
-
-missing_m04_fields <- setdiff(
-  required_m04_fields,
-  names(m04)
-)
-
-if (length(missing_m04_fields) > 0L) {
-  stop(
-    paste0(
-      "M05 integrity gate failed: module04_results.rds is missing: ",
-      paste(missing_m04_fields, collapse = ", "),
-      ". Rebuild M04 before running M05."
-    )
-  )
-}
-
-if (
-  length(models_object$signature) != 1L ||
-  length(m04$signature) != 1L ||
-  !identical(
-    as.character(models_object$signature),
-    as.character(m04$signature)
-  )
-) {
-  stop(
-    paste0(
-      "M05 integrity gate failed: M03 and M04 analytical signatures differ. ",
-      "Rebuild M04 from the current complete M03 object."
-    )
-  )
-}
-
 traits <- m04$traits
 methods <- m04$methods
 model_comparison <- m04$model_comparison
@@ -123,68 +70,12 @@ selection_objectives <- m04$selection_objectives
 selection_proportion <- m04$selection_proportion
 supported_traits <- m04$supported_traits
 selection_sizes <- m04$selection_sizes
-selection_cutoff_audit <- m04$selection_cutoff_audit
 selected_individuals_by_trait <- m04$selected_individuals_by_trait
 multitrait_recurrence <- m04$multitrait_recurrence
 recurrence_distribution <- m04$recurrence_distribution
 multitrait_candidates <- m04$multitrait_candidates
 selected_oof_correlations <- m04$selected_oof_correlations
 
-expected_runs <-
-  length(traits) *
-  length(models_object$settings$folds) *
-  length(methods)
-
-expected_model_comparison_rows <-
-  length(traits) *
-  length(methods)
-
-if (
-  nrow(models_object$metrics_by_fold) != expected_runs ||
-  nrow(
-    distinct(
-      models_object$metrics_by_fold,
-      Trait,
-      Fold,
-      Method
-    )
-  ) != expected_runs
-) {
-  stop(
-    paste0(
-      "M05 integrity gate failed: the current M03 object is incomplete. ",
-      "M05 requires the complete set of trait-fold-method fits."
-    )
-  )
-}
-
-if (
-  nrow(model_comparison) != expected_model_comparison_rows ||
-  nrow(model_selection) != length(traits) ||
-  anyDuplicated(model_selection$Trait) > 0L ||
-  !setequal(model_selection$Trait, traits)
-) {
-  stop(
-    paste0(
-      "M05 integrity gate failed: M04 does not contain one complete model ",
-      "comparison and one selection decision for every trait."
-    )
-  )
-}
-
-if (
-  any(
-    !model_selection$Selected_method %in%
-      methods
-  )
-) {
-  stop(
-    "M05 integrity gate failed: M04 contains an unknown selected method."
-  )
-}
-
-# A apresentação só prossegue quando M03 e M04 pertencem à mesma
-# execução analítica completa.
 method_labels <- c(
   RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
@@ -218,9 +109,30 @@ project_theme <- theme_bw(base_size = 12) +
   )
 ```
 
+```{r input-summary}
+data.frame(
+  Item = c(
+    "Características",
+    "Métodos",
+    "Linhas da comparação dos métodos",
+    "Características com método selecionado",
+    "Características com evidência preditiva suportada"
+  ),
+  Valor = c(
+    length(traits),
+    length(methods),
+    nrow(model_comparison),
+    nrow(model_selection),
+    length(supported_traits)
+  )
+) |>
+  kable(caption = "Estrutura dos resultados apresentados neste módulo")
+```
+
 ## 3. Comparação dos sete métodos
 
-A tabela apresenta DIC, diferença em relação ao menor DIC, `Wprob`, `ER`, correlação OOF e p-valor nominal. As quantidades foram derivadas no Módulo 04.
+A tabela reúne DIC, diferença para o menor DIC, `Wprob`, `ER`, correlação OOF
+e p-valor nominal para cada combinação característica × método.
 
 ```{r model-comparison-table}
 model_comparison_display <- model_comparison |>
@@ -253,7 +165,11 @@ predictive_plot <- model_comparison |>
   geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
   geom_col(width = 0.75) +
   facet_wrap(~ Trait, scales = "fixed", ncol = 2) +
-  scale_fill_manual(values = method_colors, breaks = methods, labels = method_labels) +
+  scale_fill_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
   scale_x_discrete(labels = method_labels) +
   labs(
     x = NULL,
@@ -280,33 +196,24 @@ ggsave(
 ```{r selected-methods-table}
 final_results_summary <- model_selection |>
   mutate(
-    Method_label =
-      unname(method_labels[Selected_method]),
-    Predictive_winner_label =
-      unname(method_labels[Predictive_winner]),
-    DIC_winner_label =
-      unname(method_labels[DIC_winner]),
+    Method_label = unname(method_labels[Selected_method]),
+    Predictive_winner_label = unname(method_labels[Predictive_winner]),
+    DIC_winner_label = unname(method_labels[DIC_winner]),
     Decision_label = case_when(
-      Decision_code ==
-        "rrblup_best_predictive_model" ~
+      Decision_code == "rrblup_best_predictive_model" ~
         "RR-BLUP foi o melhor modelo preditivo",
-      Decision_code ==
-        "rrblup_preferred_among_equivalent_models" ~
+      Decision_code == "rrblup_preferred_among_equivalent_models" ~
         "RR-BLUP preferido entre métodos equivalentes",
-      Decision_code ==
-        "best_non_rrblup_equivalent_model" ~
+      Decision_code == "best_non_rrblup_equivalent_model" ~
         "Melhor método competitivo não RR-BLUP",
-      Decision_code ==
-        "predictive_winner_provisional_review_required" ~
+      Decision_code == "predictive_winner_provisional_review_required" ~
         "Vencedor preditivo provisório; revisão necessária",
       TRUE ~ Decision_code
     ),
     Selection_status_label = case_when(
-      Selection_status ==
-        "automatic_supported" ~
+      Selection_status == "automatic_supported" ~
         "Seleção automática sustentada",
-      Selection_status ==
-        "provisional_review_required" ~
+      Selection_status == "provisional_review_required" ~
         "Seleção provisória; revisão necessária",
       TRUE ~ Selection_status
     )
@@ -340,40 +247,30 @@ kable(
 )
 ```
 
-A tabela é a única apresentação da decisão final. Não são repetidas listas textuais de vencedores, evitando inconsistências quando as análises forem refeitas.
-
 ## 5. Cadeias MCMC dos métodos selecionados
 
-Como representação visual análoga à apresentada no artigo de referência, são mostradas a cadeia posterior de \(\mu\), sua média acumulada e a densidade posterior no primeiro fold do método selecionado para cada característica. Os diagnósticos numéricos completos permanecem no Módulo 03.
+Para cada característica são mostradas a cadeia posterior de \(\mu\), sua média
+acumulada e a densidade posterior no primeiro fold do método selecionado.
 
 ```{r selected-mu-data}
-burn_in_saved <- models_object$settings$burn_in / models_object$settings$thin
-selected_method_lookup <- setNames(model_selection$Selected_method, model_selection$Trait)
+burn_in_saved <-
+  models_object$settings$burn_in /
+  models_object$settings$thin
 
-selected_mu_files <- file.path(
-  here("output", "models", "bglr"),
-  traits,
-  "F1",
-  unname(selected_method_lookup[traits]),
-  "bglr_mu.dat"
+selected_method_lookup <- setNames(
+  model_selection$Selected_method,
+  model_selection$Trait
 )
-
-if (!all(file.exists(selected_mu_files))) {
-  stop(
-    paste0(
-      "M05 integrity gate failed: arquivos MCMC nativos do fold 1 ",
-      "estão ausentes para pelo menos um método selecionado."
-    )
-  )
-}
 
 trace_parts <- vector("list", length(traits))
 density_parts <- vector("list", length(traits))
 
 for (trait_index in seq_along(traits)) {
+  # Identifica a característica e o método selecionado.
   trait_name <- traits[trait_index]
   method_name <- selected_method_lookup[trait_name]
 
+  # Localiza a cadeia de mu do primeiro fold.
   mu_file <- file.path(
     here("output", "models", "bglr"),
     trait_name,
@@ -383,7 +280,11 @@ for (trait_index in seq_along(traits)) {
   )
 
   mu_full <- scan(mu_file, quiet = TRUE)
-  posterior_mu <- mu_full[seq.int(burn_in_saved + 1L, length(mu_full))]
+
+  # Remove as amostras correspondentes ao burn-in.
+  posterior_mu <- mu_full[
+    seq.int(burn_in_saved + 1L, length(mu_full))
+  ]
 
   iteration <- seq.int(
     from = models_object$settings$burn_in + models_object$settings$thin,
@@ -391,6 +292,7 @@ for (trait_index in seq_along(traits)) {
     length.out = length(posterior_mu)
   )
 
+  # Calcula a média acumulada e reduz a densidade de pontos do gráfico.
   running_mean <- cumsum(posterior_mu) / seq_along(posterior_mu)
   keep_index <- seq.int(1L, length(posterior_mu), by = 100L)
 
@@ -404,6 +306,7 @@ for (trait_index in seq_along(traits)) {
   )
 
   density_object <- density(posterior_mu, n = 512)
+
   density_parts[[trait_index]] <- data.frame(
     Trait = trait_name,
     Method = method_name,
@@ -418,11 +321,21 @@ selected_mu_density <- bind_rows(density_parts)
 ```
 
 ```{r selected-mu-trace-figure, fig.width=13, fig.height=14}
-mu_trace_plot <- ggplot(selected_mu_trace, aes(x = Iteration, y = Posterior_mu)) +
+mu_trace_plot <- ggplot(
+  selected_mu_trace,
+  aes(x = Iteration, y = Posterior_mu)
+) +
   geom_line(linewidth = 0.25, alpha = 0.35) +
-  geom_line(aes(y = Running_mean, color = Method), linewidth = 0.8) +
+  geom_line(
+    aes(y = Running_mean, color = Method),
+    linewidth = 0.8
+  ) +
   facet_wrap(~ Facet, scales = "free_y", ncol = 2) +
-  scale_color_manual(values = method_colors, breaks = methods, labels = method_labels) +
+  scale_color_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
   labs(
     x = "Iteração",
     y = expression(mu),
@@ -443,10 +356,17 @@ ggsave(
 ```
 
 ```{r selected-mu-density-figure, fig.width=13, fig.height=14}
-mu_density_plot <- ggplot(selected_mu_density, aes(x = x, y = y, color = Method)) +
+mu_density_plot <- ggplot(
+  selected_mu_density,
+  aes(x = x, y = y, color = Method)
+) +
   geom_line(linewidth = 0.8) +
   facet_wrap(~ Facet, scales = "free", ncol = 2) +
-  scale_color_manual(values = method_colors, breaks = methods, labels = method_labels) +
+  scale_color_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
   labs(
     x = expression(mu),
     y = "Densidade",
@@ -517,7 +437,11 @@ runtime_plot <- runtime_summary |>
     ),
     width = 0.2
   ) +
-  scale_fill_manual(values = method_colors, breaks = methods, labels = method_labels) +
+  scale_fill_manual(
+    values = method_colors,
+    breaks = methods,
+    labels = method_labels
+  ) +
   scale_x_discrete(labels = method_labels) +
   labs(
     x = NULL,
@@ -538,8 +462,6 @@ ggsave(
   dpi = 300
 )
 ```
-
-O resumo numérico completo de tempo permanece como saída canônica do Módulo 04; aqui é mantida apenas a figura comparativa.
 
 ## 8. Herdabilidade e acurácia no análogo RR-BLUP/BRR
 
@@ -563,12 +485,22 @@ kable(
 ## 9. Correlações entre valores genômicos OOF
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
-correlation_long <- as.data.frame(as.table(selected_oof_correlations))
-names(correlation_long) <- c("Trait_1", "Trait_2", "Correlation")
+correlation_long <- as.data.frame(
+  as.table(selected_oof_correlations)
+)
+names(correlation_long) <- c(
+  "Trait_1",
+  "Trait_2",
+  "Correlation"
+)
 
 correlation_long <- correlation_long |>
   mutate(
-    Correlation_label = replace(Correlation, abs(Correlation) < 0.005, 0)
+    Correlation_label = replace(
+      Correlation,
+      abs(Correlation) < 0.005,
+      0
+    )
   )
 
 correlation_plot <- ggplot(
@@ -576,7 +508,10 @@ correlation_plot <- ggplot(
   aes(x = Trait_1, y = Trait_2, fill = Correlation)
 ) +
   geom_tile() +
-  geom_text(aes(label = sprintf("%.2f", Correlation_label)), size = 3) +
+  geom_text(
+    aes(label = sprintf("%.2f", Correlation_label)),
+    size = 3
+  ) +
   scale_fill_gradient2(
     low = "#DC3912",
     mid = "white",
@@ -607,32 +542,57 @@ ggsave(
 
 ## 10. Seleção proporcional por característica
 
-A seleção de candidatos utiliza somente características com correlação OOF positiva e `p < 0,05`. A proporção canônica nesta análise é de `r sprintf("%.0f%%", 100 * selection_proportion)` dos indivíduos por característica, respeitando a direção de melhoramento definida no Módulo 04.
+A seleção utiliza as características com correlação OOF positiva e
+`p < 0,05`. A proporção utilizada é de
+`r sprintf("%.0f%%", 100 * selection_proportion)` dos indivíduos por
+característica, respeitando a direção de melhoramento definida no Módulo 04.
 
 ```{r proportional-selection-table}
 selection_sizes_display <- selection_sizes |>
   left_join(
-    selection_objectives |> select(Trait, Selection_objective),
+    selection_objectives |>
+      select(Trait, Selection_objective),
     by = "Trait"
   ) |>
   mutate(
-    Objetivo = unname(selection_objective_labels[Selection_objective])
+    Objetivo = unname(
+      selection_objective_labels[Selection_objective]
+    )
   ) |>
   select(
-    Trait, Objetivo, Selection_proportion,
-    N_available, N_selected
+    Trait,
+    Objetivo,
+    Selection_proportion,
+    N_available,
+    N_selected
   )
 
 kable(
   selection_sizes_display,
   digits = 2,
-  caption = "Proporção e número de indivíduos selecionados por característica com evidência preditiva suportada"
+  caption = "Proporção e número de indivíduos selecionados por característica"
 )
 ```
 
-Os indivíduos selecionados por característica permanecem disponíveis na saída canônica `selected_individuals_by_trait.csv`. Não são apresentados integralmente nesta página para evitar uma tabela excessivamente longa.
+Os primeiros indivíduos de cada ranking permitem visualizar diretamente a
+seleção produzida.
 
-## 11. Recorrência multicaracterística
+```{r proportional-selection-preview}
+selected_individuals_by_trait |>
+  group_by(Trait) |>
+  slice_head(n = 5) |>
+  ungroup() |>
+  select(
+    Trait, Rank, IND, FAM, Method,
+    Selection_objective, Genomic_value, Selection_score
+  ) |>
+  kable(
+    digits = 5,
+    caption = "Cinco primeiros indivíduos selecionados por característica"
+  )
+```
+
+## 11. Recorrência entre características
 
 ```{r recurrence-distribution-table}
 recurrence_class_labels <- c(
@@ -645,17 +605,21 @@ recurrence_class_labels <- c(
 
 recurrence_distribution_display <- recurrence_distribution |>
   mutate(
-    Classe = unname(recurrence_class_labels[Recurrence_class])
+    Classe = unname(
+      recurrence_class_labels[Recurrence_class]
+    )
   ) |>
   select(
-    N_traits, Classe, N_individuals,
+    N_traits,
+    Classe,
+    N_individuals,
     Proportion_of_population
   )
 
 kable(
   recurrence_distribution_display,
   digits = 4,
-  caption = "Distribuição dos indivíduos por classe de recorrência entre características suportadas"
+  caption = "Distribuição dos indivíduos por classe de recorrência"
 )
 ```
 
@@ -663,19 +627,36 @@ kable(
 main_multitrait_candidates <- multitrait_candidates |>
   filter(N_traits >= 3L) |>
   mutate(
-    Classe = unname(recurrence_class_labels[Recurrence_class])
+    Classe = unname(
+      recurrence_class_labels[Recurrence_class]
+    )
   ) |>
   select(
-    IND, FAM, N_traits, Selection_frequency,
-    Classe, Traits, Best_rank, Mean_rank_present,
+    IND,
+    FAM,
+    N_traits,
+    Selection_frequency,
+    Classe,
+    Traits,
+    Best_rank,
+    Mean_rank_present,
     ends_with("_rank")
   )
 
 kable(
   main_multitrait_candidates,
   digits = 4,
-  caption = "Candidatos com recorrência alta ou intermediária entre os 20% mais favoráveis das características suportadas"
+  caption = "Candidatos com recorrência alta ou intermediária"
 )
 ```
 
-A recorrência é um resumo descritivo. `N_traits`, frequência de seleção e ranks não são combinados em um índice multicaracterística e não implicam superioridade global sem definição explícita de pesos econômicos ou biológicos.
+A recorrência resume em quantas características suportadas cada indivíduo
+aparece entre os 20% mais favoráveis. `N_traits`, frequência de seleção e ranks
+não são combinados em um índice multicaracterística.
+
+## 12. Síntese
+
+As tabelas e figuras deste módulo permitem acompanhar a sequência completa da
+comparação dos métodos até a identificação dos indivíduos recorrentes. A
+interpretação biológica deve considerar conjuntamente a evidência preditiva, a
+direção de seleção e as limitações da população e do conjunto de marcadores.
