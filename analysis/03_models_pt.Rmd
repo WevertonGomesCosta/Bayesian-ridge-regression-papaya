@@ -32,12 +32,13 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-Este módulo ajusta sete métodos de predição genômica para dez características
-do mamoeiro usando os mesmos cinco folds de validação cruzada estratificados
-por família criados no Módulo 02. O objetivo é mostrar, passo a passo, como o
-modelo estatístico é especificado, como cada método genômico é representado no
-BGLR, como são obtidas as predições fora da amostra (OOF) e os valores
-genômicos, e como são calculados os diagnósticos MCMC.
+Neste módulo são ajustados sete métodos de predição genômica para dez
+características do mamoeiro, utilizando os cinco folds de validação cruzada
+estratificados por família construídos no Módulo 02.
+
+O fluxo segue diretamente das matrizes para o ajuste dos modelos, a obtenção
+das predições fora da amostra, a decomposição dos valores genômicos, o cálculo
+das métricas por fold e os diagnósticos das cadeias MCMC.
 
 A análise completa contém
 
@@ -51,49 +52,34 @@ A análise completa contém
 350\ \text{ajustes}.
 \]
 
-Os sete métodos são RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano
-(BL) e GBLUP. O RR-BLUP é implementado pelo componente `BRR` do BGLR; portanto,
-RR-BLUP e regressão ridge Bayesiana não são tratados como métodos separados
-neste projeto [@endelman2011rrblup; @perez2014bglr].
+Os métodos avaliados são RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Lasso
+Bayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR
+[@perez2014bglr].
 
-O código de ajuste está integralmente contido neste documento R Markdown. Uma
-construção normal do workflowr apresenta os resultados já ajustados sem repetir
-os 350 modelos. Um reajuste completo é realizado somente quando a chave
-explícita de execução descrita na Seção 8 é habilitada.
-
-## 2. Pacotes, entradas e caminhos de saída
-
-Somente os pacotes necessários para apresentação e manipulação dos dados são
-anexados durante uma construção normal. BGLR, coda e digest são chamados por
-namespaces explícitos no código de ajuste.
+## 2. Pacotes, entradas e diretórios de saída
 
 ```{r packages}
 suppressPackageStartupMessages({
+  library(BGLR)
+  library(coda)
   library(dplyr)
   library(knitr)
   library(here)
 })
 ```
 
-O Módulo 03 lê as matrizes produzidas no Módulo 02 e grava os resultados dos
-modelos em `output/models/`. Os arquivos nativos das cadeias do BGLR são
-mantidos na única subpasta `bglr/`.
+As matrizes construídas no Módulo 02 são lidas diretamente. Os arquivos
+gerados nesta etapa são gravados em `output/models/`, enquanto as cadeias
+nativas do BGLR ficam organizadas em `output/models/bglr/`.
 
-```{r paths}
+```{r inputs}
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
-MODELS_FILE <- here("output", "models", "models_object.rds")
 OUTPUT_DIR <- here("output", "models")
 BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 dir.create(BGLR_DIR, recursive = TRUE, showWarnings = FALSE)
-```
 
-O objeto do Módulo 02 fornece os indivíduos alinhados, fenótipos, matriz de
-delineamento de famílias, matriz de marcadores, matriz de relacionamento
-genômico e folds de validação cruzada.
-
-```{r load-matrices}
 matrices_object <- readRDS(MATRICES_FILE)
 
 ids <- matrices_object$ids
@@ -104,13 +90,27 @@ X <- matrices_object$X
 M <- matrices_object$M
 G <- matrices_object$G
 cv_folds <- matrices_object$cv_folds
-
 traits <- colnames(phenotypes)
+```
+
+A estrutura recebida do módulo anterior pode ser visualizada diretamente.
+
+```{r input-summary}
+data.frame(
+  Objeto = c("Fenótipos", "Matriz X", "Matriz M", "Matriz G", "Folds"),
+  Linhas = c(
+    nrow(phenotypes), nrow(X), nrow(M), nrow(G), nrow(cv_folds)
+  ),
+  Colunas = c(
+    ncol(phenotypes), ncol(X), ncol(M), ncol(G), ncol(cv_folds)
+  )
+) |>
+  kable(caption = "Estrutura das entradas do Módulo 03")
 ```
 
 ## 3. Modelo estatístico
 
-Para cada característica, o modelo comum é
+Para cada característica é considerado o modelo
 
 \[
 \mathbf y =
@@ -126,9 +126,9 @@ efeito fixo de família, \(\mathbf g\) é o componente genômico e
 
 ### 3.1 Intercepto e efeito fixo de família
 
-O BGLR ajusta automaticamente um intercepto. Por isso, a coluna do intercepto
-criada no Módulo 02 é removida antes de `X` ser fornecida como termo `FIXED`.
-As colunas restantes codificam os efeitos de família, estimados sem contração.
+O BGLR ajusta um intercepto automaticamente. Por isso, a coluna de intercepto
+criada no Módulo 02 é retirada de `X` antes da especificação do termo de
+família.
 
 ```{r family-fixed-effect}
 X_fixed <- X[
@@ -140,19 +140,19 @@ X_fixed <- X[
 colnames(X_fixed)
 ```
 
-Aqui, `model = "FIXED"` refere-se ao tratamento dos **coeficientes de família**
-como efeitos fixos. Esse uso de `FIXED` é diferente de `type = "FIXED"` no
-Lasso Bayesiano, explicado na Seção 6.6.
+No código do BGLR, `model = "FIXED"` indica que os coeficientes associados às
+colunas de família são estimados como efeitos fixos, sem a contração aplicada
+aos efeitos genômicos.
 
 ### 3.2 Componente genômico
 
-Para os seis métodos baseados em efeitos de marcadores,
+Nos seis métodos baseados diretamente nos marcadores,
 
 \[
 \mathbf g = \mathbf M\boldsymbol\alpha,
 \]
 
-de modo que o modelo se torna
+portanto
 
 \[
 \mathbf y =
@@ -162,49 +162,39 @@ de modo que o modelo se torna
 \boldsymbol\varepsilon.
 \]
 
-Os métodos diferem principalmente na priori atribuída aos efeitos de marcadores
-\(\boldsymbol\alpha\). O GBLUP, por sua vez, modela diretamente os valores
-genômicos como
+A diferença entre esses métodos está principalmente na distribuição a priori
+atribuída aos efeitos dos marcadores \(\boldsymbol\alpha\).
+
+No GBLUP, os valores genômicos são modelados diretamente por
 
 \[
-\mathbf g \sim N(\mathbf 0,\mathbf G\sigma_g^2).
+\mathbf g \sim
+N\left(\mathbf 0,\mathbf G\sigma_g^2\right).
 \]
 
-## 4. Delineamento da validação cruzada
+## 4. Validação cruzada
 
-Os cinco folds são herdados sem alterações do Módulo 02. Cada fold contém 30
-indivíduos de validação e 120 de treinamento, com três representantes de cada
-família na validação. Os mesmos folds são utilizados para todas as
-características e métodos, permitindo comparar os modelos nos mesmos conjuntos
-de validação.
+Os cinco folds definidos no Módulo 02 são utilizados sem reconstrução. Cada
+fold contém 30 indivíduos de validação e 120 de treinamento, mantendo a
+representação das famílias.
 
 ```{r cv-summary}
 kable(
   matrices_object$fold_summary,
-  caption = "Cinco folds de validação cruzada estratificados por família"
+  caption = "Distribuição dos indivíduos nos cinco folds"
 )
 ```
 
-Para uma determinada característica e fold, os fenótipos dos indivíduos de
-validação são substituídos por `NA`. O BGLR ajusta o modelo usando os fenótipos
-restantes e retorna predições para os indivíduos mascarados.
+Durante cada ajuste, os fenótipos dos indivíduos pertencentes ao fold de
+validação são substituídos por `NA`. O BGLR utiliza os fenótipos restantes para
+o ajuste e retorna as predições para os indivíduos mascarados.
 
-```{r cv-mask-example, eval=FALSE}
-validation_index <- which(cv_folds$Fold == fold_number)
-training_index <- which(cv_folds$Fold != fold_number)
+## 5. Configuração das cadeias MCMC
 
-y_model <- y_observed
-y_model[validation_index] <- NA_real_
-```
-
-Assim, cada predição utilizada para validação é efetivamente OOF em relação ao
-respectivo fold.
-
-## 5. Configurações MCMC
-
-As configurações MCMC seguem a configuração principal adotada a partir do
-artigo de referência [@silva2021brrguava]. O parâmetro de alocação de priori do
-BGLR é definido como `R2 = 0.5`.
+Foram utilizadas 1.000.000 de iterações, descarte inicial de 200.000 iterações
+e thinning igual a 4, seguindo a configuração principal da análise de
+referência [@silva2021brrguava]. O parâmetro global de alocação de variância do
+BGLR foi definido como `R2 = 0.5`.
 
 ```{r mcmc-settings}
 N_ITER <- 1000000L
@@ -225,31 +215,31 @@ ESS_REVIEW_THRESHOLD <- 1000
 GEWEKE_REVIEW_THRESHOLD <- 2
 
 BL_LAMBDA_TYPE <- "FIXED"
-BL_LAMBDA_TOLERANCE_REL <- 1e-10
-
-settings_table <- data.frame(
-  Configuracao = c(
-    "Iterações", "Burn-in", "Thinning", "Amostras mantidas",
-    "Priori R2", "Probabilidade de efeito zero no BayesB2",
-    "Limiar de revisão do ESS", "Limiar absoluto de revisão de Geweke"
-  ),
-  Valor = c(
-    N_ITER, BURN_IN, THIN, RETAINED_SAMPLES,
-    R2_PRIOR, BAYESB2_ZERO_PROBABILITY,
-    ESS_REVIEW_THRESHOLD, GEWEKE_REVIEW_THRESHOLD
-  )
-)
-
-kable(settings_table, caption = "Configurações MCMC utilizadas no Módulo 03")
 ```
 
-Os limiares de ESS e Geweke são apenas regras de revisão. Eles não excluem
-automaticamente um modelo ajustado.
+```{r mcmc-settings-table}
+data.frame(
+  Configuracao = c(
+    "Iterações",
+    "Burn-in",
+    "Thinning",
+    "Amostras posteriores mantidas",
+    "R2",
+    "Probabilidade de efeito zero no BayesB2"
+  ),
+  Valor = c(
+    N_ITER,
+    BURN_IN,
+    THIN,
+    RETAINED_SAMPLES,
+    R2_PRIOR,
+    BAYESB2_ZERO_PROBABILITY
+  )
+) |>
+  kable(caption = "Configuração MCMC utilizada nos sete métodos")
+```
 
 ## 6. Métodos de predição genômica
-
-Os sete métodos usam a mesma resposta, o mesmo termo de família, os mesmos
-folds e as mesmas configurações MCMC. Apenas o componente genômico muda.
 
 ```{r model-catalogue}
 method_names <- c(
@@ -263,116 +253,92 @@ method_labels <- c(
   BayesB = "BayesB",
   BayesB2 = "BayesB2",
   BayesC = "BayesC",
-  BL = "Bayesian Lasso",
+  BL = "Lasso Bayesiano",
   GBLUP = "GBLUP"
 )
 
-model_catalogue <- data.frame(
-  Method = method_names,
-  Label = unname(method_labels[method_names]),
-  BGLR_component = c(
+data.frame(
+  Metodo = unname(method_labels[method_names]),
+  Componente_BGLR = c(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
-  Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
-  Main_assumption = c(
-    "Common Gaussian variance for all marker effects",
-    "Marker-specific scaled-t variances",
-    "Scaled-t slab and a point mass at zero",
-    "BayesB with zero-effect probability near 1e-5",
-    "Common Gaussian slab and a point mass at zero",
-    "Double-exponential marginal prior; lambda fixed at BGLR-calibrated lambda0",
-    "Genomic values structured by G"
-  )
-)
-
-model_catalogue_display <- data.frame(
-  Metodo = model_catalogue$Label,
-  Componente_BGLR = model_catalogue$BGLR_component,
-  Entrada_genomica = model_catalogue$Genomic_input,
-  Hipotese_principal = c(
-    "Efeitos Gaussianos com variância comum para todos os marcadores",
-    "Variâncias scaled-t específicas por marcador",
-    "Massa em zero e componente scaled-t para efeitos não nulos",
+  Entrada_genomica = c("M", "M", "M", "M", "M", "M", "G"),
+  Estrutura = c(
+    "Variância Gaussiana comum para todos os efeitos de marcadores",
+    "Variâncias específicas por marcador",
+    "Massa em zero e componente contínuo para efeitos não nulos",
     "BayesB com probabilidade de efeito zero próxima de 1e-5",
-    "Massa em zero e variância Gaussiana comum para efeitos não nulos",
-    "Priori marginal dupla exponencial; lambda fixo na calibração do BGLR",
-    "Valores genômicos estruturados pela matriz de relacionamento genômico"
+    "Massa em zero e variância comum para os efeitos não nulos",
+    "Priori marginal dupla exponencial com lambda fixo",
+    "Valores genômicos estruturados pela matriz G"
   )
-)
-
-kable(
-  model_catalogue_display,
-  caption = "Métodos de predição genômica ajustados no Módulo 03"
-)
+) |>
+  kable(caption = "Métodos de predição genômica avaliados")
 ```
 
 ### 6.1 RR-BLUP
 
-O RR-BLUP é implementado pelo componente `BRR` do BGLR. Os efeitos dos
-marcadores possuem uma variância Gaussiana comum, produzindo contração do tipo
-ridge para todos os efeitos [@endelman2011rrblup; @perez2014bglr].
+O RR-BLUP é implementado por meio do componente `BRR` do BGLR. Todos os
+efeitos de marcadores compartilham uma variância Gaussiana comum, resultando em
+contração do tipo ridge [@endelman2011rrblup; @perez2014bglr].
 
 ### 6.2 BayesA
 
-O BayesA atribui variâncias específicas aos marcadores, permitindo diferentes
-graus de contração entre eles [@meuwissen2001prediction;
+No BayesA, cada marcador possui sua própria variância, permitindo intensidades
+de contração diferentes entre marcadores [@meuwissen2001prediction;
 @habier2011bayesianalphabet].
 
 ### 6.3 BayesB
 
-O BayesB combina uma massa de probabilidade em zero com uma distribuição
-contínua para efeitos não nulos. Assim, o modelo pode realizar simultaneamente
-contração e seleção de variáveis.
+O BayesB utiliza uma mistura entre uma massa de probabilidade em zero e uma
+distribuição contínua para os efeitos não nulos. Dessa forma, combina contração
+e seleção de variáveis.
 
 ### 6.4 BayesB2
 
-`BayesB2` é o nome adotado no projeto para uma parametrização específica do
-`BayesB` do BGLR; não existe um modelo separado denominado `BayesB2` no BGLR. A
-probabilidade pretendida de efeito nulo é
+`BayesB2` é a denominação adotada neste projeto para uma parametrização
+específica do componente `BayesB` do BGLR. A probabilidade desejada de efeito
+zero é
 
 \[
 P(\alpha_j=0)=10^{-5}.
 \]
 
-No BGLR, o BayesB é parametrizado por `probIn`, a probabilidade de o marcador
-ser incluído com efeito não nulo. Portanto,
+Como `probIn` representa a probabilidade de inclusão do marcador com efeito não
+nulo,
 
 \[
-probIn = 1-10^{-5}=0.99999.
+probIn=1-10^{-5}=0.99999.
 \]
 
-`counts = 10^6` torna a priori beta de `probIn` altamente concentrada em torno
+O valor `counts = 10^6` concentra fortemente a priori beta de `probIn` ao redor
 desse valor.
 
 ### 6.5 BayesC
 
-O BayesC também permite efeito nulo, mas os efeitos não nulos compartilham uma
-variância comum, em vez de possuírem variâncias específicas por marcador.
+No BayesC, também existe probabilidade de efeito igual a zero, mas os efeitos
+não nulos compartilham uma variância comum.
 
-### 6.6 Lasso Bayesiano e o lambda fixo
+### 6.6 Lasso Bayesiano e definição do lambda fixo
 
 O Lasso Bayesiano utiliza uma priori marginal dupla exponencial para os efeitos
-dos marcadores [@park2008bayesianlasso]. No BGLR, o parâmetro de contração
-\(\lambda\) pode ser atualizado durante a cadeia MCMC ou mantido fixo. Nesta
-análise ele é mantido fixo no valor obtido pela própria calibração padrão do
-BGLR.
+dos marcadores [@park2008bayesianlasso]. O parâmetro \(\lambda\) controla a
+intensidade da contração.
 
-Este é o segundo uso, conceitualmente distinto, da palavra `FIXED` no Módulo 03:
+Neste modelo, `type = "FIXED"` possui significado diferente de
+`model = "FIXED"` usado para família. Aqui, `type = "FIXED"` indica que
+\(\lambda\) permanece constante durante a cadeia MCMC.
 
-- `model = "FIXED"` descreve os **efeitos de família sem penalização**;
-- `type = "FIXED"` dentro de `model = "BL"` significa que **lambda não é
-  atualizado durante a cadeia MCMC**.
-
-O BGLR distribui o `R2` global entre os termos lineares. O preditor contém dois
-termos: o termo de família `FIXED` e o termo genômico `BL`. Assim, o componente
-BL recebe
+O valor adotado corresponde à própria calibração inicial do BGLR. Como o
+preditor contém dois termos lineares — família e componente genômico BL — a
+parcela de `R2` destinada ao BL é
 
 \[
 R^2_{BL}=\frac{0.5}{2}=0.25.
 \]
 
-Para a matriz de marcadores centralizada, a calibração utiliza
+Para a matriz de marcadores centralizada,
 
 \[
 MS_x=
@@ -380,16 +346,14 @@ MS_x=
 \sum_j\bar m_j^2,
 \]
 
-e
+seguido de
 
 \[
 \lambda_0^2=
 2\frac{1-R^2}{R^2_{BL}}MS_x.
 \]
 
-O valor é calculado diretamente a partir da matriz de marcadores do Módulo 02.
-
-```{r bl-lambda-calibration}
+```{r bl-lambda}
 BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 
@@ -401,57 +365,35 @@ BL_LAMBDA_SQUARED <-
   2 * (1 - R2_PRIOR) / BL_COMPONENT_R2 * BL_MSX
 
 BL_LAMBDA <- sqrt(BL_LAMBDA_SQUARED)
-BL_LAMBDA_TOLERANCE <- max(
-  1e-12,
-  abs(BL_LAMBDA) * BL_LAMBDA_TOLERANCE_REL
-)
-
-stopifnot(
-  is.finite(BL_MSX), BL_MSX > 0,
-  is.finite(BL_LAMBDA), BL_LAMBDA > 0
-)
 ```
 
 ```{r bl-lambda-table}
-kable(
-  data.frame(
-    Quantidade = c(
-      "MSx",
-      "R2 global",
-      "R2 do componente BL",
-      "Lambda0 fixo"
-    ),
-    Valor = c(
-      BL_MSX,
-      R2_PRIOR,
-      BL_COMPONENT_R2,
-      BL_LAMBDA
-    )
-  ),
-  digits = 6,
-  caption = "Calibração do parâmetro fixo de contração do Lasso Bayesiano"
-)
+data.frame(
+  Quantidade = c("MSx", "R2 global", "R2 do BL", "Lambda0 fixo"),
+  Valor = c(BL_MSX, R2_PRIOR, BL_COMPONENT_R2, BL_LAMBDA)
+) |>
+  kable(
+    digits = 6,
+    caption = "Definição do parâmetro de contração do Lasso Bayesiano"
+  )
 ```
 
-Para estes dados, obtém-se \(MS_x\approx25.6050\) e
-\(\lambda_0\approx10.1203\). O valor fixo foi adotado globalmente após a
-atualização estocástica padrão de lambda apresentar instabilidade numérica
-durante a validação da implementação. Ele **não** foi escolhido com base em
+Para estes dados, \(MS_x\approx25.6050\) e
+\(\lambda_0\approx10.1203\). O mesmo valor é utilizado para todas as
+características e folds. A decisão de mantê-lo fixo foi tomada após a
+atualização estocástica padrão apresentar instabilidade numérica, sem utilizar
 correlação preditiva, RMSE, DIC ou qualquer resultado específico de
-característica. O mesmo valor é utilizado para todas as características e
-folds porque `M`, `R2` e a estrutura do modelo são comuns a todos os ajustes.
+característica para escolher o valor.
 
 ### 6.7 GBLUP
 
-O GBLUP utiliza a matriz de relacionamento genômico `G`, em vez dos efeitos
-individuais dos marcadores. No BGLR, ele é representado por um termo `RKHS` com
-`K = G`, que atribui aos valores genômicos a estrutura de covariância definida
-por `G`.
+O GBLUP utiliza a matriz de relacionamento genômico `G`. No BGLR, a estrutura
+é especificada pelo componente `RKHS` com `K = G`.
 
-## 7. Especificações dos modelos no BGLR
+## 7. Especificação dos modelos no BGLR
 
-O termo comum de família é combinado com um termo genômico para cada método.
-Os objetos `ETA` abaixo são as especificações efetivamente fornecidas ao BGLR.
+O termo de família é comum aos sete métodos. Em seguida, cada modelo recebe o
+componente genômico correspondente.
 
 ```{r eta-specifications}
 family_term <- list(
@@ -501,34 +443,10 @@ ETA_models <- list(
 )
 ```
 
-## 8. Ajuste dos modelos com validação cruzada
+## 8. Combinações de característica, fold e método
 
-### 8.1 Chave explícita de execução
-
-Uma construção normal do workflowr não repete os 350 ajustes intensivos. Para
-reproduzir deliberadamente a análise completa a partir da página em português,
-execute
-
-```bash
-PAPAYA_RUN_M03_FIT=pt Rscript --vanilla -e 'workflowr::wflow_build("analysis/03_models_pt.Rmd")'
-```
-
-Os documentos em português e inglês contêm o mesmo código estatístico. Um
-ajuste completo deve ser acionado por apenas uma das versões linguísticas por
-vez.
-
-```{r m03-fit-control, include=FALSE}
-M03_FIT_TARGET <- tolower(
-  Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")
-)
-RUN_M03_FIT <- identical(M03_FIT_TARGET, "pt")
-```
-
-### 8.2 Combinações característica-fold-método
-
-As 350 combinações são criadas deterministicamente. Cada ajuste possui sua
-própria semente, de modo que os resultados não dependem da ordem em que as
-combinações são processadas.
+As mesmas sete especificações são aplicadas às dez características e aos cinco
+folds. Uma semente determinística é atribuída a cada combinação.
 
 ```{r run-design}
 run_design <- expand.grid(
@@ -556,372 +474,18 @@ run_design$Run_id <- paste(
   sep = "_"
 )
 
-stopifnot(nrow(run_design) == 350L)
+run_design |>
+  count(Method, name = "Numero_de_ajustes") |>
+  kable(caption = "Número de ajustes por método")
 ```
 
-Metadados exigidos apenas pelas verificações internas de integridade são
-gerados internamente e não fazem parte da apresentação tutorial.
+## 9. Ajuste dos 350 modelos
 
-```{r internal-integrity-metadata, include=FALSE, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
-PIPELINE_VERSION <- "module03-full-v4-bl-fixed"
+O bloco abaixo percorre as combinações de característica, fold e método. Os
+comentários no código destacam as etapas principais do ajuste.
 
-analysis_settings <- list(
-  pipeline_version = PIPELINE_VERSION,
-  n_iter = N_ITER,
-  burn_in = BURN_IN,
-  thin = THIN,
-  R2 = R2_PRIOR,
-  seed_base = SEED_BASE,
-  bayesb2_zero_probability = BAYESB2_ZERO_PROBABILITY,
-  bayesb2_prob_in = BAYESB2_PROB_IN,
-  bayesb2_counts = BAYESB2_COUNTS,
-  bl_lambda_type = BL_LAMBDA_TYPE,
-  bl_n_linear_terms = BL_N_LINEAR_TERMS,
-  bl_component_R2 = BL_COMPONENT_R2,
-  bl_msx = BL_MSX,
-  bl_lambda_squared = BL_LAMBDA_SQUARED,
-  bl_lambda = BL_LAMBDA,
-  bl_lambda_tolerance = BL_LAMBDA_TOLERANCE,
-  bl_tau2_warning_policy = "review_not_structural",
-  traits = traits,
-  folds = seq_len(matrices_object$settings$n_folds),
-  methods = method_names
-)
-
-analysis_signature <- substr(
-  digest::digest(
-    list(
-      ids = ids,
-      phenotypes = phenotypes,
-      X = X,
-      M = M,
-      G = G,
-      cv_folds = cv_folds,
-      settings = analysis_settings
-    ),
-    algo = "sha256"
-  ),
-  1,
-  16
-)
-
-run_design$Signature <- analysis_signature
-run_design <- run_design |>
-  relocate(Signature, .before = Run_id)
-
-write.csv(
-  run_design,
-  file.path(OUTPUT_DIR, "run_design.csv"),
-  row.names = FALSE
-)
-```
-
-### 8.3 Validação do lambda fixo durante o ajuste
-
-O valor fixo do BL é verificado diretamente no objeto ajustado pelo BGLR e no
-arquivo nativo de lambda. Essa validação é a mesma para todos os ajustes BL e
-fica separada da função geral de ajuste.
-
-```{r bl-validation-helper}
-validate_fixed_bl <- function(
-  fit,
-  save_prefix,
-  run_id,
-  method_name,
-  lambda_update_warning_count
-) {
-  result <- list(
-    lambda = NA_real_,
-    native_value = NA_real_,
-    serialization_error = NA_real_,
-    native_valid = NA,
-    valid = NA
-  )
-
-  if (method_name != "BL") {
-    return(result)
-  }
-
-  result$lambda <- as.numeric(fit$ETA$genomic$lambda)
-  lambda_error <- abs(result$lambda - BL_LAMBDA)
-
-  lambda_trace <- scan(
-    paste0(save_prefix, "ETA_genomic_lambda.dat"),
-    quiet = TRUE
-  )
-
-  result$native_value <- if (length(lambda_trace) > 0L) {
-    lambda_trace[1]
-  } else {
-    NA_real_
-  }
-
-  result$serialization_error <- if (is.finite(result$native_value)) {
-    abs(result$native_value - BL_LAMBDA)
-  } else {
-    Inf
-  }
-
-  result$native_valid <-
-    length(lambda_trace) == RAW_SAVED_SAMPLES &&
-    all(is.finite(lambda_trace)) &&
-    all(lambda_trace > 0) &&
-    length(unique(lambda_trace)) == 1L
-
-  result$valid <-
-    length(result$lambda) == 1L &&
-    is.finite(result$lambda) &&
-    result$lambda > 0 &&
-    lambda_error <= BL_LAMBDA_TOLERANCE &&
-    result$native_valid
-
-  if (!result$valid) {
-    stop("BL FIXED-lambda contract failed for ", run_id)
-  }
-  if (lambda_update_warning_count > 0L) {
-    stop(
-      "Unexpected lambda-update warning under BL type=FIXED for ",
-      run_id
-    )
-  }
-
-  result
-}
-```
-
-### 8.4 Ajuste de uma combinação
-
-A função de ajuste prepara o vetor fenotípico mascarado, ajusta o modelo BGLR
-solicitado, captura avisos e retorna as informações necessárias para os cálculos
-subsequentes.
-
-```{r fit-one-run-helper}
-fit_one_run <- function(run_index) {
-  trait_name <- run_design$Trait[run_index]
-  fold_number <- run_design$Fold[run_index]
-  method_name <- run_design$Method[run_index]
-  run_id <- run_design$Run_id[run_index]
-  run_seed <- run_design$Seed[run_index]
-
-  bglr_run_dir <- file.path(
-    BGLR_DIR,
-    trait_name,
-    paste0("F", fold_number),
-    method_name
-  )
-  dir.create(bglr_run_dir, recursive = TRUE, showWarnings = FALSE)
-
-  save_prefix <- file.path(bglr_run_dir, "bglr_")
-  unlink(Sys.glob(paste0(save_prefix, "*")))
-
-  y_observed <- phenotypes[, trait_name]
-  names(y_observed) <- ids
-
-  validation_index <- which(cv_folds$Fold == fold_number)
-  training_index <- which(cv_folds$Fold != fold_number)
-
-  y_model <- y_observed
-  y_model[validation_index] <- NA_real_
-
-  set.seed(run_seed)
-  run_warning_messages <- character(0)
-  fit_start <- proc.time()[["elapsed"]]
-
-  fit <- withCallingHandlers(
-    BGLR::BGLR(
-      y = y_model,
-      ETA = ETA_models[[method_name]],
-      response_type = "gaussian",
-      nIter = N_ITER,
-      burnIn = BURN_IN,
-      thin = THIN,
-      R2 = R2_PRIOR,
-      saveAt = save_prefix,
-      verbose = FALSE,
-      rmExistingFiles = TRUE
-    ),
-    warning = function(w) {
-      run_warning_messages <<- c(
-        run_warning_messages,
-        conditionMessage(w)
-      )
-      invokeRestart("muffleWarning")
-    }
-  )
-
-  fit_end <- proc.time()[["elapsed"]]
-
-  tau2_warning_count <- sum(grepl(
-    "tau2 was not updated",
-    run_warning_messages,
-    fixed = TRUE
-  ))
-  lambda_update_warning_count <- sum(grepl(
-    "lambda was not updated",
-    run_warning_messages,
-    fixed = TRUE
-  ))
-
-  bl <- validate_fixed_bl(
-    fit = fit,
-    save_prefix = save_prefix,
-    run_id = run_id,
-    method_name = method_name,
-    lambda_update_warning_count = lambda_update_warning_count
-  )
-
-  list(
-    fit = fit,
-    trait = trait_name,
-    fold = fold_number,
-    method = method_name,
-    run_id = run_id,
-    seed = run_seed,
-    save_prefix = save_prefix,
-    training_index = training_index,
-    validation_index = validation_index,
-    y_observed = y_observed,
-    warning_messages = run_warning_messages,
-    tau2_warning_count = tau2_warning_count,
-    lambda_update_warning_count = lambda_update_warning_count,
-    bl = bl,
-    elapsed_seconds = fit_end - fit_start
-  )
-}
-```
-
-### 8.5 Predições OOF e valores genômicos
-
-Para cada modelo ajustado,
-
-\[
-\widehat y_i =
-\widehat\mu+
-\mathbf x_{Fi}'\widehat{\boldsymbol\beta}_F+
-\widehat g_i.
-\]
-
-Logo, o valor genômico é recuperado por
-
-\[
-\widehat g_i=
-\widehat y_i-
-\widehat\mu-
-\mathbf x_{Fi}'\widehat{\boldsymbol\beta}_F.
-\]
-
-```{r prediction-helper}
-extract_prediction_outputs <- function(run) {
-  fit <- run$fit
-
-  fixed_component <- as.vector(
-    X_fixed %*% fit$ETA$fixed$b
-  )
-  genomic_component <- as.vector(
-    fit$yHat - fit$mu - fixed_component
-  )
-
-  genomic_values <- data.frame(
-    Run_id = run$run_id,
-    IND = ids,
-    Trait = run$trait,
-    Fold = run$fold,
-    Method = run$method,
-    Genomic_value = genomic_component
-  )
-
-  predictions <- data.frame(
-    Run_id = run$run_id,
-    IND = ids[run$validation_index],
-    Trait = run$trait,
-    Fold = run$fold,
-    Method = run$method,
-    Observed = run$y_observed[run$validation_index],
-    Predicted = fit$yHat[run$validation_index],
-    Fixed_component = fixed_component[run$validation_index],
-    Genomic_component = genomic_component[run$validation_index]
-  )
-
-  list(
-    genomic_values = genomic_values,
-    predictions = predictions
-  )
-}
-```
-
-### 8.6 Métricas preditivas e de ajuste
-
-As métricas são calculadas separadamente dentro de cada ajuste
-característica-fold-método. A correlação OOF, RMSE, MAE, viés e inclinação de
-calibração quantificam a predição; DIC e o número efetivo de parâmetros resumem
-o ajuste e a complexidade do modelo Bayesiano.
-
-```{r metric-helper}
-extract_metric_output <- function(run) {
-  fit <- run$fit
-  observed <- run$y_observed[run$validation_index]
-  predicted <- fit$yHat[run$validation_index]
-
-  posterior_prob_in <- c(
-    fit$ETA$genomic$probIn,
-    NA_real_
-  )[1]
-
-  metric <- data.frame(
-    Run_id = run$run_id,
-    Trait = run$trait,
-    Fold = run$fold,
-    Method = run$method,
-    Seed = run$seed,
-    Training_n = length(run$training_index),
-    Validation_n = length(run$validation_index),
-    Correlation = cor(observed, predicted),
-    RMSE = sqrt(mean((observed - predicted)^2)),
-    MAE = mean(abs(observed - predicted)),
-    Prediction_bias = mean(predicted - observed),
-    Regression_slope = cov(observed, predicted) / var(predicted),
-    DIC = fit$fit$DIC,
-    Effective_parameters = fit$fit$pD,
-    Log_likelihood_at_posterior_mean = fit$fit$logLikAtPostMean,
-    Posterior_mean = fit$mu,
-    Posterior_mean_SD = c(fit$SD.mu, NA_real_)[1],
-    Residual_variance = fit$varE,
-    Residual_variance_SD = c(fit$SD.varE, NA_real_)[1],
-    BL_lambda = run$bl$lambda,
-    BL_lambda_native_value = run$bl$native_value,
-    BL_lambda_native_serialization_error = run$bl$serialization_error,
-    BL_lambda_native_valid = run$bl$native_valid,
-    BL_lambda_valid = run$bl$valid,
-    BGLR_warning_count = length(run$warning_messages),
-    Tau2_warning_count = run$tau2_warning_count,
-    Lambda_update_warning_count = run$lambda_update_warning_count,
-    Posterior_probIn = posterior_prob_in,
-    Elapsed_seconds = run$elapsed_seconds,
-    Finite_predictions = all(is.finite(predicted))
-  )
-
-  finite_columns <- c(
-    "Correlation", "RMSE", "MAE", "Prediction_bias",
-    "Regression_slope", "DIC", "Effective_parameters",
-    "Log_likelihood_at_posterior_mean", "Posterior_mean",
-    "Residual_variance", "Elapsed_seconds"
-  )
-
-  metric$Finite_metrics <- all(
-    is.finite(as.numeric(metric[, finite_columns]))
-  )
-
-  metric
-}
-```
-
-## 9. Diagnósticos MCMC
-
-O BGLR grava as cadeias escalares após o thinning em arquivos nativos. Duas
-cadeias são avaliadas em cada ajuste: a variância residual e um parâmetro
-específico do método. No BL, lambda é fixo e, portanto, não possui uma cadeia
-MCMC a ser diagnosticada; nesse caso, a cadeia do intercepto é utilizada como o
-segundo diagnóstico escalar.
+Antes do laço, são definidos os arquivos que contêm as cadeias escalares
+utilizadas posteriormente nos diagnósticos MCMC.
 
 ```{r trace-specifications}
 genomic_trace_suffix <- c(
@@ -965,30 +529,178 @@ genomic_trace_parameter <- c(
 )
 ```
 
-Após a remoção do burn-in das cadeias salvas, o tamanho efetivo de amostra
-(ESS) e a estatística de Geweke são calculados com o pacote coda.
+```{r fit-models}
+# Listas que recebem as saídas de cada ajuste.
+metric_parts <- vector("list", nrow(run_design))
+prediction_parts <- vector("list", nrow(run_design))
+genomic_value_parts <- vector("list", nrow(run_design))
+convergence_parts <- vector("list", nrow(run_design))
 
-```{r convergence-helper}
-extract_convergence_output <- function(run) {
+for (run_index in seq_len(nrow(run_design))) {
+
+  # Identifica a combinação que será ajustada.
+  trait_name <- run_design$Trait[run_index]
+  fold_number <- run_design$Fold[run_index]
+  method_name <- run_design$Method[run_index]
+  run_id <- run_design$Run_id[run_index]
+  run_seed <- run_design$Seed[run_index]
+
+  cat(sprintf("[%03d/%03d] %s\n", run_index, nrow(run_design), run_id))
+
+  # Cria a pasta que receberá as cadeias nativas do BGLR.
+  bglr_run_dir <- file.path(
+    BGLR_DIR,
+    trait_name,
+    paste0("F", fold_number),
+    method_name
+  )
+  dir.create(bglr_run_dir, recursive = TRUE, showWarnings = FALSE)
+
+  save_prefix <- file.path(bglr_run_dir, "bglr_")
+  unlink(Sys.glob(paste0(save_prefix, "*")))
+
+  # Separa o fenótipo da característica atual.
+  y_observed <- phenotypes[, trait_name]
+  names(y_observed) <- ids
+
+  # Identifica indivíduos de treinamento e validação.
+  validation_index <- which(cv_folds$Fold == fold_number)
+  training_index <- which(cv_folds$Fold != fold_number)
+
+  # Mascara o fenótipo dos indivíduos do fold de validação.
+  y_model <- y_observed
+  y_model[validation_index] <- NA_real_
+
+  # A semente é fixa para tornar o ajuste reproduzível.
+  set.seed(run_seed)
+
+  # Os avisos do BGLR são armazenados para descrição posterior.
+  run_warning_messages <- character(0)
+  fit_start <- proc.time()[["elapsed"]]
+
+  fit <- withCallingHandlers(
+    BGLR::BGLR(
+      y = y_model,
+      ETA = ETA_models[[method_name]],
+      response_type = "gaussian",
+      nIter = N_ITER,
+      burnIn = BURN_IN,
+      thin = THIN,
+      R2 = R2_PRIOR,
+      saveAt = save_prefix,
+      verbose = FALSE,
+      rmExistingFiles = TRUE
+    ),
+    warning = function(w) {
+      run_warning_messages <<- c(
+        run_warning_messages,
+        conditionMessage(w)
+      )
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  fit_end <- proc.time()[["elapsed"]]
+
+  # Recupera as predições dos indivíduos de validação.
+  observed_validation <- y_observed[validation_index]
+  predicted_validation <- fit$yHat[validation_index]
+
+  # Separa o componente fixo de família.
+  fixed_component <- as.vector(
+    X_fixed %*% fit$ETA$fixed$b
+  )
+
+  # Obtém o componente genômico por diferença.
+  genomic_component <- as.vector(
+    fit$yHat - fit$mu - fixed_component
+  )
+
+  # Guarda os valores genômicos de todos os indivíduos.
+  genomic_value_parts[[run_index]] <- data.frame(
+    Run_id = run_id,
+    IND = ids,
+    Trait = trait_name,
+    Fold = fold_number,
+    Method = method_name,
+    Genomic_value = genomic_component
+  )
+
+  # Guarda somente as predições fora da amostra do fold atual.
+  prediction_parts[[run_index]] <- data.frame(
+    Run_id = run_id,
+    IND = ids[validation_index],
+    Trait = trait_name,
+    Fold = fold_number,
+    Method = method_name,
+    Observed = observed_validation,
+    Predicted = predicted_validation,
+    Fixed_component = fixed_component[validation_index],
+    Genomic_component = genomic_component[validation_index]
+  )
+
+  # Parâmetros específicos aparecem quando disponíveis no modelo ajustado.
+  posterior_prob_in <- c(fit$ETA$genomic$probIn, NA_real_)[1]
+  bl_lambda <- c(fit$ETA$genomic$lambda, NA_real_)[1]
+
+  # Calcula as métricas preditivas e de ajuste do fold.
+  metric_parts[[run_index]] <- data.frame(
+    Run_id = run_id,
+    Trait = trait_name,
+    Fold = fold_number,
+    Method = method_name,
+    Seed = run_seed,
+    Training_n = length(training_index),
+    Validation_n = length(validation_index),
+    Correlation = cor(observed_validation, predicted_validation),
+    RMSE = sqrt(mean((observed_validation - predicted_validation)^2)),
+    MAE = mean(abs(observed_validation - predicted_validation)),
+    Prediction_bias = mean(predicted_validation - observed_validation),
+    Regression_slope =
+      cov(observed_validation, predicted_validation) /
+      var(predicted_validation),
+    DIC = fit$fit$DIC,
+    Effective_parameters = fit$fit$pD,
+    Log_likelihood_at_posterior_mean = fit$fit$logLikAtPostMean,
+    Posterior_mean = fit$mu,
+    Posterior_mean_SD = c(fit$SD.mu, NA_real_)[1],
+    Residual_variance = fit$varE,
+    Residual_variance_SD = c(fit$SD.varE, NA_real_)[1],
+    BL_lambda = bl_lambda,
+    BGLR_warning_count = length(run_warning_messages),
+    Tau2_warning_count = sum(grepl(
+      "tau2 was not updated",
+      run_warning_messages,
+      fixed = TRUE
+    )),
+    Lambda_update_warning_count = sum(grepl(
+      "lambda was not updated",
+      run_warning_messages,
+      fixed = TRUE
+    )),
+    Posterior_probIn = posterior_prob_in,
+    Elapsed_seconds = fit_end - fit_start
+  )
+
+  # Lê a cadeia da variância residual.
   residual_trace_full <- scan(
-    paste0(run$save_prefix, "varE.dat"),
+    paste0(save_prefix, "varE.dat"),
     quiet = TRUE
   )
 
+  # Lê a cadeia escalar representativa do componente genômico.
   genomic_trace_table <- read.table(
-    paste0(
-      run$save_prefix,
-      genomic_trace_suffix[run$method]
-    ),
-    header = genomic_trace_header[run$method],
+    paste0(save_prefix, genomic_trace_suffix[method_name]),
+    header = genomic_trace_header[method_name],
     check.names = FALSE
   )
 
   genomic_trace_full <- genomic_trace_table[
     ,
-    genomic_trace_column[run$method]
+    genomic_trace_column[method_name]
   ]
 
+  # Remove das cadeias salvas a parcela correspondente ao burn-in.
   posterior_index <- seq.int(
     BURN_IN_SAVED_SAMPLES + 1L,
     length(residual_trace_full)
@@ -999,25 +711,27 @@ extract_convergence_output <- function(run) {
     Genomic_parameter = genomic_trace_full[posterior_index]
   )
 
+  # Converte as cadeias para o formato utilizado pelo pacote coda.
   trace_object <- coda::mcmc(
     trace_matrix,
     start = BURN_IN + THIN,
     thin = THIN
   )
 
+  # Calcula tamanho efetivo da amostra e estatística de Geweke.
   trace_ess <- coda::effectiveSize(trace_object)
   trace_geweke <- coda::geweke.diag(trace_object)$z
 
   parameter_names <- c(
     "Residual_variance",
-    unname(genomic_trace_parameter[run$method])
+    unname(genomic_trace_parameter[method_name])
   )
 
-  convergence <- data.frame(
-    Run_id = run$run_id,
-    Trait = run$trait,
-    Fold = run$fold,
-    Method = run$method,
+  convergence_parts[[run_index]] <- data.frame(
+    Run_id = run_id,
+    Trait = trait_name,
+    Fold = fold_number,
+    Method = method_name,
     Parameter = parameter_names,
     Retained_samples = nrow(trace_matrix),
     Posterior_mean = colMeans(trace_matrix),
@@ -1026,60 +740,107 @@ extract_convergence_output <- function(run) {
     Geweke_Z = as.numeric(trace_geweke)
   )
 
-  convergence$Review_flag <-
-    !is.finite(convergence$Effective_sample_size) |
-    convergence$Effective_sample_size < ESS_REVIEW_THRESHOLD |
-    !is.finite(convergence$Geweke_Z) |
-    abs(convergence$Geweke_Z) > GEWEKE_REVIEW_THRESHOLD
-
-  convergence
-}
-```
-
-Um `Review_flag` indica, portanto, uma cadeia que requer inspeção. Ele não é uma
-regra automática de rejeição do modelo e, isoladamente, não prova falta de
-convergência.
-
-## 10. Execução dos 350 ajustes
-
-O laço principal agora é curto: cada iteração ajusta um modelo e delega os
-cálculos de predição, métricas e convergência às funções apresentadas acima.
-
-```{r fit-all-models, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
-metric_parts <- vector("list", nrow(run_design))
-prediction_parts <- vector("list", nrow(run_design))
-genomic_value_parts <- vector("list", nrow(run_design))
-convergence_parts <- vector("list", nrow(run_design))
-
-for (run_index in seq_len(nrow(run_design))) {
-  cat(sprintf(
-    "[%03d/%03d] %s\n",
-    run_index,
-    nrow(run_design),
-    run_design$Run_id[run_index]
-  ))
-
-  run <- fit_one_run(run_index)
-  prediction_output <- extract_prediction_outputs(run)
-
-  metric_parts[[run_index]] <- extract_metric_output(run)
-  prediction_parts[[run_index]] <- prediction_output$predictions
-  genomic_value_parts[[run_index]] <- prediction_output$genomic_values
-  convergence_parts[[run_index]] <- extract_convergence_output(run)
-
-  run$fit <- NULL
+  # Libera o objeto de ajuste antes da próxima combinação.
+  fit <- NULL
+  trace_object <- NULL
   gc(verbose = FALSE)
 }
 ```
 
-As saídas individuais são então combinadas nas cinco exportações analíticas
-utilizadas pelo módulo seguinte.
+## 10. Predições, valores genômicos e métricas por fold
 
-```{r combine-model-results, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
+As saídas acumuladas no laço são reunidas em tabelas únicas.
+
+```{r combine-results}
 cv_metrics_by_fold <- bind_rows(metric_parts)
 cv_predictions <- bind_rows(prediction_parts)
 genomic_values_by_fold <- bind_rows(genomic_value_parts)
 convergence_diagnostics <- bind_rows(convergence_parts)
+```
+
+A relação entre a predição total e o valor genômico pode ser escrita como
+
+\[
+\widehat y_i =
+\widehat\mu+
+\mathbf x_{Fi}'\widehat{\boldsymbol\beta}_F+
+\widehat g_i,
+\]
+
+portanto
+
+\[
+\widehat g_i=
+\widehat y_i-
+\widehat\mu-
+\mathbf x_{Fi}'\widehat{\boldsymbol\beta}_F.
+\]
+
+Algumas linhas das predições OOF permitem verificar diretamente a estrutura da
+saída.
+
+```{r prediction-preview}
+cv_predictions |>
+  select(
+    IND, Trait, Fold, Method,
+    Observed, Predicted, Fixed_component, Genomic_component
+  ) |>
+  head(12) |>
+  kable(digits = 4, caption = "Exemplo das predições fora da amostra")
+```
+
+As métricas calculadas em cada fold incluem correlação, RMSE, MAE, viés,
+inclinação de calibração, DIC e número efetivo de parâmetros.
+
+```{r metrics-preview}
+cv_metrics_by_fold |>
+  select(
+    Trait, Fold, Method,
+    Correlation, RMSE, MAE,
+    Prediction_bias, Regression_slope, DIC
+  ) |>
+  head(14) |>
+  kable(digits = 4, caption = "Exemplo das métricas obtidas por fold")
+```
+
+A quantidade de resultados produzidos também pode ser conferida diretamente.
+
+```{r output-size-summary}
+data.frame(
+  Saida = c(
+    "Ajustes",
+    "Predições OOF",
+    "Valores genômicos por fold",
+    "Cadeias escalares avaliadas"
+  ),
+  Linhas = c(
+    nrow(cv_metrics_by_fold),
+    nrow(cv_predictions),
+    nrow(genomic_values_by_fold),
+    nrow(convergence_diagnostics)
+  )
+) |>
+  kable(caption = "Dimensões das principais saídas do ajuste")
+```
+
+## 11. Diagnósticos MCMC
+
+Para cada ajuste são examinadas a cadeia da variância residual e uma cadeia
+escalar representativa do modelo. No BL, como \(\lambda\) é fixo, o segundo
+diagnóstico utiliza a cadeia do intercepto.
+
+O tamanho efetivo da amostra (ESS) e a estatística de Geweke são utilizados
+como indicadores de inspeção da cadeia. Valores de ESS inferiores a 1.000 ou
+\(|Z_{Geweke}|>2\) são destacados para revisão, sem constituir uma regra
+automática de exclusão do modelo.
+
+```{r convergence-summary}
+convergence_diagnostics <- convergence_diagnostics |>
+  mutate(
+    Review_flag =
+      Effective_sample_size < ESS_REVIEW_THRESHOLD |
+      abs(Geweke_Z) > GEWEKE_REVIEW_THRESHOLD
+  )
 
 convergence_summary <- convergence_diagnostics |>
   group_by(Method) |>
@@ -1094,74 +855,82 @@ convergence_summary <- convergence_diagnostics |>
     .groups = "drop"
   )
 
-convergence_summary$Method_label <-
+convergence_summary$Metodo <-
   unname(method_labels[convergence_summary$Method])
+
+convergence_summary |>
+  select(
+    Metodo, Runs, Parameters_reviewed,
+    Parameters_flagged, Runs_with_flags,
+    Minimum_ESS, Median_ESS, Maximum_absolute_Geweke
+  ) |>
+  kable(
+    digits = 3,
+    caption = "Resumo dos diagnósticos MCMC por método"
+  )
 ```
 
-Os metadados internos de integridade exigidos pelos módulos posteriores são
-adicionados internamente após a construção das tabelas científicas.
+As cadeias destacadas podem ser examinadas diretamente na tabela abaixo.
 
-```{r add-internal-integrity-fields, include=FALSE, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
-cv_metrics_by_fold$Signature <- analysis_signature
-cv_metrics_by_fold <- cv_metrics_by_fold |>
-  relocate(Signature, .after = Run_id)
-
-cv_predictions$Signature <- analysis_signature
-cv_predictions <- cv_predictions |>
-  relocate(Signature, .after = Run_id)
-
-genomic_values_by_fold$Signature <- analysis_signature
-genomic_values_by_fold <- genomic_values_by_fold |>
-  relocate(Signature, .after = Run_id)
-
-convergence_diagnostics$Signature <- analysis_signature
-convergence_diagnostics <- convergence_diagnostics |>
-  relocate(Signature, .after = Run_id)
+```{r convergence-flags}
+convergence_diagnostics |>
+  filter(Review_flag) |>
+  arrange(Method, Trait, Fold, Parameter) |>
+  select(
+    Trait, Fold, Method, Parameter,
+    Effective_sample_size, Geweke_Z
+  ) |>
+  kable(
+    digits = 4,
+    caption = "Cadeias destacadas pelos diagnósticos ESS ou Geweke"
+  )
 ```
 
-## 11. Gravação dos resultados do Módulo 03
+## 12. Gravação das saídas
 
-Antes da gravação, são conferidas as dimensões esperadas. Essas verificações
-protegem o pipeline contra uma execução incompleta, mas não fazem parte da
-seleção de modelos.
+Os resultados utilizados nos módulos seguintes são gravados após a conclusão
+dos 350 ajustes.
 
-```{r validate-results, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
-expected_fits <- nrow(run_design)
-expected_predictions <-
-  length(ids) * length(traits) * length(method_names)
-
-stopifnot(
-  expected_fits == 350L,
-  nrow(cv_metrics_by_fold) == expected_fits,
-  nrow(cv_predictions) == expected_predictions,
-  nrow(genomic_values_by_fold) == length(ids) * expected_fits,
-  nrow(convergence_diagnostics) == 2L * expected_fits
+```{r save-results}
+analysis_settings <- list(
+  n_iter = N_ITER,
+  burn_in = BURN_IN,
+  thin = THIN,
+  R2 = R2_PRIOR,
+  seed_base = SEED_BASE,
+  bayesb2_zero_probability = BAYESB2_ZERO_PROBABILITY,
+  bayesb2_prob_in = BAYESB2_PROB_IN,
+  bayesb2_counts = BAYESB2_COUNTS,
+  bl_lambda_type = BL_LAMBDA_TYPE,
+  bl_n_linear_terms = BL_N_LINEAR_TERMS,
+  bl_component_R2 = BL_COMPONENT_R2,
+  bl_msx = BL_MSX,
+  bl_lambda_squared = BL_LAMBDA_SQUARED,
+  bl_lambda = BL_LAMBDA,
+  traits = traits,
+  folds = seq_len(matrices_object$settings$n_folds),
+  methods = method_names
 )
-```
 
-```{r validate-internal-integrity, include=FALSE, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
-stopifnot(
-  length(unique(cv_metrics_by_fold$Signature)) == 1L,
-  identical(unique(cv_metrics_by_fold$Signature), analysis_signature)
+model_catalogue <- data.frame(
+  Method = method_names,
+  Label = c(
+    "RR-BLUP", "BayesA", "BayesB", "BayesB2",
+    "BayesC", "Bayesian Lasso", "GBLUP"
+  ),
+  BGLR_component = c(
+    "BRR", "BayesA", "BayesB", "BayesB",
+    "BayesC", "BL", "RKHS"
+  ),
+  Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
+  stringsAsFactors = FALSE
 )
 
-models_object <- list(
-  signature = analysis_signature,
-  settings = analysis_settings,
-  run_design = run_design,
-  model_catalogue = model_catalogue,
-  trait_dictionary = trait_dictionary,
-  predictions = cv_predictions,
-  genomic_values_by_fold = genomic_values_by_fold,
-  metrics_by_fold = cv_metrics_by_fold,
-  convergence_diagnostics = convergence_diagnostics
+write.csv(
+  run_design,
+  file.path(OUTPUT_DIR, "run_design.csv"),
+  row.names = FALSE
 )
-```
-
-As tabelas analíticas e o objeto completo do Módulo 03 são então gravados em
-`output/models/`.
-
-```{r save-model-results, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "pt")}
 write.csv(
   cv_predictions,
   file.path(OUTPUT_DIR, "cv_predictions.csv"),
@@ -1188,109 +957,23 @@ write.csv(
   row.names = FALSE
 )
 
-saveRDS(models_object, MODELS_FILE)
-
-cat("\nAjuste do M03 concluído.\n")
-cat("Ajustes:", nrow(cv_metrics_by_fold), "\n")
-cat("Predições OOF:", nrow(cv_predictions), "\n")
-```
-
-## 12. Resultados do objeto ajustado no Módulo 03
-
-Uma construção normal chega a esta seção sem reajustar modelos. O objeto já
-existente do Módulo 03 é lido e suas dimensões são verificadas antes da
-apresentação do resumo de diagnóstico.
-
-```{r load-model-object}
-if (!file.exists(MODELS_FILE)) {
-  stop(
-    "Os resultados do Módulo 03 não foram encontrados. Reajuste este ",
-    "documento com `PAPAYA_RUN_M03_FIT=pt`."
-  )
-}
-
-models_object <- readRDS(MODELS_FILE)
-settings <- models_object$settings
-model_catalogue_saved <- models_object$model_catalogue
-run_design_saved <- models_object$run_design
-cv_predictions <- models_object$predictions
-genomic_values_by_fold <- models_object$genomic_values_by_fold
-cv_metrics_by_fold <- models_object$metrics_by_fold
-convergence_diagnostics <- models_object$convergence_diagnostics
-
-expected_fits <-
-  length(settings$traits) *
-  length(settings$folds) *
-  length(settings$methods)
-
-stopifnot(
-  expected_fits == 350L,
-  nrow(run_design_saved) == expected_fits,
-  nrow(cv_metrics_by_fold) == expected_fits,
-  nrow(cv_predictions) ==
-    150L * length(settings$traits) * length(settings$methods),
-  nrow(genomic_values_by_fold) == 150L * expected_fits,
-  nrow(convergence_diagnostics) == 2L * expected_fits
+saveRDS(
+  list(
+    settings = analysis_settings,
+    run_design = run_design,
+    model_catalogue = model_catalogue,
+    trait_dictionary = trait_dictionary,
+    predictions = cv_predictions,
+    genomic_values_by_fold = genomic_values_by_fold,
+    metrics_by_fold = cv_metrics_by_fold,
+    convergence_diagnostics = convergence_diagnostics
+  ),
+  file.path(OUTPUT_DIR, "models_object.rds")
 )
 ```
 
-### 12.1 Resumo dos diagnósticos MCMC
+## 13. Próxima etapa
 
-```{r convergence-summary}
-convergence_summary_display <- convergence_diagnostics |>
-  group_by(Method) |>
-  summarise(
-    Runs = n_distinct(Run_id),
-    Parameters_reviewed = n(),
-    Parameters_flagged = sum(Review_flag),
-    Runs_with_flags = n_distinct(Run_id[Review_flag]),
-    Minimum_ESS = min(Effective_sample_size, na.rm = TRUE),
-    Median_ESS = median(Effective_sample_size, na.rm = TRUE),
-    Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
-    .groups = "drop"
-  )
-
-convergence_summary_display$Method <- unname(
-  setNames(
-    model_catalogue_saved$Label,
-    model_catalogue_saved$Method
-  )[convergence_summary_display$Method]
-)
-
-kable(
-  convergence_summary_display,
-  digits = 3,
-  caption = "Diagnósticos MCMC de cadeia única por método genômico"
-)
-```
-
-```{r convergence-flags}
-convergence_diagnostics |>
-  filter(Review_flag) |>
-  arrange(Method, Trait, Fold, Parameter) |>
-  select(
-    Trait, Fold, Method, Parameter,
-    Retained_samples, Effective_sample_size,
-    Geweke_Z, Review_flag
-  ) |>
-  kable(
-    digits = 4,
-    caption = "Cadeias escalares sinalizadas para inspeção adicional"
-  )
-```
-
-Os diagnósticos são interpretados como indicadores de revisão. Eles não são
-utilizados para alterar as configurações MCMC de características ou folds
-isolados e, por si só, não definem o melhor método de predição.
-
-## 13. Resumo e próxima etapa
-
-O Módulo 03 ajusta a mesma estrutura estatística em sete métodos genômicos,
-utilizando família como efeito fixo e os mesmos cinco folds OOF em todas as
-comparações. A distinção entre `model = "FIXED"` para família e
-`type = "FIXED"` para o lambda do Lasso Bayesiano está explícita, e o lambda
-fixo é derivado da calibração do BGLR, e não do desempenho preditivo.
-
-O Módulo 04 lê `models_object.rds` sem reajustar os 350 modelos. Ele combina as
-predições OOF, compara desempenho preditivo e DIC, revisa a estabilidade MCMC e
-deriva os resultados genômicos específicos de cada característica.
+O Módulo 04 utiliza as predições OOF, as métricas por fold, os valores
+genômicos e os diagnósticos MCMC obtidos aqui para comparar os métodos e
+construir os resultados genômicos derivados.
