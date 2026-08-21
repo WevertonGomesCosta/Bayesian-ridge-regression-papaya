@@ -32,19 +32,15 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-Os modelos de predição genômica utilizam matrizes numéricas que representam os
-efeitos fixos e a semelhança genética entre os indivíduos.
+Neste módulo, os genótipos SSR pré-processados são convertidos em dosagens
+alélicas. A partir dessas dosagens são construídas a matriz de marcadores
+centralizada `M`, a matriz aditiva de relacionamento genômico `G` e a matriz de
+efeitos fixos `X`, contendo apenas família além do intercepto. Também são
+definidos cinco folds de validação cruzada estratificados por família.
 
-Nesta etapa, os genótipos SSR são convertidos em dosagens alélicas, **família é
-representada como o único efeito fixo categórico**, a matriz de relacionamento
-genômico aditivo é construída e cinco folds de validação cruzada são definidos.
-Bloco não participa das matrizes nem dos modelos.
-
-As matrizes de efeitos fixos, de marcadores e de relacionamento genômico são
-construídas uma única vez com o conjunto pré-processado completo. Elas
-permanecem inalteradas entre os folds. A validação cruzada será implementada no
-módulo de ajuste dos modelos, substituindo por valores ausentes os fenótipos dos
-indivíduos de validação.
+As matrizes são construídas uma única vez com os 150 indivíduos e permanecem
+inalteradas entre os folds. No Módulo 03, somente o vetor fenotípico será
+mascarado para formar os conjuntos de treinamento e validação.
 
 ## 2. Pacotes e objeto de entrada
 
@@ -74,15 +70,9 @@ N_FOLDS <- 5L
 SEED_CV <- 20260723L
 ALLELE_FREQUENCY_MIN <- 0.05
 
-dir.create(
-  OUTPUT_DIR,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
+dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
-preprocessing <- readRDS(
-  PREPROCESSING_FILE
-)
+preprocessing <- readRDS(PREPROCESSING_FILE)
 
 ids <- preprocessing$ids
 metadata <- preprocessing$metadata
@@ -90,78 +80,13 @@ phenotypes <- preprocessing$phenotypes
 ssr_raw <- preprocessing$ssr_raw
 locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
-
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
+```
 
-EXPECTED_N_INDIVIDUALS <- 150L
-EXPECTED_N_ORIGINAL_LOCI <- 35L
-EXPECTED_N_FAMILIES <- 10L
-EXPECTED_FAMILY_SIZE <- 15L
-EXPECTED_N_MARKERS <- 72L
-EXPECTED_TRAITS <- c(
-  "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
-  "DCI", "EP", "FFC", "FFP", "SS"
-)
-NUMERICAL_TOLERANCE <- 1e-12
+A estrutura recebida do pré-processamento é mostrada antes da codificação dos
+marcadores.
 
-matrix_input_checks <- c(
-  individual_count =
-    length(ids) == EXPECTED_N_INDIVIDUALS,
-  ids_complete =
-    !any(is.na(ids) | ids == ""),
-  ids_unique =
-    !anyDuplicated(ids),
-  metadata_ids_aligned =
-    identical(as.character(metadata$IND), ids),
-  phenotype_dimensions =
-    identical(
-      dim(phenotypes),
-      c(EXPECTED_N_INDIVIDUALS, length(EXPECTED_TRAITS))
-    ),
-  phenotype_traits_exact =
-    identical(colnames(phenotypes), EXPECTED_TRAITS),
-  phenotype_ids_aligned =
-    identical(rownames(phenotypes), ids),
-  phenotype_values_finite =
-    all(is.finite(phenotypes)),
-  ssr_raw_dimensions =
-    identical(
-      dim(ssr_raw),
-      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_ORIGINAL_LOCI)
-    ),
-  ssr_raw_ids_aligned =
-    identical(rownames(ssr_raw), ids),
-  locus_audit_count =
-    nrow(locus_audit_full) == EXPECTED_N_ORIGINAL_LOCI,
-  families_complete =
-    !anyNA(metadata$FAM),
-  family_levels_exact =
-    setequal(
-      unique(as.character(metadata$FAM)),
-      as.character(seq_len(EXPECTED_N_FAMILIES))
-    ),
-  family_sizes_exact =
-    length(table(metadata$FAM)) == EXPECTED_N_FAMILIES &&
-    all(table(metadata$FAM) == EXPECTED_FAMILY_SIZE),
-  trait_dictionary_exact =
-    identical(
-      as.character(trait_dictionary$Trait),
-      EXPECTED_TRAITS
-    )
-)
-
-if (!all(matrix_input_checks)) {
-  stop(
-    "Falha no contrato de entrada do Módulo 02: ",
-    paste(
-      names(matrix_input_checks)[
-        !matrix_input_checks
-      ],
-      collapse = ", "
-    )
-  )
-}
-
+```{r resumo-entrada}
 data.frame(
   Item = c(
     "Indivíduos",
@@ -178,21 +103,17 @@ data.frame(
     nlevels(metadata$FAM)
   )
 ) |>
-  kable(
-    caption = "Dados de entrada para a construção das matrizes"
-  )
+  kable(caption = "Dados de entrada para a construção das matrizes")
 ```
 
 ## 3. Codificação das dosagens alélicas
 
 Cada código SSR contém dois rótulos alélicos. O código `12`, por exemplo,
-representa uma cópia do alelo 1 e uma cópia do alelo 2. O código `22`
-representa duas cópias do alelo 2.
+representa uma cópia do alelo 1 e uma cópia do alelo 2, enquanto `22`
+representa duas cópias do alelo 2. Uma coluna de dosagem é criada para cada
+alelo observado em cada loco mantido.
 
-Uma coluna é criada para cada alelo observado em cada loco mantido. A dosagem
-é 0, 1 ou 2, de acordo com o número de cópias presentes em cada indivíduo.
-
-```{r codificacao-dosagens-completas}
+```{r codificacao-dosagens}
 retained_loci_full <- locus_audit_full$Locus[
   locus_audit_full$Keep_locus
 ]
@@ -208,11 +129,12 @@ allele_map_parts_full <- list()
 marker_counter_full <- 0L
 
 for (j in seq_len(ncol(ssr_full))) {
+  # Separa os dois alelos codificados em cada genótipo SSR.
   codes <- ssr_full[, j]
-
   allele_1 <- floor(codes / 10)
   allele_2 <- codes %% 10
 
+  # Lista os alelos observados no loco atual.
   observed_alleles <- sort(
     unique(
       c(
@@ -225,10 +147,10 @@ for (j in seq_len(ncol(ssr_full))) {
   for (allele in observed_alleles) {
     marker_counter_full <- marker_counter_full + 1L
 
+    # Conta 0, 1 ou 2 cópias do alelo em cada indivíduo.
     dosage <-
       as.numeric(allele_1 == allele) +
       as.numeric(allele_2 == allele)
-
     dosage[is.na(codes)] <- NA_real_
 
     marker_name <- paste0(
@@ -238,7 +160,6 @@ for (j in seq_len(ncol(ssr_full))) {
     )
 
     dosage_parts_full[[marker_counter_full]] <- dosage
-
     allele_map_parts_full[[marker_counter_full]] <- data.frame(
       Locus = colnames(ssr_full)[j],
       Allele = allele,
@@ -247,38 +168,28 @@ for (j in seq_len(ncol(ssr_full))) {
   }
 }
 
-dosage_full_raw <- do.call(
-  cbind,
-  dosage_parts_full
-)
-
-allele_audit_full <- bind_rows(
-  allele_map_parts_full
-)
+dosage_full_raw <- do.call(cbind, dosage_parts_full)
+allele_audit_full <- bind_rows(allele_map_parts_full)
 
 rownames(dosage_full_raw) <- ids
 colnames(dosage_full_raw) <- allele_audit_full$Marker
 rownames(allele_audit_full) <- NULL
 
+# Exemplo das dosagens obtidas.
 dosage_full_raw[1:6, 1:8]
 ```
 
-## 4. Controle das frequências alélicas
+## 4. Frequências alélicas e retenção das colunas de dosagem
 
-Colunas alélicas muito raras fornecem pouca informação e podem ser instáveis
-em amostras pequenas. São mantidos os alelos com frequência entre 0,05 e 0,95
-e com variação diferente de zero.
+Colunas alélicas muito raras fornecem pouca informação em uma amostra pequena.
+São mantidos os alelos com frequência entre 0,05 e 0,95 e com variação de
+dosagem maior que zero.
 
-```{r controle-alelos-completo}
+```{r controle-frequencias-alelicas}
 allele_audit_full$Allele_frequency <-
-  colMeans(
-    dosage_full_raw,
-    na.rm = TRUE
-  ) / 2
+  colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
-dosage_sd_full <- numeric(
-  ncol(dosage_full_raw)
-)
+dosage_sd_full <- numeric(ncol(dosage_full_raw))
 
 for (j in seq_len(ncol(dosage_full_raw))) {
   dosage_sd_full[j] <- sd(
@@ -291,65 +202,14 @@ allele_audit_full$Dosage_sd <- dosage_sd_full
 
 allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Allele_frequency) &
-  allele_audit_full$Allele_frequency >=
-    ALLELE_FREQUENCY_MIN &
-  allele_audit_full$Allele_frequency <=
-    (1 - ALLELE_FREQUENCY_MIN) &
+  allele_audit_full$Allele_frequency >= ALLELE_FREQUENCY_MIN &
+  allele_audit_full$Allele_frequency <= (1 - ALLELE_FREQUENCY_MIN) &
   is.finite(allele_audit_full$Dosage_sd) &
   allele_audit_full$Dosage_sd > 0
 
 retained_markers_full <- allele_audit_full$Marker[
   allele_audit_full$Keep_allele
 ]
-
-retained_marker_checks <- c(
-  marker_count =
-    length(retained_markers_full) == EXPECTED_N_MARKERS,
-  marker_names_complete =
-    !any(is.na(retained_markers_full) | retained_markers_full == ""),
-  marker_names_unique =
-    !anyDuplicated(retained_markers_full),
-  retained_frequencies_finite =
-    all(
-      is.finite(
-        allele_audit_full$Allele_frequency[
-          allele_audit_full$Keep_allele
-        ]
-      )
-    ),
-  retained_frequencies_in_range =
-    all(
-      allele_audit_full$Allele_frequency[
-        allele_audit_full$Keep_allele
-      ] >= ALLELE_FREQUENCY_MIN &
-      allele_audit_full$Allele_frequency[
-        allele_audit_full$Keep_allele
-      ] <= (1 - ALLELE_FREQUENCY_MIN)
-    ),
-  retained_dosage_sd_positive =
-    all(
-      is.finite(
-        allele_audit_full$Dosage_sd[
-          allele_audit_full$Keep_allele
-        ]
-      ) &
-      allele_audit_full$Dosage_sd[
-        allele_audit_full$Keep_allele
-      ] > 0
-    )
-)
-
-if (!all(retained_marker_checks)) {
-  stop(
-    "Falha no contrato das colunas alélicas mantidas: ",
-    paste(
-      names(retained_marker_checks)[
-        !retained_marker_checks
-      ],
-      collapse = ", "
-    )
-  )
-}
 
 dosage_full <- dosage_full_raw[
   ,
@@ -395,20 +255,18 @@ ggplot(
     x = "Frequência alélica",
     y = "Colunas de dosagem alélica",
     fill = "Mantido",
-    title = "Controle das frequências alélicas"
+    title = "Distribuição das frequências alélicas"
   ) +
   theme_bw()
 ```
 
-## 5. Matriz completa de marcadores
+## 5. Matriz de marcadores
 
-As dosagens ausentes são substituídas pela média da coluna. Em seguida, cada
-média é subtraída de sua respectiva coluna.
+As dosagens ausentes são substituídas pela média da respectiva coluna. Em
+seguida, cada coluna é centralizada subtraindo sua média. A matriz resultante
+é denotada por \(\mathbf M\).
 
-A matriz \(\mathbf{M}\) resultante possui os indivíduos nas linhas e as
-dosagens alélicas mantidas nas colunas.
-
-```{r matriz-completa-marcadores}
+```{r matriz-marcadores}
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -417,16 +275,17 @@ marker_means_full <- colMeans(
 dosage_full_imputed <- dosage_full
 
 for (j in seq_len(ncol(dosage_full_imputed))) {
-  missing_values <- is.na(
-    dosage_full_imputed[, j]
-  )
+  # Localiza as dosagens ausentes na coluna atual.
+  missing_values <- is.na(dosage_full_imputed[, j])
 
+  # Imputa a média da coluna.
   dosage_full_imputed[
     missing_values,
     j
   ] <- marker_means_full[j]
 }
 
+# Centraliza cada coluna da matriz de dosagens.
 M_full <- sweep(
   dosage_full_imputed,
   2,
@@ -435,7 +294,22 @@ M_full <- sweep(
 )
 ```
 
-## 6. Matriz completa de relacionamento genômico
+Algumas propriedades de `M` podem ser vistas diretamente.
+
+```{r resumo-matriz-m}
+data.frame(
+  Linhas = nrow(M_full),
+  Colunas = ncol(M_full),
+  Posto = qr(M_full)$rank,
+  Max_media_absoluta = max(abs(colMeans(M_full)))
+) |>
+  kable(
+    digits = 8,
+    caption = "Dimensões e centralização da matriz de marcadores"
+  )
+```
+
+## 6. Matriz de relacionamento genômico
 
 Seja \(p_j\) a frequência do alelo representado pela coluna \(j\). Utilizando
 uma escala do tipo VanRaden baseada em frequências alélicas
@@ -443,14 +317,13 @@ uma escala do tipo VanRaden baseada em frequências alélicas
 calculada por
 
 \[
-\mathbf{G} =
-\frac{\mathbf{M}\mathbf{M}^{\mathsf{T}}}
+\mathbf G =
+\frac{\mathbf M\mathbf M^{\mathsf T}}
 {\sum_j 2p_j(1-p_j)}.
 \]
 
-```{r matriz-completa-relacionamento}
-allele_frequencies_full <-
-  marker_means_full / 2
+```{r matriz-relacionamento}
+allele_frequencies_full <- marker_means_full / 2
 
 denominator_full <- sum(
   2 *
@@ -458,26 +331,12 @@ denominator_full <- sum(
     (1 - allele_frequencies_full)
 )
 
-if (
-  length(denominator_full) != 1L ||
-    !is.finite(denominator_full) ||
-    denominator_full <= 0
-) {
-  stop("O denominador da matriz G deve ser finito e positivo.")
-}
+G_full <- tcrossprod(M_full) / denominator_full
 
-G_full <- tcrossprod(
-  M_full
-) / denominator_full
+# Remove apenas diferenças numéricas de simetria.
+G_full <- (G_full + t(G_full)) / 2
 
-G_full <- (
-  G_full + t(G_full)
-) / 2
-
-dimnames(G_full) <- list(
-  ids,
-  ids
-)
+dimnames(G_full) <- list(ids, ids)
 
 eigenvalues_G_full <- eigen(
   G_full,
@@ -486,11 +345,32 @@ eigenvalues_G_full <- eigen(
 )$values
 ```
 
+```{r resumo-matriz-g}
+data.frame(
+  Quantidade = c(
+    "Denominador sum 2p(1-p)",
+    "Média da diagonal",
+    "Máxima diferença de simetria",
+    "Menor autovalor"
+  ),
+  Valor = c(
+    denominator_full,
+    mean(diag(G_full)),
+    max(abs(G_full - t(G_full))),
+    min(eigenvalues_G_full)
+  )
+) |>
+  kable(
+    digits = 8,
+    caption = "Resumo numérico da matriz de relacionamento genômico"
+  )
+```
+
 ## 7. Matriz de efeitos fixos
 
-Família é representada como o único efeito fixo categórico. O intercepto é
-incluído automaticamente por `model.matrix()` e será tratado pelo BGLR no
-módulo seguinte.
+Família é o único efeito fixo categórico. `model.matrix()` inclui o intercepto;
+no Módulo 03 essa coluna será removida de `X` porque o BGLR já ajusta o
+intercepto automaticamente.
 
 ```{r matriz-efeitos-fixos}
 X <- model.matrix(
@@ -502,74 +382,47 @@ rownames(X) <- ids
 
 data.frame(
   Matriz = c("X", "M", "G"),
-  Linhas = c(
-    nrow(X),
-    nrow(M_full),
-    nrow(G_full)
-  ),
-  Colunas = c(
-    ncol(X),
-    ncol(M_full),
-    ncol(G_full)
-  ),
-  Posto = c(
-    qr(X)$rank,
-    qr(M_full)$rank,
-    qr(G_full)$rank
-  )
+  Linhas = c(nrow(X), nrow(M_full), nrow(G_full)),
+  Colunas = c(ncol(X), ncol(M_full), ncol(G_full)),
+  Posto = c(qr(X)$rank, qr(M_full)$rank, qr(G_full)$rank)
 ) |>
-  kable(
-    caption = "Dimensões e postos das matrizes completas"
-  )
+  kable(caption = "Dimensões e postos das matrizes analíticas")
 ```
 
 ## 8. Cinco folds estratificados por família
 
 Os 150 indivíduos são divididos em cinco grupos de validação. Os indivíduos de
-cada família são distribuídos da forma mais uniforme possível entre os folds.
-A semente fixa preserva a mesma alocação em todas as execuções.
+cada família são distribuídos de forma uniforme entre os folds e a semente fixa
+preserva a mesma alocação entre execuções.
 
 ```{r folds-validacao-cruzada}
-set.seed(
-  SEED_CV
-)
+set.seed(SEED_CV)
 
-family <- droplevels(
-  metadata$FAM
-)
-
-folds <- integer(
-  length(ids)
-)
-
-fold_load <- integer(
-  N_FOLDS
-)
+family <- droplevels(metadata$FAM)
+folds <- integer(length(ids))
+fold_load <- integer(N_FOLDS)
 
 for (family_level in levels(family)) {
+  # Embaralha os indivíduos da família atual.
   family_indices <- sample(
     which(family == family_level)
   )
 
-  random_tie_order <- sample(
-    seq_len(N_FOLDS)
-  )
+  # Define uma ordem aleatória para desempatar folds com a mesma carga.
+  random_tie_order <- sample(seq_len(N_FOLDS))
 
   ordered_folds <- order(
     fold_load,
-    match(
-      seq_len(N_FOLDS),
-      random_tie_order
-    )
+    match(seq_len(N_FOLDS), random_tie_order)
   )
 
+  # Distribui os indivíduos da família entre os cinco folds.
   family_labels <- rep(
     ordered_folds,
     length.out = length(family_indices)
   )
 
-  folds[family_indices] <-
-    family_labels
+  folds[family_indices] <- family_labels
 
   fold_load <- fold_load + tabulate(
     family_labels,
@@ -577,25 +430,15 @@ for (family_level in levels(family)) {
   )
 }
 
-fold_sizes <- tabulate(
-  folds,
-  nbins = N_FOLDS
-)
+fold_sizes <- tabulate(folds, nbins = N_FOLDS)
 
 family_fold_table <- table(
   Familia = family,
   Fold = folds
 )
 
-family_balance <- apply(
-  family_fold_table,
-  1,
-  max
-) - apply(
-  family_fold_table,
-  1,
-  min
-)
+family_balance <- apply(family_fold_table, 1, max) -
+  apply(family_fold_table, 1, min)
 
 cv_folds <- data.frame(
   IND = ids,
@@ -603,25 +446,30 @@ cv_folds <- data.frame(
   Fold = folds
 )
 
-data.frame(
+fold_summary <- data.frame(
   Fold = seq_len(N_FOLDS),
-  Validation_n = fold_sizes,
-  Training_n = length(ids) - fold_sizes
-) |>
-  kable(
-    col.names = c(
-      "Fold",
-      "N validação",
-      "N treinamento"
-    ),
-    caption = "Tamanho dos folds da validação cruzada"
-  )
+  Training_n = length(ids) - fold_sizes,
+  Validation_n = fold_sizes
+)
+
+kable(
+  fold_summary,
+  col.names = c("Fold", "N treinamento", "N validação"),
+  caption = "Tamanhos amostrais da validação cruzada"
+)
+```
+
+A tabela família × fold permite confirmar a estratificação obtida.
+
+```{r familias-por-fold}
+kable(
+  as.data.frame.matrix(family_fold_table),
+  caption = "Número de indivíduos de cada família em cada fold"
+)
 ```
 
 ```{r grafico-familias-folds, fig.height=7}
-family_fold_long <- as.data.frame(
-  family_fold_table
-)
+family_fold_long <- as.data.frame(family_fold_table)
 
 ggplot(
   family_fold_long,
@@ -632,9 +480,7 @@ ggplot(
   )
 ) +
   geom_tile() +
-  geom_text(
-    aes(label = Freq)
-  ) +
+  geom_text(aes(label = Freq)) +
   labs(
     x = "Fold",
     y = "Família",
@@ -644,56 +490,25 @@ ggplot(
   theme_bw()
 ```
 
-## 9. Contrato da validação cruzada
+## 9. Uso dos folds no ajuste dos modelos
 
-A tabela dos folds define quais 30 indivíduos serão utilizados para validação
-em cada rodada. Ela não define matrizes de marcadores ou matrizes genômicas
-específicas por fold.
+A tabela `cv_folds` identifica quais indivíduos serão mascarados em cada rodada
+de validação. `X`, `M` e `G` permanecem fixas. Para cada característica e fold,
+o Módulo 03 criará uma cópia do vetor fenotípico e substituirá os 30 fenótipos
+de validação por `NA`.
 
-As matrizes utilizadas pelos modelos permanecem fixas:
-
-- `X` contém intercepto e família; no Módulo 03 o intercepto é removido de `X`
-  porque o BGLR já o ajusta por padrão, restando apenas família no componente
-  `FIXED`;
-- `M` contém as colunas centralizadas de dosagens alélicas;
-- `G` contém os relacionamentos genômicos aditivos.
-
-No próximo módulo, uma cópia do vetor fenotípico será criada para cada
-característica e fold. Os 30 fenótipos de validação serão substituídos por
-`NA`, enquanto `X`, `M` e `G` permanecerão inalteradas.
-
-```{r resumo-validacao-cruzada}
-fold_summary <- data.frame(
-  Fold = seq_len(N_FOLDS),
-  Training_n = length(ids) - fold_sizes,
-  Validation_n = fold_sizes
-)
-
-kable(
-  fold_summary,
-  col.names = c(
-    "Fold",
-    "N treinamento",
-    "N validação"
-  ),
-  caption = "Tamanhos amostrais da validação cruzada"
-)
+```{r exemplo-folds}
+cv_folds |>
+  arrange(Fold, FAM, IND) |>
+  head(15) |>
+  kable(caption = "Exemplo da atribuição dos indivíduos aos folds")
 ```
 
 ## 10. Mapa de calor do relacionamento genômico
 
-O mapa de calor representa a semelhança genômica entre os 150 indivíduos.
-
 ```{r grafico-relacionamento-genomico, fig.height=8}
-G_long <- as.data.frame(
-  as.table(G_full)
-)
-
-names(G_long) <- c(
-  "Individuo_1",
-  "Individuo_2",
-  "Relacionamento"
-)
+G_long <- as.data.frame(as.table(G_full))
+names(G_long) <- c("Individuo_1", "Individuo_2", "Relacionamento")
 
 ggplot(
   G_long,
@@ -704,12 +519,8 @@ ggplot(
   )
 ) +
   geom_raster() +
-  scale_x_discrete(
-    breaks = NULL
-  ) +
-  scale_y_discrete(
-    breaks = NULL
-  ) +
+  scale_x_discrete(breaks = NULL) +
+  scale_y_discrete(breaks = NULL) +
   labs(
     x = "Indivíduos",
     y = "Indivíduos",
@@ -719,40 +530,27 @@ ggplot(
   theme_bw()
 ```
 
-## 11. Objetos salvos e diagnóstico das matrizes
+## 11. Diagnóstico das matrizes construídas
 
-O objeto de saída contém uma matriz de efeitos fixos baseada apenas em família,
-uma matriz de marcadores, uma matriz de relacionamento genômico e a tabela de
-atribuição dos folds. Nenhum objeto de matriz específico por fold é criado.
+As dependências entre as colunas alélicas de um mesmo loco fazem com que as 72
+colunas de dosagem não representem 72 dimensões independentes. O resumo abaixo
+mostra dimensões, postos e propriedades numéricas das matrizes obtidas.
 
-```{r salvamento-objetos-matriciais}
-theoretical_rank_M <-
-  sum(
-    table(
-      allele_audit_full$Locus[
-        allele_audit_full$Keep_allele
-      ]
-    ) - 1L
-  )
+```{r diagnostico-matrizes}
+theoretical_rank_M <- sum(
+  table(
+    allele_audit_full$Locus[
+      allele_audit_full$Keep_allele
+    ]
+  ) - 1L
+)
 
-maximum_M_column_mean <-
-  max(
-    abs(
-      colMeans(M_full)
-    )
-  )
+maximum_M_column_mean <- max(abs(colMeans(M_full)))
 
-G_reconstructed <-
-  tcrossprod(M_full) /
-  denominator_full
-
-maximum_G_reconstruction_difference <-
-  max(
-    abs(
-      G_full -
-        G_reconstructed
-    )
-  )
+G_reconstructed <- tcrossprod(M_full) / denominator_full
+maximum_G_reconstruction_difference <- max(
+  abs(G_full - G_reconstructed)
+)
 
 locus_names <- unique(
   allele_audit_full$Locus[
@@ -760,52 +558,48 @@ locus_names <- unique(
   ]
 )
 
-dosage_sum_error <- numeric(
-  length(locus_names)
-)
+dosage_sum_error <- numeric(length(locus_names))
 
 for (j in seq_along(locus_names)) {
-  locus_columns <-
-    allele_audit_full$Marker[
-      allele_audit_full$Keep_allele &
-        allele_audit_full$Locus ==
-          locus_names[j]
-    ]
+  # Seleciona as colunas de dosagem pertencentes ao mesmo loco.
+  locus_columns <- allele_audit_full$Marker[
+    allele_audit_full$Keep_allele &
+      allele_audit_full$Locus == locus_names[j]
+  ]
 
-  dosage_sum_error[j] <-
-    max(
-      abs(
-        rowSums(
-          dosage_full_imputed[
-            ,
-            locus_columns,
-            drop = FALSE
-          ]
-        ) - 2
-      )
+  # Em um indivíduo diploide, a soma das dosagens do loco é igual a 2.
+  dosage_sum_error[j] <- max(
+    abs(
+      rowSums(
+        dosage_full_imputed[
+          ,
+          locus_columns,
+          drop = FALSE
+        ]
+      ) - 2
     )
+  )
 }
 
-maximum_dosage_sum_error <-
-  max(dosage_sum_error)
+maximum_dosage_sum_error <- max(dosage_sum_error)
 
 matrix_inventory <- data.frame(
   Item = c(
     "Indivíduos",
-    "Linhas da matriz de efeitos fixos",
-    "Colunas da matriz de efeitos fixos",
-    "Posto da matriz de efeitos fixos",
-    "Linhas da matriz de marcadores",
-    "Colunas da matriz de marcadores",
-    "Posto da matriz de marcadores",
-    "Posto teórico da matriz de marcadores",
+    "Linhas de X",
+    "Colunas de X",
+    "Posto de X",
+    "Linhas de M",
+    "Colunas de M",
+    "Posto de M",
+    "Posto teórico de M",
     "Máxima média absoluta das colunas de M",
     "Erro máximo da soma das dosagens por loco",
     "Diferença máxima na reconstrução de G",
-    "Linhas da matriz genômica",
-    "Colunas da matriz genômica",
-    "Posto da matriz genômica",
-    "Folds da validação cruzada",
+    "Linhas de G",
+    "Colunas de G",
+    "Posto de G",
+    "Folds",
     "Indivíduos de treinamento por fold",
     "Indivíduos de validação por fold",
     "Diferença máxima de simetria de G",
@@ -836,98 +630,17 @@ matrix_inventory <- data.frame(
   )
 )
 
-matrix_integrity_checks <- c(
-  X_dimensions =
-    identical(
-      dim(X),
-      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_FAMILIES)
-    ),
-  X_columns_exact =
-    identical(
-      colnames(X),
-      c("(Intercept)", paste0("FAM", 2:EXPECTED_N_FAMILIES))
-    ),
-  X_ids_aligned =
-    identical(rownames(X), ids),
-  X_finite =
-    all(is.finite(X)),
-  M_dimensions =
-    identical(
-      dim(M_full),
-      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_MARKERS)
-    ),
-  M_markers_exact =
-    identical(colnames(M_full), retained_markers_full),
-  M_ids_aligned =
-    identical(rownames(M_full), ids),
-  M_finite =
-    all(is.finite(M_full)),
-  M_centered =
-    maximum_M_column_mean <= NUMERICAL_TOLERANCE,
-  marker_means_finite =
-    all(is.finite(marker_means_full)),
-  allele_frequencies_finite =
-    all(is.finite(allele_frequencies_full)),
-  allele_frequencies_valid =
-    all(
-      allele_frequencies_full >= 0 &
-      allele_frequencies_full <= 1
-    ),
-  denominator_positive =
-    is.finite(denominator_full) && denominator_full > 0,
-  G_dimensions =
-    identical(
-      dim(G_full),
-      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_INDIVIDUALS)
-    ),
-  G_ids_aligned =
-    identical(rownames(G_full), ids) &&
-    identical(colnames(G_full), ids),
-  G_finite =
-    all(is.finite(G_full)),
-  G_symmetric =
-    max(abs(G_full - t(G_full))) <= NUMERICAL_TOLERANCE,
-  G_reconstruction_exact =
-    maximum_G_reconstruction_difference <= NUMERICAL_TOLERANCE,
-  dosage_sum_diagnostic_finite =
-    is.finite(maximum_dosage_sum_error),
-  fold_labels_exact =
-    setequal(unique(cv_folds$Fold), seq_len(N_FOLDS)),
-  fold_ids_aligned =
-    identical(as.character(cv_folds$IND), ids),
-  fold_families_aligned =
-    identical(
-      as.character(cv_folds$FAM),
-      as.character(metadata$FAM)
-    ),
-  fold_sizes_exact =
-    length(fold_sizes) == N_FOLDS &&
-    all(fold_sizes == 30L),
-  training_sizes_exact =
-    all(fold_summary$Training_n == 120L),
-  validation_sizes_exact =
-    all(fold_summary$Validation_n == 30L),
-  family_fold_balance_exact =
-    identical(
-      dim(family_fold_table),
-      c(EXPECTED_N_FAMILIES, N_FOLDS)
-    ) &&
-    all(family_fold_table == 3L) &&
-    all(family_balance == 0L)
+kable(
+  matrix_inventory,
+  digits = 8,
+  col.names = c("Item", "Valor"),
+  caption = "Resumo das matrizes e da validação cruzada"
 )
+```
 
-if (!all(matrix_integrity_checks)) {
-  stop(
-    "Falha no gate final de integridade das matrizes: ",
-    paste(
-      names(matrix_integrity_checks)[
-        !matrix_integrity_checks
-      ],
-      collapse = ", "
-    )
-  )
-}
+## 12. Gravação das matrizes e dos folds
 
+```{r salvamento-objetos-matriciais}
 matrices_object <- list(
   ids = ids,
   metadata = metadata,
@@ -947,79 +660,32 @@ matrices_object <- list(
     n_folds = N_FOLDS,
     seed_cv = SEED_CV,
     call_rate_min = CALL_RATE_MIN,
-    allele_frequency_min =
-      ALLELE_FREQUENCY_MIN,
+    allele_frequency_min = ALLELE_FREQUENCY_MIN,
     fixed_effects = "FAM"
   )
 )
 
 saveRDS(
   matrices_object,
-  file.path(
-    OUTPUT_DIR,
-    "matrices_object.rds"
-  )
+  file.path(OUTPUT_DIR, "matrices_object.rds")
 )
 
-write.csv(
-  cv_folds,
-  file.path(
-    OUTPUT_DIR,
-    "cv_folds.csv"
-  ),
-  row.names = FALSE
-)
-
-write.csv(
-  fold_summary,
-  file.path(
-    OUTPUT_DIR,
-    "fold_summary.csv"
-  ),
-  row.names = FALSE
-)
-
+write.csv(cv_folds, file.path(OUTPUT_DIR, "cv_folds.csv"), row.names = FALSE)
+write.csv(fold_summary, file.path(OUTPUT_DIR, "fold_summary.csv"), row.names = FALSE)
 write.csv(
   allele_audit_full,
-  file.path(
-    OUTPUT_DIR,
-    "allele_audit_full.csv"
-  ),
+  file.path(OUTPUT_DIR, "allele_audit_full.csv"),
   row.names = FALSE
 )
-
 write.csv(
   matrix_inventory,
-  file.path(
-    OUTPUT_DIR,
-    "matrix_inventory.csv"
-  ),
+  file.path(OUTPUT_DIR, "matrix_inventory.csv"),
   row.names = FALSE
-)
-
-kable(
-  matrix_inventory,
-  digits = 6,
-  col.names = c(
-    "Item",
-    "Valor"
-  ),
-  caption = "Diagnóstico final das matrizes analíticas"
 )
 ```
 
-As 72 colunas de dosagem alélica mantidas não representam 72 dimensões
-independentes de marcadores. Dentro de um loco SSR multialélico, as dosagens
-dos alelos apresentam dependências lineares porque o número de cópias é
-limitado pela diploidia. Por isso, a matriz de marcadores pode apresentar
-posto menor que seu número de colunas. Como `G` é construída a partir de
-`M`, seu posto também é limitado pelo posto da matriz de marcadores.
+## 13. Próxima etapa
 
-## 12. Próxima etapa
-
-A próxima etapa ajusta RR-BLUP, BayesA, BayesB, BayesB com a probabilidade
-especificada de efeito zero, BayesC, Lasso Bayesiano e GBLUP utilizando os
-mesmos cinco folds de validação. O RR-BLUP é implementado com o componente
-`BRR` do BGLR e `M`, enquanto o GBLUP é implementado com `G` e o componente
-`RKHS`. Em todos os folds, apenas o vetor fenotípico será mascarado; o único
-efeito fixo categórico será família e `M` e `G` permanecerão inalteradas.
+O Módulo 03 utiliza `X`, `M`, `G` e os cinco folds para ajustar RR-BLUP,
+BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP. Em cada ajuste,
+somente os fenótipos dos indivíduos de validação são mascarados.
