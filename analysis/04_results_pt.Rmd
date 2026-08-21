@@ -223,10 +223,16 @@ interpretação direta dos componentes de variância. Caso contrário, é utiliz
 o melhor candidato competitivo sem flags; se não houver candidato automático,
 o vencedor preditivo é mantido como escolha provisória para revisão.
 
-```{r model-selection}
+### 5.1 Vencedores preditivo e por DIC
+
+Primeiro são identificados, separadamente, o método com melhor desempenho
+preditivo OOF e o método com menor DIC médio em cada característica.
+
+```{r selection-winners}
 DIC_EQUIVALENCE_THRESHOLD <- 2
 N_FOLDS <- matrices_object$settings$n_folds
 
+# Melhor combinação de correlação, RMSE, MAE e DIC para cada característica.
 predictive_winners <- model_comparison |>
   group_by(Trait) |>
   arrange(desc(r), RMSE, MAE, Mean_DIC, .by_group = TRUE) |>
@@ -241,6 +247,7 @@ predictive_winners <- model_comparison |>
     Predictive_winner_MAE = MAE
   )
 
+# Método com o menor DIC médio para cada característica.
 dic_winners <- model_comparison |>
   group_by(Trait) |>
   arrange(Mean_DIC, desc(r), RMSE, MAE, .by_group = TRUE) |>
@@ -252,7 +259,28 @@ dic_winners <- model_comparison |>
     Minimum_DIC = Mean_DIC,
     DIC_winner_Wprob = Wprob
   )
+```
 
+```{r selection-winners-table}
+predictive_winners |>
+  left_join(dic_winners, by = "Trait") |>
+  select(
+    Trait, Predictive_winner, DIC_winner,
+    Predictive_winner_r, Predictive_winner_RMSE,
+    Minimum_DIC
+  ) |>
+  kable(
+    digits = 5,
+    caption = "Vencedores preditivo e por DIC em cada característica"
+  )
+```
+
+### 5.2 Diagnósticos MCMC por característica e método
+
+Os diagnósticos das cadeias são resumidos antes de definir o conjunto de
+métodos elegíveis para escolha.
+
+```{r selection-convergence-summary}
 convergence_by_trait_method <- convergence |>
   group_by(Trait, Method) |>
   summarise(
@@ -264,7 +292,25 @@ convergence_by_trait_method <- convergence |>
     Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
     .groups = "drop"
   )
+```
 
+```{r selection-convergence-table}
+convergence_by_trait_method |>
+  arrange(match(Trait, traits), match(Method, methods)) |>
+  head(21) |>
+  kable(
+    digits = 4,
+    caption = "Exemplo dos diagnósticos MCMC resumidos por característica e método"
+  )
+```
+
+### 5.3 Conjunto competitivo
+
+A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds.
+Em seguida, o limite `Delta_DIC <= 2` e os diagnósticos MCMC definem os
+candidatos que podem ser selecionados automaticamente.
+
+```{r selection-competitive-set}
 model_selection_support <- model_comparison |>
   left_join(
     convergence_by_trait_method,
@@ -277,18 +323,23 @@ model_selection_support <- model_comparison |>
   ) |>
   group_by(Trait) |>
   mutate(
+    # Referências para a regra de um erro-padrão.
     Best_mean_fold_r = max(Mean_fold_r, na.rm = TRUE),
     Best_mean_fold_r_SE =
       SD_fold_r[which.max(Mean_fold_r)] / sqrt(N_FOLDS),
     Best_mean_fold_RMSE = min(Mean_fold_RMSE, na.rm = TRUE),
     Best_mean_fold_RMSE_SE =
       SD_fold_RMSE[which.min(Mean_fold_RMSE)] / sqrt(N_FOLDS),
+
+    # Competitividade preditiva.
     Within_one_SE_r =
       Mean_fold_r >= Best_mean_fold_r - Best_mean_fold_r_SE,
     Within_one_SE_RMSE =
       Mean_fold_RMSE <= Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE,
     Predictively_competitive =
       Within_one_SE_r & Within_one_SE_RMSE,
+
+    # Suporte complementar por DIC e convergência.
     DIC_equivalence_threshold = DIC_EQUIVALENCE_THRESHOLD,
     DIC_competitive = Delta_DIC <= DIC_EQUIVALENCE_THRESHOLD,
     Competitive_for_selection =
@@ -296,6 +347,8 @@ model_selection_support <- model_comparison |>
     Convergence_review = Parameters_flagged > 0,
     Automatic_candidate =
       Competitive_for_selection & !Convergence_review,
+
+    # Resumo do conjunto de candidatos em cada característica.
     Competitive_set_n = sum(Competitive_for_selection),
     Automatic_candidate_n = sum(Automatic_candidate),
     RRBLUP_competitive = any(
@@ -305,6 +358,8 @@ model_selection_support <- model_comparison |>
       Method == "RRBLUP" & Automatic_candidate
     ),
     Automatic_selection_available = any(Automatic_candidate),
+
+    # RR-BLUP recebe prioridade apenas dentro do conjunto automático.
     Selection_priority = case_when(
       Automatic_candidate & Method == "RRBLUP" ~ 1L,
       Automatic_candidate ~ 2L,
@@ -320,7 +375,29 @@ model_selection_support <- model_comparison |>
     MAE,
     Mean_DIC
   )
+```
 
+```{r selection-competitive-table}
+model_selection_support |>
+  select(
+    Trait, Method, Predictively_competitive,
+    DIC_competitive, Convergence_review,
+    Automatic_candidate, r, RMSE, Delta_DIC
+  ) |>
+  head(21) |>
+  kable(
+    digits = 5,
+    caption = "Exemplo da definição do conjunto competitivo"
+  )
+```
+
+### 5.4 Escolha do método
+
+Entre os candidatos automáticos, RR-BLUP recebe prioridade. Na ausência de
+candidato automático, o vencedor preditivo é mantido como escolha provisória.
+
+```{r selection-choice}
+# Melhor candidato automático em cada característica.
 automatic_selections <- model_selection_support |>
   filter(Automatic_candidate) |>
   group_by(Trait) |>
@@ -339,6 +416,7 @@ automatic_selections <- model_selection_support |>
     Automatic_selected_method = Method
   )
 
+# Escolha final antes de anexar as métricas do método selecionado.
 selection_spec <- predictive_winners |>
   select(Trait, Predictive_winner) |>
   left_join(automatic_selections, by = "Trait") |>
@@ -390,7 +468,24 @@ selection_spec <- predictive_winners |>
   ) |>
   select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
+```
 
+```{r selection-choice-table}
+selection_spec |>
+  select(
+    Trait, Selected_method, Selection_status,
+    RRBLUP_preference_applied,
+    Competitive_set_n, Automatic_candidate_n
+  ) |>
+  kable(caption = "Método escolhido após a aplicação da regra hierárquica")
+```
+
+### 5.5 Desempenho dos métodos selecionados
+
+As métricas e os diagnósticos do método efetivamente selecionado são então
+extraídos da tabela de suporte.
+
+```{r selected-performance}
 selected_performance <- model_selection_support |>
   inner_join(
     selection_spec |>
@@ -431,7 +526,26 @@ selected_performance <- model_selection_support |>
     Maximum_absolute_Geweke,
     Convergence_review
   )
+```
 
+```{r selected-performance-table}
+selected_performance |>
+  select(
+    Trait, Selected_method, r, p_value, RMSE,
+    Mean_DIC, Delta_DIC, Parameters_flagged
+  ) |>
+  kable(
+    digits = 5,
+    caption = "Desempenho e diagnóstico dos métodos selecionados"
+  )
+```
+
+### 5.6 Resultado final da seleção e evidência preditiva
+
+Por fim, são reunidos o método selecionado, os vencedores preditivo e por DIC e
+a classificação descritiva da evidência preditiva de cada característica.
+
+```{r final-model-selection}
 model_selection <- selection_spec |>
   left_join(
     selected_performance,
@@ -457,8 +571,6 @@ predictive_evidence_summary <- model_selection |>
   count(Predictive_evidence, name = "Traits") |>
   arrange(Predictive_evidence)
 ```
-
-A tabela abaixo torna explícita a escolha obtida para cada característica.
 
 ```{r model-selection-table}
 model_selection |>
