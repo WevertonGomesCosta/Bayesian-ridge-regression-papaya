@@ -32,11 +32,11 @@ knitr::opts_chunk$set(
 
 This module transforms the official outputs from Module 03 into derived analytical results. No model is refitted and no final-presentation figure is produced here.
 
-Derived outputs include OOF predictive performance; DIC, DIC delta, `Wprob`, and `ER`; trait-specific method decisions; fold stability; computational time; heritability and accuracy in the RR-BLUP/BRR analogue; OOF genomic values; rankings; top 10 individuals; recurrence across rankings; and correlations among genomic values.
+Derived outputs include OOF predictive performance; DIC, DIC delta, `Wprob`, and `ER`; trait-specific method decisions; fold stability; computational time; heritability and accuracy in the RR-BLUP/BRR analogue; OOF genomic values; oriented rankings; proportional selection; multi-trait recurrence; and correlations among genomic values.
 
 Method selection follows a reproducible hierarchical rule integrating OOF performance, relative DIC fit, and chain stability. When methods are practically equivalent, RR-BLUP is preferred; decisions involving criterion conflicts or convergence flags remain explicitly marked for review.
 
-Genomic values used for ranking are strictly OOF: each individual receives the genomic component from the fold in which its phenotype was masked. No multi-trait selection is performed.
+Genomic values used for ranking are strictly OOF: each individual receives the genomic component from the fold in which its phenotype was masked. The breeding direction is predefined by trait: increase MMCOM, PRODCOM, CF, DF, EP, FFC, FFP, and SS; and decrease PRODEF and DCI. No multi-trait selection is performed.
 
 ## 2. Official inputs
 
@@ -811,57 +811,227 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   arrange(match(Trait, traits))
 ```
 
-## 9. OOF genomic values
+## 9. OOF genomic values and selection direction
 
 ```{r selected-oof-genomic-values}
+selection_objective_map <- c(
+  MMCOM = "increase",
+  PRODCOM = "increase",
+  PRODEF = "decrease",
+  CF = "increase",
+  DF = "increase",
+  DCI = "decrease",
+  EP = "increase",
+  FFC = "increase",
+  FFP = "increase",
+  SS = "increase"
+)
+
+if (!setequal(names(selection_objective_map), traits)) {
+  stop("M04 integrity gate failed: selection-direction contract does not cover exactly the ten traits.")
+}
+
+selection_objectives <- data.frame(
+  Trait = traits,
+  Selection_objective = unname(selection_objective_map[traits]),
+  stringsAsFactors = FALSE
+) |>
+  mutate(
+    Ranking_rule = case_when(
+      Selection_objective == "increase" ~ "maximize_genomic_value",
+      Selection_objective == "decrease" ~ "minimize_genomic_value",
+      TRUE ~ NA_character_
+    )
+  )
+
+if (anyNA(selection_objectives$Ranking_rule)) {
+  stop("M04 integrity gate failed: unknown selection objective.")
+}
+
 selected_oof_genomic_values <- predictions |>
   inner_join(
     model_selection |> select(Trait, Selected_method, Predictive_evidence),
     by = "Trait"
   ) |>
+  inner_join(selection_objectives, by = "Trait") |>
   filter(Method == Selected_method) |>
   transmute(
     IND, Trait, Fold, Method, Predictive_evidence,
+    Selection_objective, Ranking_rule,
     Genomic_value = Genomic_component
   ) |>
   arrange(match(Trait, traits), IND)
 ```
 
-## 10. Ranking, top 10, and recurrence
+## 10. Proportional selection and multi-trait recurrence
+
+Candidate selection is restricted to traits with positive OOF correlation and `p < 0.05`. Within each supported trait, the 20% most favorable individuals are selected according to the oriented ranking. The proportion is parameterized and the selected count is calculated as `ceiling(SELECTION_PROPORTION * N_available)`.
+
+Multi-trait recurrence remains descriptive: it counts in how many supported traits each individual belongs to the selected set. No weights are applied and no selection index is constructed.
 
 ```{r genomic-ranking}
 genomic_ranking <- selected_oof_genomic_values |>
+  mutate(
+    Selection_score = case_when(
+      Selection_objective == "increase" ~ Genomic_value,
+      Selection_objective == "decrease" ~ -Genomic_value,
+      TRUE ~ NA_real_
+    )
+  )
+
+if (any(!is.finite(genomic_ranking$Selection_score))) {
+  stop("M04 integrity gate failed: non-finite oriented selection score.")
+}
+
+genomic_ranking <- genomic_ranking |>
   group_by(Trait) |>
-  arrange(desc(Genomic_value), IND, .by_group = TRUE) |>
+  arrange(desc(Selection_score), IND, .by_group = TRUE) |>
   mutate(Rank = row_number()) |>
   ungroup() |>
   arrange(match(Trait, traits), Rank)
 
-top10_with_family <- genomic_ranking |>
-  filter(Rank <= 10L) |>
+SELECTION_PROPORTION <- 0.20
+
+supported_traits <- model_selection |>
+  filter(Predictive_evidence == "positive_p_lt_0.05") |>
+  pull(Trait)
+
+if (length(supported_traits) == 0L) {
+  stop("M04 integrity gate failed: no trait satisfies the predictive-evidence contract.")
+}
+
+selection_sizes <- genomic_ranking |>
+  filter(Trait %in% supported_traits) |>
+  count(Trait, name = "N_available") |>
+  mutate(
+    Selection_proportion = SELECTION_PROPORTION,
+    N_selected = pmax(
+      1L,
+      as.integer(ceiling(SELECTION_PROPORTION * N_available))
+    )
+  ) |>
+  arrange(match(Trait, traits))
+
+selection_cutoff_audit <- genomic_ranking |>
+  inner_join(
+    selection_sizes |> select(Trait, N_available, N_selected),
+    by = "Trait"
+  ) |>
+  group_by(Trait) |>
+  summarise(
+    N_available = first(N_available),
+    N_selected = first(N_selected),
+    Score_last_selected = Selection_score[first(N_selected)],
+    Score_first_not_selected = if (
+      first(N_selected) < first(N_available)
+    ) {
+      Selection_score[first(N_selected) + 1L]
+    } else {
+      NA_real_
+    },
+    Exact_boundary_tie = if (
+      first(N_selected) < first(N_available)
+    ) {
+      Score_last_selected == Score_first_not_selected
+    } else {
+      FALSE
+    },
+    .groups = "drop"
+  ) |>
+  arrange(match(Trait, traits))
+
+if (any(selection_cutoff_audit$Exact_boundary_tie)) {
+  stop(
+    paste0(
+      "M04 integrity gate failed: exact genomic-score tie at the proportional ",
+      "selection boundary. Define an explicit tie policy before proceeding."
+    )
+  )
+}
+
+selected_individuals_by_trait <- genomic_ranking |>
+  inner_join(selection_sizes, by = "Trait") |>
+  filter(Rank <= N_selected) |>
   left_join(
     matrices_object$metadata |> select(IND, FAM),
     by = "IND"
   ) |>
   select(
-    Trait, Rank, IND, FAM, Method, Genomic_value, Predictive_evidence
+    Trait, Rank, IND, FAM, Method,
+    Selection_objective, Ranking_rule,
+    Genomic_value, Selection_score, Predictive_evidence,
+    Selection_proportion, N_available, N_selected
   ) |>
   arrange(match(Trait, traits), Rank)
 
-recurring_top10 <- top10_with_family |>
-  filter(Predictive_evidence == "positive_p_lt_0.05") |>
+if (
+  nrow(selected_individuals_by_trait) != sum(selection_sizes$N_selected) ||
+  any(selected_individuals_by_trait$Rank > selected_individuals_by_trait$N_selected)
+) {
+  stop("M04 integrity gate failed: proportional selection size is inconsistent.")
+}
+
+recurrence_counts <- selected_individuals_by_trait |>
+  arrange(match(Trait, traits), Rank) |>
   group_by(IND, FAM) |>
   summarise(
     N_traits = n(),
     Traits = paste(Trait, collapse = ", "),
+    Best_rank = min(Rank),
+    Mean_rank_present = mean(Rank),
     .groups = "drop"
+  )
+
+multitrait_recurrence <- matrices_object$metadata |>
+  select(IND, FAM) |>
+  left_join(recurrence_counts, by = c("IND", "FAM")) |>
+  mutate(
+    N_traits = tidyr::replace_na(N_traits, 0L),
+    Traits = tidyr::replace_na(Traits, ""),
+    Best_rank = if_else(N_traits == 0L, NA_integer_, Best_rank),
+    Mean_rank_present = if_else(N_traits == 0L, NA_real_, Mean_rank_present),
+    Selection_frequency = N_traits / length(supported_traits),
+    Recurrence_class = case_when(
+      N_traits >= 4L ~ "high_4plus",
+      N_traits == 3L ~ "intermediate_3",
+      N_traits == 2L ~ "broad_2",
+      N_traits == 1L ~ "specific_1",
+      TRUE ~ "none_0"
+    )
   ) |>
-  filter(N_traits >= 2L) |>
   arrange(desc(N_traits), FAM, IND)
+
+recurrence_distribution <- multitrait_recurrence |>
+  count(N_traits, Recurrence_class, name = "N_individuals") |>
+  mutate(
+    Proportion_of_population =
+      N_individuals / nrow(matrices_object$metadata)
+  ) |>
+  arrange(desc(N_traits))
+
+candidate_rank_wide <- selected_individuals_by_trait |>
+  semi_join(
+    multitrait_recurrence |> filter(N_traits >= 2L),
+    by = c("IND", "FAM")
+  ) |>
+  select(IND, FAM, Trait, Rank) |>
+  pivot_wider(
+    names_from = Trait,
+    values_from = Rank,
+    names_glue = "{Trait}_rank"
+  )
+
+multitrait_candidates <- multitrait_recurrence |>
+  filter(N_traits >= 2L) |>
+  left_join(candidate_rank_wide, by = c("IND", "FAM")) |>
+  arrange(
+    desc(N_traits),
+    FAM,
+    IND
+  )
 ```
 
-Recurrence across rankings is descriptive and does not constitute a multi-trait selection index.
-
+Recurrence classes are high (`>= 4` traits), intermediate (`3`), broad (`2`), specific (`1`), and none (`0`). Class membership is determined only by the number of supported traits in which the individual belongs to the most favorable 20%.
 ## 11. Correlations among OOF genomic values
 
 These are descriptive correlations among predicted genomic values; they are not multivariate genetic-correlation estimates.
@@ -891,10 +1061,16 @@ write.csv(selected_fold_diagnostics, file.path(RESULTS_DIR, "selected_fold_diagn
 write.csv(runtime_summary, file.path(RESULTS_DIR, "runtime_summary.csv"), row.names = FALSE)
 write.csv(rrblup_heritability_by_fold, file.path(RESULTS_DIR, "rrblup_heritability_by_fold.csv"), row.names = FALSE)
 write.csv(rrblup_heritability_summary, file.path(RESULTS_DIR, "rrblup_heritability_summary.csv"), row.names = FALSE)
+write.csv(selection_objectives, file.path(RESULTS_DIR, "selection_objectives.csv"), row.names = FALSE)
 write.csv(selected_oof_genomic_values, file.path(RESULTS_DIR, "selected_oof_genomic_values.csv"), row.names = FALSE)
 write.csv(genomic_ranking, file.path(RESULTS_DIR, "genomic_ranking.csv"), row.names = FALSE)
-write.csv(top10_with_family, file.path(RESULTS_DIR, "top10_genomic_values_with_family.csv"), row.names = FALSE)
-write.csv(recurring_top10, file.path(RESULTS_DIR, "recurring_top10_individuals.csv"), row.names = FALSE)
+unlink(file.path(RESULTS_DIR, c("top10_genomic_values_with_family.csv", "recurring_top10_individuals.csv")))
+write.csv(selection_sizes, file.path(RESULTS_DIR, "selection_sizes.csv"), row.names = FALSE)
+write.csv(selection_cutoff_audit, file.path(RESULTS_DIR, "selection_cutoff_audit.csv"), row.names = FALSE)
+write.csv(selected_individuals_by_trait, file.path(RESULTS_DIR, "selected_individuals_by_trait.csv"), row.names = FALSE)
+write.csv(multitrait_recurrence, file.path(RESULTS_DIR, "multitrait_recurrence.csv"), row.names = FALSE)
+write.csv(recurrence_distribution, file.path(RESULTS_DIR, "recurrence_distribution.csv"), row.names = FALSE)
+write.csv(multitrait_candidates, file.path(RESULTS_DIR, "multitrait_candidates.csv"), row.names = FALSE)
 write.csv(as.data.frame(selected_oof_correlations), file.path(RESULTS_DIR, "selected_oof_correlations.csv"), row.names = TRUE)
 
 saveRDS(
@@ -912,10 +1088,17 @@ saveRDS(
     runtime = runtime_summary,
     rrblup_heritability_by_fold = rrblup_heritability_by_fold,
     rrblup_heritability_summary = rrblup_heritability_summary,
+    selection_objectives = selection_objectives,
     selected_oof_genomic_values = selected_oof_genomic_values,
     genomic_ranking = genomic_ranking,
-    top10_with_family = top10_with_family,
-    recurring_top10 = recurring_top10,
+    selection_proportion = SELECTION_PROPORTION,
+    supported_traits = supported_traits,
+    selection_sizes = selection_sizes,
+    selection_cutoff_audit = selection_cutoff_audit,
+    selected_individuals_by_trait = selected_individuals_by_trait,
+    multitrait_recurrence = multitrait_recurrence,
+    recurrence_distribution = recurrence_distribution,
+    multitrait_candidates = multitrait_candidates,
     selected_oof_correlations = selected_oof_correlations
   ),
   file.path(RESULTS_DIR, "module04_results.rds")

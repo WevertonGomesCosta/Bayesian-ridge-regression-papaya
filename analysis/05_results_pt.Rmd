@@ -69,8 +69,15 @@ required_m04_fields <- c(
   "selected_fold_diagnostics",
   "runtime",
   "rrblup_heritability_summary",
-  "top10_with_family",
-  "recurring_top10",
+  "selection_objectives",
+  "selection_proportion",
+  "supported_traits",
+  "selection_sizes",
+  "selection_cutoff_audit",
+  "selected_individuals_by_trait",
+  "multitrait_recurrence",
+  "recurrence_distribution",
+  "multitrait_candidates",
   "selected_oof_correlations"
 )
 
@@ -112,8 +119,15 @@ model_selection <- m04$model_selection
 selected_fold_diagnostics <- m04$selected_fold_diagnostics
 runtime_summary <- m04$runtime
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
-top10_with_family <- m04$top10_with_family
-recurring_top10 <- m04$recurring_top10
+selection_objectives <- m04$selection_objectives
+selection_proportion <- m04$selection_proportion
+supported_traits <- m04$supported_traits
+selection_sizes <- m04$selection_sizes
+selection_cutoff_audit <- m04$selection_cutoff_audit
+selected_individuals_by_trait <- m04$selected_individuals_by_trait
+multitrait_recurrence <- m04$multitrait_recurrence
+recurrence_distribution <- m04$recurrence_distribution
+multitrait_candidates <- m04$multitrait_candidates
 selected_oof_correlations <- m04$selected_oof_correlations
 
 expected_runs <-
@@ -179,6 +193,11 @@ method_labels <- c(
   BayesC = "BayesC",
   BL = "Lasso Bayesiano",
   GBLUP = "GBLUP"
+)
+
+selection_objective_labels <- c(
+  increase = "Aumentar",
+  decrease = "Diminuir"
 )
 
 method_colors <- c(
@@ -586,29 +605,77 @@ ggsave(
 )
 ```
 
-## 10. Top 10 por característica
+## 10. Seleção proporcional por característica
 
-```{r top10-table}
-top10_display <- top10_with_family |>
-  mutate(Method_label = unname(method_labels[Method]))
+A seleção de candidatos utiliza somente características com correlação OOF positiva e `p < 0,05`. A proporção canônica nesta análise é de `r sprintf("%.0f%%", 100 * selection_proportion)` dos indivíduos por característica, respeitando a direção de melhoramento definida no Módulo 04.
+
+```{r proportional-selection-table}
+selection_sizes_display <- selection_sizes |>
+  left_join(
+    selection_objectives |> select(Trait, Selection_objective),
+    by = "Trait"
+  ) |>
+  mutate(
+    Objetivo = unname(selection_objective_labels[Selection_objective])
+  ) |>
+  select(
+    Trait, Objetivo, Selection_proportion,
+    N_available, N_selected
+  )
 
 kable(
-  top10_display |>
-    select(
-      Trait, Rank, IND, FAM, Method_label, Genomic_value, Predictive_evidence
-    ),
-  digits = 5,
-  caption = "Dez maiores valores genômicos OOF por característica"
+  selection_sizes_display,
+  digits = 2,
+  caption = "Proporção e número de indivíduos selecionados por característica com evidência preditiva suportada"
 )
 ```
 
-## 11. Indivíduos recorrentes entre rankings
+Os indivíduos selecionados por característica permanecem disponíveis na saída canônica `selected_individuals_by_trait.csv`. Não são apresentados integralmente nesta página para evitar uma tabela excessivamente longa.
 
-```{r recurrent-individuals-table}
+## 11. Recorrência multicaracterística
+
+```{r recurrence-distribution-table}
+recurrence_class_labels <- c(
+  high_4plus = "Alta (>=4)",
+  intermediate_3 = "Intermediária (3)",
+  broad_2 = "Ampla (2)",
+  specific_1 = "Específica (1)",
+  none_0 = "Nenhuma (0)"
+)
+
+recurrence_distribution_display <- recurrence_distribution |>
+  mutate(
+    Classe = unname(recurrence_class_labels[Recurrence_class])
+  ) |>
+  select(
+    N_traits, Classe, N_individuals,
+    Proportion_of_population
+  )
+
 kable(
-  recurring_top10,
-  caption = "Indivíduos recorrentes no top 10 das características com correlação OOF positiva e p < 0,05"
+  recurrence_distribution_display,
+  digits = 4,
+  caption = "Distribuição dos indivíduos por classe de recorrência entre características suportadas"
 )
 ```
 
-A recorrência é apresentada apenas como resumo descritivo; não constitui um índice de seleção multicaracterística.
+```{r recurrent-candidates-table}
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>
+  mutate(
+    Classe = unname(recurrence_class_labels[Recurrence_class])
+  ) |>
+  select(
+    IND, FAM, N_traits, Selection_frequency,
+    Classe, Traits, Best_rank, Mean_rank_present,
+    ends_with("_rank")
+  )
+
+kable(
+  main_multitrait_candidates,
+  digits = 4,
+  caption = "Candidatos com recorrência alta ou intermediária entre os 20% mais favoráveis das características suportadas"
+)
+```
+
+A recorrência é um resumo descritivo. `N_traits`, frequência de seleção e ranks não são combinados em um índice multicaracterística e não implicam superioridade global sem definição explícita de pesos econômicos ou biológicos.

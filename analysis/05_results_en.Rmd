@@ -69,8 +69,15 @@ required_m04_fields <- c(
   "selected_fold_diagnostics",
   "runtime",
   "rrblup_heritability_summary",
-  "top10_with_family",
-  "recurring_top10",
+  "selection_objectives",
+  "selection_proportion",
+  "supported_traits",
+  "selection_sizes",
+  "selection_cutoff_audit",
+  "selected_individuals_by_trait",
+  "multitrait_recurrence",
+  "recurrence_distribution",
+  "multitrait_candidates",
   "selected_oof_correlations"
 )
 
@@ -112,8 +119,15 @@ model_selection <- m04$model_selection
 selected_fold_diagnostics <- m04$selected_fold_diagnostics
 runtime_summary <- m04$runtime
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
-top10_with_family <- m04$top10_with_family
-recurring_top10 <- m04$recurring_top10
+selection_objectives <- m04$selection_objectives
+selection_proportion <- m04$selection_proportion
+supported_traits <- m04$supported_traits
+selection_sizes <- m04$selection_sizes
+selection_cutoff_audit <- m04$selection_cutoff_audit
+selected_individuals_by_trait <- m04$selected_individuals_by_trait
+multitrait_recurrence <- m04$multitrait_recurrence
+recurrence_distribution <- m04$recurrence_distribution
+multitrait_candidates <- m04$multitrait_candidates
 selected_oof_correlations <- m04$selected_oof_correlations
 
 expected_runs <-
@@ -179,6 +193,11 @@ method_labels <- c(
   BayesC = "BayesC",
   BL = "Bayesian Lasso",
   GBLUP = "GBLUP"
+)
+
+selection_objective_labels <- c(
+  increase = "Increase",
+  decrease = "Decrease"
 )
 
 method_colors <- c(
@@ -586,29 +605,77 @@ ggsave(
 )
 ```
 
-## 10. Top 10 by trait
+## 10. Proportional selection by trait
 
-```{r top10-table}
-top10_display <- top10_with_family |>
-  mutate(Method_label = unname(method_labels[Method]))
+Candidate selection uses only traits with positive OOF correlation and `p < 0.05`. The canonical proportion in this analysis is `r sprintf("%.0f%%", 100 * selection_proportion)` of individuals per trait, respecting the breeding direction defined in Module 04.
+
+```{r proportional-selection-table}
+selection_sizes_display <- selection_sizes |>
+  left_join(
+    selection_objectives |> select(Trait, Selection_objective),
+    by = "Trait"
+  ) |>
+  mutate(
+    Objective = unname(selection_objective_labels[Selection_objective])
+  ) |>
+  select(
+    Trait, Objective, Selection_proportion,
+    N_available, N_selected
+  )
 
 kable(
-  top10_display |>
-    select(
-      Trait, Rank, IND, FAM, Method_label, Genomic_value, Predictive_evidence
-    ),
-  digits = 5,
-  caption = "Ten highest OOF genomic values by trait"
+  selection_sizes_display,
+  digits = 2,
+  caption = "Selection proportion and number of individuals selected per trait with supported predictive evidence"
 )
 ```
 
-## 11. Individuals recurring across rankings
+Individuals selected by trait remain available in the canonical `selected_individuals_by_trait.csv` output. They are not displayed in full on this page to avoid an excessively long table.
 
-```{r recurrent-individuals-table}
+## 11. Multi-trait recurrence
+
+```{r recurrence-distribution-table}
+recurrence_class_labels <- c(
+  high_4plus = "High (>=4)",
+  intermediate_3 = "Intermediate (3)",
+  broad_2 = "Broad (2)",
+  specific_1 = "Specific (1)",
+  none_0 = "None (0)"
+)
+
+recurrence_distribution_display <- recurrence_distribution |>
+  mutate(
+    Class = unname(recurrence_class_labels[Recurrence_class])
+  ) |>
+  select(
+    N_traits, Class, N_individuals,
+    Proportion_of_population
+  )
+
 kable(
-  recurring_top10,
-  caption = "Individuals recurring in the top 10 of traits with positive OOF correlation and p < 0.05"
+  recurrence_distribution_display,
+  digits = 4,
+  caption = "Distribution of individuals across recurrence classes among supported traits"
 )
 ```
 
-Recurrence is presented only as a descriptive summary; it is not a multi-trait selection index.
+```{r recurrent-candidates-table}
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>
+  mutate(
+    Class = unname(recurrence_class_labels[Recurrence_class])
+  ) |>
+  select(
+    IND, FAM, N_traits, Selection_frequency,
+    Class, Traits, Best_rank, Mean_rank_present,
+    ends_with("_rank")
+  )
+
+kable(
+  main_multitrait_candidates,
+  digits = 4,
+  caption = "Candidates with high or intermediate recurrence among the most favorable 20% of supported traits"
+)
+```
+
+Recurrence is a descriptive summary. `N_traits`, selection frequency, and ranks are not combined into a multi-trait index and do not imply overall superiority without explicitly defined economic or biological weights.
