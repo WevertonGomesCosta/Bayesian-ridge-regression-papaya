@@ -223,10 +223,16 @@ variance components. Otherwise, the best competitive candidate without flags
 is used; when no automatic candidate is available, the predictive winner is
 retained as a provisional choice for review.
 
-```{r model-selection}
+### 5.1 Predictive and DIC winners
+
+The method with the best OOF predictive performance and the method with the
+smallest mean DIC are first identified separately for every trait.
+
+```{r selection-winners}
 DIC_EQUIVALENCE_THRESHOLD <- 2
 N_FOLDS <- matrices_object$settings$n_folds
 
+# Best combination of correlation, RMSE, MAE, and DIC for each trait.
 predictive_winners <- model_comparison |>
   group_by(Trait) |>
   arrange(desc(r), RMSE, MAE, Mean_DIC, .by_group = TRUE) |>
@@ -241,6 +247,7 @@ predictive_winners <- model_comparison |>
     Predictive_winner_MAE = MAE
   )
 
+# Method with the smallest mean DIC for each trait.
 dic_winners <- model_comparison |>
   group_by(Trait) |>
   arrange(Mean_DIC, desc(r), RMSE, MAE, .by_group = TRUE) |>
@@ -252,7 +259,28 @@ dic_winners <- model_comparison |>
     Minimum_DIC = Mean_DIC,
     DIC_winner_Wprob = Wprob
   )
+```
 
+```{r selection-winners-table}
+predictive_winners |>
+  left_join(dic_winners, by = "Trait") |>
+  select(
+    Trait, Predictive_winner, DIC_winner,
+    Predictive_winner_r, Predictive_winner_RMSE,
+    Minimum_DIC
+  ) |>
+  kable(
+    digits = 5,
+    caption = "Predictive and DIC winners for each trait"
+  )
+```
+
+### 5.2 MCMC diagnostics by trait and method
+
+Chain diagnostics are summarized before defining the set of methods eligible
+for selection.
+
+```{r selection-convergence-summary}
 convergence_by_trait_method <- convergence |>
   group_by(Trait, Method) |>
   summarise(
@@ -264,7 +292,25 @@ convergence_by_trait_method <- convergence |>
     Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
     .groups = "drop"
   )
+```
 
+```{r selection-convergence-table}
+convergence_by_trait_method |>
+  arrange(match(Trait, traits), match(Method, methods)) |>
+  head(21) |>
+  kable(
+    digits = 4,
+    caption = "Example of MCMC diagnostics summarized by trait and method"
+  )
+```
+
+### 5.3 Competitive set
+
+The one-standard-error rule is applied to mean fold correlation and RMSE. The
+`Delta_DIC <= 2` threshold and MCMC diagnostics are then used to determine the
+candidates eligible for automatic selection.
+
+```{r selection-competitive-set}
 model_selection_support <- model_comparison |>
   left_join(
     convergence_by_trait_method,
@@ -277,18 +323,23 @@ model_selection_support <- model_comparison |>
   ) |>
   group_by(Trait) |>
   mutate(
+    # References for the one-standard-error rule.
     Best_mean_fold_r = max(Mean_fold_r, na.rm = TRUE),
     Best_mean_fold_r_SE =
       SD_fold_r[which.max(Mean_fold_r)] / sqrt(N_FOLDS),
     Best_mean_fold_RMSE = min(Mean_fold_RMSE, na.rm = TRUE),
     Best_mean_fold_RMSE_SE =
       SD_fold_RMSE[which.min(Mean_fold_RMSE)] / sqrt(N_FOLDS),
+
+    # Predictive competitiveness.
     Within_one_SE_r =
       Mean_fold_r >= Best_mean_fold_r - Best_mean_fold_r_SE,
     Within_one_SE_RMSE =
       Mean_fold_RMSE <= Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE,
     Predictively_competitive =
       Within_one_SE_r & Within_one_SE_RMSE,
+
+    # Complementary support from DIC and convergence.
     DIC_equivalence_threshold = DIC_EQUIVALENCE_THRESHOLD,
     DIC_competitive = Delta_DIC <= DIC_EQUIVALENCE_THRESHOLD,
     Competitive_for_selection =
@@ -296,6 +347,8 @@ model_selection_support <- model_comparison |>
     Convergence_review = Parameters_flagged > 0,
     Automatic_candidate =
       Competitive_for_selection & !Convergence_review,
+
+    # Candidate-set summary within each trait.
     Competitive_set_n = sum(Competitive_for_selection),
     Automatic_candidate_n = sum(Automatic_candidate),
     RRBLUP_competitive = any(
@@ -305,6 +358,8 @@ model_selection_support <- model_comparison |>
       Method == "RRBLUP" & Automatic_candidate
     ),
     Automatic_selection_available = any(Automatic_candidate),
+
+    # RR-BLUP receives priority only within the automatic-candidate set.
     Selection_priority = case_when(
       Automatic_candidate & Method == "RRBLUP" ~ 1L,
       Automatic_candidate ~ 2L,
@@ -320,7 +375,29 @@ model_selection_support <- model_comparison |>
     MAE,
     Mean_DIC
   )
+```
 
+```{r selection-competitive-table}
+model_selection_support |>
+  select(
+    Trait, Method, Predictively_competitive,
+    DIC_competitive, Convergence_review,
+    Automatic_candidate, r, RMSE, Delta_DIC
+  ) |>
+  head(21) |>
+  kable(
+    digits = 5,
+    caption = "Example of the competitive-set definition"
+  )
+```
+
+### 5.4 Method choice
+
+RR-BLUP receives priority among automatic candidates. If no automatic candidate
+is available, the predictive winner is retained as a provisional choice.
+
+```{r selection-choice}
+# Best automatic candidate for each trait.
 automatic_selections <- model_selection_support |>
   filter(Automatic_candidate) |>
   group_by(Trait) |>
@@ -339,6 +416,7 @@ automatic_selections <- model_selection_support |>
     Automatic_selected_method = Method
   )
 
+# Final choice before attaching the selected method's metrics.
 selection_spec <- predictive_winners |>
   select(Trait, Predictive_winner) |>
   left_join(automatic_selections, by = "Trait") |>
@@ -390,7 +468,24 @@ selection_spec <- predictive_winners |>
   ) |>
   select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
+```
 
+```{r selection-choice-table}
+selection_spec |>
+  select(
+    Trait, Selected_method, Selection_status,
+    RRBLUP_preference_applied,
+    Competitive_set_n, Automatic_candidate_n
+  ) |>
+  kable(caption = "Method chosen after applying the hierarchical rule")
+```
+
+### 5.5 Performance of the selected methods
+
+Metrics and diagnostics for the method actually selected are then extracted
+from the support table.
+
+```{r selected-performance}
 selected_performance <- model_selection_support |>
   inner_join(
     selection_spec |>
@@ -431,7 +526,26 @@ selected_performance <- model_selection_support |>
     Maximum_absolute_Geweke,
     Convergence_review
   )
+```
 
+```{r selected-performance-table}
+selected_performance |>
+  select(
+    Trait, Selected_method, r, p_value, RMSE,
+    Mean_DIC, Delta_DIC, Parameters_flagged
+  ) |>
+  kable(
+    digits = 5,
+    caption = "Performance and diagnostics of the selected methods"
+  )
+```
+
+### 5.6 Final selection result and predictive evidence
+
+Finally, the selected method, predictive and DIC winners, and the descriptive
+predictive-evidence classification are brought together for each trait.
+
+```{r final-model-selection}
 model_selection <- selection_spec |>
   left_join(
     selected_performance,
@@ -458,8 +572,6 @@ predictive_evidence_summary <- model_selection |>
   arrange(Predictive_evidence)
 ```
 
-The table below makes the decision for each trait explicit.
-
 ```{r model-selection-table}
 model_selection |>
   select(
@@ -477,11 +589,11 @@ model_selection |>
 ```{r predictive-evidence-table}
 kable(
   predictive_evidence_summary,
-  caption = "Classification of predictive evidence across traits"
+  caption = "Predictive-evidence classification of the traits"
 )
 ```
 
-## 6. Fold stability of the selected methods
+## 6. Stability across folds for the selected methods
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
@@ -496,7 +608,7 @@ selected_fold_diagnostics |>
   head(15) |>
   kable(
     digits = 5,
-    caption = "Example of fold-level performance for selected methods"
+    caption = "Example of fold performance for the selected methods"
   )
 ```
 
@@ -520,7 +632,7 @@ runtime_summary <- metrics |>
 kable(
   runtime_summary,
   digits = 3,
-  caption = "Computational time for the seven methods"
+  caption = "Computational time of the seven methods"
 )
 ```
 
@@ -528,7 +640,7 @@ kable(
 
 Following Silva et al. [@silva2021brrguava], additive genetic variance in the
 RR-BLUP/BRR analogue is obtained from the common marker variance and the
-\(\sum 2pq\) denominator. Fold accuracy is defined as
+\(\sum 2pq\) denominator. Fold-level accuracy is defined as
 \(r_f/\sqrt{H_f^2}\).
 
 ```{r rrblup-heritability}
@@ -577,7 +689,7 @@ kable(
 ## 9. OOF genomic values and selection direction
 
 Selection direction is applied to the genomic value only when the ranking is
-constructed. The original genomic value is left unchanged.
+constructed. The original genomic value remains unchanged.
 
 ```{r selected-oof-genomic-values}
 selection_objective_map <- c(
@@ -631,8 +743,8 @@ kable(
 
 Selection is restricted to traits with positive OOF correlation and
 `p < 0.05`. Within each supported trait, the 20% of individuals with the
-largest oriented score are selected. For traits whose objective is to decrease,
-the score is the negative genomic value.
+largest oriented score are selected. For traits whose objective is to
+decrease, the score is the negative genomic value.
 
 ```{r genomic-ranking}
 genomic_ranking <- selected_oof_genomic_values |>
@@ -710,7 +822,7 @@ selected_individuals_by_trait <- genomic_ranking |>
 kable(
   selection_sizes,
   digits = 2,
-  caption = "Number of selected individuals for each supported trait"
+  caption = "Number of individuals selected for each supported trait"
 )
 ```
 
@@ -729,14 +841,14 @@ selected_individuals_by_trait |>
   ungroup() |>
   kable(
     digits = 5,
-    caption = "Top five individuals in each supported-trait ranking"
+    caption = "Top five individuals in the ranking for each supported trait"
   )
 ```
 
 ## 11. Recurrence across traits
 
-Recurrence is descriptive: it counts how many supported traits place an
-individual among the most favorable 20%. No weights are used and no
+Recurrence is descriptive: it counts the supported traits for which each
+individual belongs to the most favorable 20%. No weights are used and no
 multi-trait selection index is constructed.
 
 ```{r multitrait-recurrence}
@@ -829,7 +941,7 @@ kable(
 )
 ```
 
-## 13. Saving results
+## 13. Saving the results
 
 ```{r save-results}
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
