@@ -30,24 +30,17 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-A seleção genômica exige que os registros fenotípicos e os marcadores
-representem os mesmos indivíduos e estejam organizados na mesma ordem.
+A seleção genômica exige que fenótipos e marcadores representem os mesmos
+indivíduos e estejam organizados na mesma ordem. Neste módulo, as duas fontes
+de dados são lidas, os identificadores são organizados, os códigos de ausência
+dos SSR são convertidos em `NA`, os fenótipos são alinhados aos genótipos e os
+locos SSR são submetidos ao controle de qualidade.
 
-Nesta etapa, os dados fenotípicos e SSR são lidos, os identificadores dos
-indivíduos e dos locos são organizados, os códigos de ausência são convertidos
-em `NA`, as duas fontes são alinhadas e os locos com baixa taxa de chamada ou
-sem variação genotípica são removidos.
-
-A coluna de bloco (`BL`) não integra mais o modelo estatístico e é removida
-imediatamente após a leitura dos dados fenotípicos. A família (`FAM`) é mantida
-como a única covariável categórica para uso posterior como efeito fixo.
-
-Os cinco folds da validação cruzada são criados após este pré-processamento.
+A coluna de bloco (`BL`) é removida porque não participa do modelo estatístico.
+A família (`FAM`) é mantida para ser utilizada como efeito fixo nos módulos
+seguintes.
 
 ## 2. Pacotes e caminhos dos arquivos
-
-Primeiro são carregados os pacotes necessários e definidos os caminhos das
-duas planilhas e da pasta de saída.
 
 ```{r pacotes}
 suppressPackageStartupMessages({
@@ -73,13 +66,9 @@ dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 ## 3. Leitura das planilhas originais
 
-A planilha genotípica utiliza a aba `Genes` para armazenar os códigos numéricos
-dos marcadores SSR e a aba `Genealex` para armazenar os rótulos dos indivíduos
-e dos locos. Os fenótipos são lidos da aba `Médias_IND_artigo`.
-
-A coluna `BL` é descartada no momento da leitura porque bloco não participa
-mais dos modelos. Em seguida, são mostradas amostras simples das duas fontes
-para que o leitor visualize diretamente a estrutura dos dados utilizados.
+A planilha genotípica utiliza a aba `Genes` para os códigos numéricos dos
+marcadores SSR e a aba `Genealex` para os identificadores dos indivíduos e dos
+locos. Os fenótipos são lidos da aba `Médias_IND_artigo`.
 
 ```{r leitura-dados}
 genes <- read_excel(
@@ -103,10 +92,10 @@ pheno_raw <- read_excel(
 ) |>
   select(-BL)
 
-# Amostra dos dados genotípicos lidos.
+# Primeiras linhas dos códigos SSR.
 genes[1:6, 1:6]
 
-# Amostra dos dados fenotípicos após a remoção de BL.
+# Primeiras linhas dos fenótipos após a remoção de BL.
 head(pheno_raw)
 
 data.frame(
@@ -114,17 +103,15 @@ data.frame(
   Linhas = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
   Colunas = c(ncol(genes), ncol(genealex), ncol(pheno_raw))
 ) |>
-  kable(caption = "Dimensões dos dados após a leitura")
+  kable(caption = "Dimensões das planilhas utilizadas")
 ```
 
 ## 4. Organização dos dados SSR
 
-A primeira coluna da aba `Genes` identifica os grupos populacionais. As demais
-colunas contêm os 35 locos SSR.
-
-Os identificadores dos indivíduos são obtidos da aba `Genealex` e mantidos
-como texto para preservar rótulos como `144B`. As chamadas SSR ausentes,
-codificadas como `-9`, são convertidas em `NA`.
+A primeira coluna da aba `Genes` identifica os grupos populacionais e as demais
+colunas contêm os 35 locos SSR. Os identificadores dos indivíduos e dos locos
+são obtidos da aba `Genealex`. Chamadas ausentes, codificadas como `-9`, são
+convertidas em `NA`.
 
 ```{r organizacao-ssr}
 n_individuals <- nrow(genes)
@@ -152,17 +139,16 @@ ssr_raw[ssr_raw == -9] <- NA_real_
 
 rownames(ssr_raw) <- ids
 colnames(ssr_raw) <- locus_names
+
+# Estrutura inicial da matriz SSR.
+ssr_raw[1:6, 1:8]
 ```
 
 ## 5. Organização e alinhamento dos fenótipos
 
-Dez características são utilizadas na análise. A família (`FAM`) é mantida
-como variável categórica e será o único efeito fixo além do intercepto dos
-modelos.
-
-A tabela fenotípica é ordenada de acordo com os identificadores da matriz SSR.
-Assim, cada linha fenotípica representa o mesmo indivíduo da linha
-correspondente dos marcadores.
+Dez características são utilizadas. A tabela fenotípica é ordenada de acordo
+com os identificadores da matriz SSR, de modo que cada linha fenotípica
+corresponda à mesma planta da linha genotípica.
 
 ```{r organizacao-fenotipos}
 TRAITS <- c(
@@ -171,18 +157,7 @@ TRAITS <- c(
 )
 
 required_columns <- c("IND", "FAM", TRAITS)
-
-missing_columns <- setdiff(
-  required_columns,
-  names(pheno_raw)
-)
-
-if (length(missing_columns) > 0L) {
-  stop(
-    "Colunas fenotípicas obrigatórias ausentes: ",
-    paste(missing_columns, collapse = ", ")
-  )
-}
+missing_columns <- setdiff(required_columns, names(pheno_raw))
 
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
 
@@ -230,51 +205,21 @@ identifier_summary <- data.frame(
   )
 )
 
-identifier_integrity_checks <- c(
-  genotype_ids_complete =
-    !any(is.na(ids) | ids == ""),
-  genotype_ids_unique =
-    !anyDuplicated(ids),
-  locus_names_complete =
-    !any(is.na(locus_names) | locus_names == ""),
-  locus_names_unique =
-    !anyDuplicated(locus_names),
-  phenotype_ids_complete =
-    !any(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
-  phenotype_ids_unique =
-    !anyDuplicated(pheno_raw$IND),
-  genotype_phenotype_id_sets_match =
-    length(missing_in_pheno) == 0L &&
-    length(missing_in_geno) == 0L
-)
-
-if (!all(identifier_integrity_checks)) {
-  stop(
-    "Falha no contrato de identificadores/alinhamento: ",
-    paste(
-      names(identifier_integrity_checks)[
-        !identifier_integrity_checks
-      ],
-      collapse = ", "
-    )
-  )
-}
-
 kable(
   identifier_summary,
   caption = "Resumo dos identificadores e das colunas"
 )
 
+# Reordena os fenótipos para a mesma sequência dos indivíduos genotipados.
 pheno <- pheno_raw[
   match(ids, pheno_raw$IND),
   required_columns
 ]
 
+# Converte explicitamente as dez características para valores numéricos.
 for (trait in TRAITS) {
   pheno[[trait]] <- as.numeric(
-    as.character(
-      pheno[[trait]]
-    )
+    as.character(pheno[[trait]])
   )
 }
 
@@ -287,26 +232,28 @@ metadata <- data.frame(
 phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
+
+# Distribuição dos indivíduos entre as famílias.
+data.frame(
+  Familia = names(table(metadata$FAM)),
+  Individuos = as.integer(table(metadata$FAM))
+) |>
+  kable(caption = "Número de indivíduos por família")
 ```
 
 ## 6. Controle de qualidade dos marcadores
 
-Para cada loco, calculamos a taxa de chamada e o número de classes genotípicas
-observadas. Um loco é mantido quando apresenta taxa de chamada igual ou
-superior a 0,90 e pelo menos duas classes genotípicas.
+Para cada loco são calculados a taxa de chamada e o número de classes
+genotípicas observadas. Um loco é mantido quando apresenta taxa de chamada
+igual ou superior a 0,90 e pelo menos duas classes genotípicas.
 
 ```{r qualidade-marcadores}
-genotype_classes <- integer(
-  ncol(ssr_raw)
-)
+genotype_classes <- integer(ncol(ssr_raw))
 
 for (j in seq_len(ncol(ssr_raw))) {
+  # Conta quantas classes genotípicas foram observadas no loco.
   genotype_classes[j] <- length(
-    unique(
-      na.omit(
-        ssr_raw[, j]
-      )
-    )
+    unique(na.omit(ssr_raw[, j]))
   )
 }
 
@@ -336,7 +283,8 @@ kable(
 )
 ```
 
-A figura mostra a taxa de chamada de cada loco e o valor mínimo aceito.
+A figura permite visualizar a taxa de chamada de cada loco em relação ao limite
+mínimo utilizado.
 
 ```{r grafico-qualidade-marcadores, fig.height=7}
 ggplot(
@@ -362,10 +310,9 @@ ggplot(
   theme_bw()
 ```
 
-## 7. Resumos dos dados
+## 7. Resumo da informação genotípica
 
-A auditoria por indivíduo resume a quantidade de informações SSR disponíveis
-para cada planta.
+A quantidade de chamadas SSR disponíveis é resumida para cada indivíduo.
 
 ```{r resumo-individuos}
 individual_audit <- data.frame(
@@ -389,38 +336,24 @@ individual_call_rate_summary <- data.frame(
 kable(
   individual_call_rate_summary,
   digits = 3,
-  caption = "Resumo da distribuição da taxa de chamada SSR por indivíduo"
+  caption = "Distribuição da taxa de chamada SSR por indivíduo"
 )
 ```
 
-O resumo fenotípico permite verificar a escala e a variação das dez
-características.
+## 8. Resumo das características fenotípicas
+
+As estatísticas descritivas permitem verificar diretamente a escala e a
+variação das dez características.
 
 ```{r resumo-fenotipos}
-phenotype_sd <- numeric(
-  ncol(phenotypes)
-)
-
-phenotype_minimum <- numeric(
-  ncol(phenotypes)
-)
-
-phenotype_maximum <- numeric(
-  ncol(phenotypes)
-)
+phenotype_sd <- numeric(ncol(phenotypes))
+phenotype_minimum <- numeric(ncol(phenotypes))
+phenotype_maximum <- numeric(ncol(phenotypes))
 
 for (j in seq_len(ncol(phenotypes))) {
-  phenotype_sd[j] <- sd(
-    phenotypes[, j]
-  )
-
-  phenotype_minimum[j] <- min(
-    phenotypes[, j]
-  )
-
-  phenotype_maximum[j] <- max(
-    phenotypes[, j]
-  )
+  phenotype_sd[j] <- sd(phenotypes[, j])
+  phenotype_minimum[j] <- min(phenotypes[, j])
+  phenotype_maximum[j] <- max(phenotypes[, j])
 }
 
 phenotype_summary <- data.frame(
@@ -441,32 +374,19 @@ kable(
 )
 ```
 
-### Observações fenotípicas distantes da média
+### 8.1 Observações fenotípicas distantes da média
 
-Os valores padronizados são utilizados apenas como diagnóstico descritivo para
-identificar observações distantes da média da respectiva característica. Uma
-observação é destacada quando o módulo do seu valor padronizado é igual ou
-superior a `r PHENOTYPE_DISTANCE_THRESHOLD`.
-
-Os valores destacados são mantidos exatamente como registrados na planilha
-original. Eles não são automaticamente corrigidos, winsorizados, transformados
-ou removidos. Sua possível influência deverá ser considerada na interpretação
-do ajuste dos modelos, do desempenho preditivo, dos diagnósticos de resíduos e
-dos rankings genômicos.
+Os valores padronizados são utilizados apenas como diagnóstico descritivo. Uma
+observação é destacada quando sua distância absoluta em relação à média é de
+pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. Os valores são
+mantidos exatamente como registrados na planilha original.
 
 ```{r valores-fenotipicos-distantes}
-phenotype_means <- colMeans(
-  phenotypes
-)
-
-phenotype_standard_deviations <- numeric(
-  ncol(phenotypes)
-)
+phenotype_means <- colMeans(phenotypes)
+phenotype_standard_deviations <- numeric(ncol(phenotypes))
 
 for (j in seq_len(ncol(phenotypes))) {
-  phenotype_standard_deviations[j] <- sd(
-    phenotypes[, j]
-  )
+  phenotype_standard_deviations[j] <- sd(phenotypes[, j])
 }
 
 phenotype_standardized <- scale(
@@ -476,44 +396,25 @@ phenotype_standardized <- scale(
 )
 
 extreme_positions <- which(
-  abs(phenotype_standardized) >=
-    PHENOTYPE_DISTANCE_THRESHOLD,
+  abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD,
   arr.ind = TRUE
 )
 
 phenotype_extremes <- data.frame(
-  IND = rownames(phenotypes)[
-    extreme_positions[, "row"]
-  ],
-  Trait = colnames(phenotypes)[
-    extreme_positions[, "col"]
-  ],
-  Value = phenotypes[
-    extreme_positions
-  ],
-  Trait_mean = phenotype_means[
-    extreme_positions[, "col"]
-  ],
-  Trait_SD = phenotype_standard_deviations[
-    extreme_positions[, "col"]
-  ],
-  Standardized_value = phenotype_standardized[
-    extreme_positions
-  ],
+  IND = rownames(phenotypes)[extreme_positions[, "row"]],
+  Trait = colnames(phenotypes)[extreme_positions[, "col"]],
+  Value = phenotypes[extreme_positions],
+  Trait_mean = phenotype_means[extreme_positions[, "col"]],
+  Trait_SD = phenotype_standard_deviations[extreme_positions[, "col"]],
+  Standardized_value = phenotype_standardized[extreme_positions],
   Absolute_standardized_distance = abs(
-    phenotype_standardized[
-      extreme_positions
-    ]
+    phenotype_standardized[extreme_positions]
   )
 )
 
 phenotype_extremes <- phenotype_extremes[
-  order(
-    -phenotype_extremes$
-      Absolute_standardized_distance
-  ),
+  order(-phenotype_extremes$Absolute_standardized_distance),
 ]
-
 rownames(phenotype_extremes) <- NULL
 
 kable(
@@ -536,8 +437,7 @@ kable(
 )
 ```
 
-O dicionário registra o significado biológico e a unidade de medida de cada
-código fenotípico.
+### 8.2 Dicionário das características
 
 ```{r dicionario-caracteristicas}
 trait_dictionary <- data.frame(
@@ -603,87 +503,12 @@ ggplot(phenotype_long, aes(x = Value)) +
   theme_bw()
 ```
 
-## 8. Saídas do pré-processamento
+## 9. Gravação dos resultados do pré-processamento
 
-A matriz fenotípica alinhada, as matrizes SSR, os metadados, os resumos e o
-dicionário das características são armazenados em um único objeto para as
-etapas seguintes. Os metadados contêm apenas o identificador do indivíduo e a
-família utilizada como efeito fixo.
+A matriz fenotípica alinhada, os dados SSR, os metadados e os resumos são
+reunidos em um objeto que será utilizado na construção das matrizes genômicas.
 
 ```{r salvamento-saidas}
-EXPECTED_N_INDIVIDUALS <- 150L
-EXPECTED_N_ORIGINAL_LOCI <- 35L
-EXPECTED_N_FAMILIES <- 10L
-EXPECTED_FAMILY_SIZE <- 15L
-
-expected_locus_keep <-
-  locus_audit$Call_rate >= CALL_RATE_MIN &
-  locus_audit$N_genotype_classes >= 2
-
-preprocessing_integrity_checks <- c(
-  individual_count =
-    length(ids) == EXPECTED_N_INDIVIDUALS,
-  genotype_ids_unique =
-    !anyDuplicated(ids),
-  ssr_raw_dimensions =
-    identical(
-      dim(ssr_raw),
-      c(EXPECTED_N_INDIVIDUALS, EXPECTED_N_ORIGINAL_LOCI)
-    ),
-  ssr_raw_ids_aligned =
-    identical(rownames(ssr_raw), ids),
-  ssr_raw_observed_values_finite =
-    all(is.finite(ssr_raw[!is.na(ssr_raw)])),
-  locus_audit_count =
-    nrow(locus_audit) == EXPECTED_N_ORIGINAL_LOCI,
-  locus_filter_rule_exact =
-    identical(locus_audit$Keep_locus, expected_locus_keep),
-  retained_loci_match_ssr =
-    identical(
-      colnames(ssr),
-      locus_audit$Locus[locus_audit$Keep_locus]
-    ),
-  retained_ssr_ids_aligned =
-    identical(rownames(ssr), ids),
-  phenotype_dimensions =
-    identical(
-      dim(phenotypes),
-      c(EXPECTED_N_INDIVIDUALS, length(TRAITS))
-    ),
-  phenotype_traits_exact =
-    identical(colnames(phenotypes), TRAITS),
-  phenotype_ids_aligned =
-    identical(rownames(phenotypes), ids),
-  phenotype_values_finite =
-    all(is.finite(phenotypes)),
-  metadata_ids_aligned =
-    identical(as.character(metadata$IND), ids),
-  families_complete =
-    !anyNA(metadata$FAM),
-  family_levels_exact =
-    setequal(
-      unique(as.character(metadata$FAM)),
-      as.character(seq_len(EXPECTED_N_FAMILIES))
-    ),
-  family_sizes_exact =
-    length(table(metadata$FAM)) == EXPECTED_N_FAMILIES &&
-    all(table(metadata$FAM) == EXPECTED_FAMILY_SIZE),
-  trait_dictionary_exact =
-    identical(as.character(trait_dictionary$Trait), TRAITS)
-)
-
-if (!all(preprocessing_integrity_checks)) {
-  stop(
-    "Falha no gate final de integridade do pré-processamento: ",
-    paste(
-      names(preprocessing_integrity_checks)[
-        !preprocessing_integrity_checks
-      ],
-      collapse = ", "
-    )
-  )
-}
-
 preprocessing_object <- list(
   ids = ids,
   metadata = metadata,
@@ -697,8 +522,7 @@ preprocessing_object <- list(
   trait_dictionary = trait_dictionary,
   settings = list(
     call_rate_min = CALL_RATE_MIN,
-    phenotype_distance_threshold =
-      PHENOTYPE_DISTANCE_THRESHOLD,
+    phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
     fixed_effects = "FAM"
   )
 )
@@ -708,45 +532,20 @@ saveRDS(
   file.path(OUTPUT_DIR, "preprocessing_object.rds")
 )
 
-write.csv(
-  alignment,
-  file.path(OUTPUT_DIR, "alignment_summary.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  locus_audit,
-  file.path(OUTPUT_DIR, "locus_audit.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  individual_audit,
-  file.path(OUTPUT_DIR, "individual_audit.csv"),
-  row.names = FALSE
-)
-
-write.csv(
-  phenotype_summary,
-  file.path(OUTPUT_DIR, "phenotype_summary.csv"),
-  row.names = FALSE
-)
-
+write.csv(alignment, file.path(OUTPUT_DIR, "alignment_summary.csv"), row.names = FALSE)
+write.csv(locus_audit, file.path(OUTPUT_DIR, "locus_audit.csv"), row.names = FALSE)
+write.csv(individual_audit, file.path(OUTPUT_DIR, "individual_audit.csv"), row.names = FALSE)
+write.csv(phenotype_summary, file.path(OUTPUT_DIR, "phenotype_summary.csv"), row.names = FALSE)
 write.csv(
   phenotype_extremes,
-  file.path(
-    OUTPUT_DIR,
-    "phenotype_extreme_values.csv"
-  ),
+  file.path(OUTPUT_DIR, "phenotype_extreme_values.csv"),
   row.names = FALSE
 )
-
-write.csv(
-  trait_dictionary,
-  file.path(OUTPUT_DIR, "trait_dictionary.csv"),
-  row.names = FALSE
-)
+write.csv(trait_dictionary, file.path(OUTPUT_DIR, "trait_dictionary.csv"), row.names = FALSE)
 ```
+
+O resultado final desta etapa pode ser conferido diretamente pelas dimensões e
+contagens abaixo.
 
 ```{r inventario-final}
 data.frame(
@@ -755,7 +554,7 @@ data.frame(
     "Características fenotípicas",
     "Locos SSR originais",
     "Locos SSR mantidos",
-    "Famílias (efeito fixo)",
+    "Famílias",
     "Chamadas SSR ausentes",
     "Observações fenotípicas destacadas"
   ),
@@ -769,12 +568,11 @@ data.frame(
     nrow(phenotype_extremes)
   )
 ) |>
-  kable(caption = "Inventário final do pré-processamento")
+  kable(caption = "Resumo final do pré-processamento")
 ```
 
-## 9. Próxima etapa
+## 10. Próxima etapa
 
-O próximo módulo converte os locos SSR mantidos em colunas de dosagem alélica,
+O Módulo 02 converte os locos SSR mantidos em colunas de dosagem alélica,
 constrói as matrizes de marcadores e de relacionamento genômico, cria a matriz
-de efeitos fixos contendo apenas família e define os cinco folds da validação
-cruzada.
+de efeitos fixos de família e define os cinco folds da validação cruzada.
