@@ -269,24 +269,40 @@ method_labels <- c(
 
 model_catalogue <- data.frame(
   Method = method_names,
+  Label = unname(method_labels[method_names]),
   BGLR_component = c(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
   Main_assumption = c(
-    "Gaussian marker effects with a common variance",
+    "Common Gaussian variance for all marker effects",
     "Marker-specific scaled-t variances",
-    "Point mass at zero plus marker-specific scaled-t slab",
+    "Scaled-t slab and a point mass at zero",
     "BayesB with zero-effect probability near 1e-5",
-    "Point mass at zero plus a common Gaussian slab variance",
-    "Double-exponential marker-effect prior; lambda fixed at lambda0",
-    "Genomic values structured by the genomic relationship matrix"
+    "Common Gaussian slab and a point mass at zero",
+    "Double-exponential marginal prior; lambda fixed at BGLR-calibrated lambda0",
+    "Genomic values structured by G"
+  )
+)
+
+model_catalogue_display <- data.frame(
+  Metodo = model_catalogue$Label,
+  Componente_BGLR = model_catalogue$BGLR_component,
+  Entrada_genomica = model_catalogue$Genomic_input,
+  Hipotese_principal = c(
+    "Efeitos Gaussianos com variância comum para todos os marcadores",
+    "Variâncias scaled-t específicas por marcador",
+    "Massa em zero e componente scaled-t para efeitos não nulos",
+    "BayesB com probabilidade de efeito zero próxima de 1e-5",
+    "Massa em zero e variância Gaussiana comum para efeitos não nulos",
+    "Priori marginal dupla exponencial; lambda fixo na calibração do BGLR",
+    "Valores genômicos estruturados pela matriz de relacionamento genômico"
   )
 )
 
 kable(
-  model_catalogue,
+  model_catalogue_display,
   caption = "Métodos de predição genômica ajustados no Módulo 03"
 )
 ```
@@ -531,10 +547,10 @@ run_design$Run_id <- paste(
 stopifnot(nrow(run_design) == 350L)
 ```
 
-Metadados usados apenas pelas verificações internas de integridade são gerados
-em um bloco oculto e não fazem parte da apresentação tutorial.
+Metadados exigidos apenas pelas verificações internas de integridade são
+gerados internamente e não fazem parte da apresentação tutorial.
 
-```{r internal-integrity-metadata, include=FALSE}
+```{r internal-integrity-metadata, include=FALSE, eval=RUN_M03_FIT}
 PIPELINE_VERSION <- "module03-full-v4-bl-fixed"
 
 analysis_settings <- list(
@@ -588,11 +604,84 @@ write.csv(
 )
 ```
 
-### 8.3 Ajuste de uma combinação
+### 8.3 Validação do lambda fixo durante o ajuste
 
-A primeira função prepara o vetor fenotípico mascarado, ajusta o modelo BGLR
-solicitado, captura avisos e valida o contrato de lambda fixo quando o método é
-BL.
+O valor fixo do BL é verificado diretamente no objeto ajustado pelo BGLR e no
+arquivo nativo de lambda. Essa validação é a mesma para todos os ajustes BL e
+fica separada da função geral de ajuste.
+
+```{r bl-validation-helper}
+validate_fixed_bl <- function(
+  fit,
+  save_prefix,
+  run_id,
+  method_name,
+  lambda_update_warning_count
+) {
+  result <- list(
+    lambda = NA_real_,
+    native_value = NA_real_,
+    serialization_error = NA_real_,
+    native_valid = NA,
+    valid = NA
+  )
+
+  if (method_name != "BL") {
+    return(result)
+  }
+
+  result$lambda <- as.numeric(fit$ETA$genomic$lambda)
+  lambda_error <- abs(result$lambda - BL_LAMBDA)
+
+  lambda_trace <- scan(
+    paste0(save_prefix, "ETA_genomic_lambda.dat"),
+    quiet = TRUE
+  )
+
+  result$native_value <- if (length(lambda_trace) > 0L) {
+    lambda_trace[1]
+  } else {
+    NA_real_
+  }
+
+  result$serialization_error <- if (is.finite(result$native_value)) {
+    abs(result$native_value - BL_LAMBDA)
+  } else {
+    Inf
+  }
+
+  result$native_valid <-
+    length(lambda_trace) == RAW_SAVED_SAMPLES &&
+    all(is.finite(lambda_trace)) &&
+    all(lambda_trace > 0) &&
+    length(unique(lambda_trace)) == 1L
+
+  result$valid <-
+    length(result$lambda) == 1L &&
+    is.finite(result$lambda) &&
+    result$lambda > 0 &&
+    lambda_error <= BL_LAMBDA_TOLERANCE &&
+    result$native_valid
+
+  if (!result$valid) {
+    stop("BL FIXED-lambda contract failed for ", run_id)
+  }
+  if (lambda_update_warning_count > 0L) {
+    stop(
+      "Unexpected lambda-update warning under BL type=FIXED for ",
+      run_id
+    )
+  }
+
+  result
+}
+```
+
+### 8.4 Ajuste de uma combinação
+
+A função de ajuste prepara o vetor fenotípico mascarado, ajusta o modelo BGLR
+solicitado, captura avisos e retorna as informações necessárias para os cálculos
+subsequentes.
 
 ```{r fit-one-run-helper}
 fit_one_run <- function(run_index) {
@@ -661,58 +750,13 @@ fit_one_run <- function(run_index) {
     fixed = TRUE
   ))
 
-  bl <- list(
-    lambda = NA_real_,
-    native_value = NA_real_,
-    serialization_error = NA_real_,
-    native_valid = NA,
-    valid = NA
+  bl <- validate_fixed_bl(
+    fit = fit,
+    save_prefix = save_prefix,
+    run_id = run_id,
+    method_name = method_name,
+    lambda_update_warning_count = lambda_update_warning_count
   )
-
-  if (method_name == "BL") {
-    bl$lambda <- as.numeric(fit$ETA$genomic$lambda)
-    lambda_error <- abs(bl$lambda - BL_LAMBDA)
-
-    lambda_trace <- scan(
-      paste0(save_prefix, "ETA_genomic_lambda.dat"),
-      quiet = TRUE
-    )
-
-    bl$native_value <- if (length(lambda_trace) > 0L) {
-      lambda_trace[1]
-    } else {
-      NA_real_
-    }
-
-    bl$serialization_error <- if (is.finite(bl$native_value)) {
-      abs(bl$native_value - BL_LAMBDA)
-    } else {
-      Inf
-    }
-
-    bl$native_valid <-
-      length(lambda_trace) == RAW_SAVED_SAMPLES &&
-      all(is.finite(lambda_trace)) &&
-      all(lambda_trace > 0) &&
-      length(unique(lambda_trace)) == 1L
-
-    bl$valid <-
-      length(bl$lambda) == 1L &&
-      is.finite(bl$lambda) &&
-      bl$lambda > 0 &&
-      lambda_error <= BL_LAMBDA_TOLERANCE &&
-      bl$native_valid
-
-    if (!bl$valid) {
-      stop("BL FIXED-lambda contract failed for ", run_id)
-    }
-    if (lambda_update_warning_count > 0L) {
-      stop(
-        "Unexpected lambda-update warning under BL type=FIXED for ",
-        run_id
-      )
-    }
-  }
 
   list(
     fit = fit,
@@ -734,7 +778,7 @@ fit_one_run <- function(run_index) {
 }
 ```
 
-### 8.4 Predições OOF e valores genômicos
+### 8.5 Predições OOF e valores genômicos
 
 Para cada modelo ajustado,
 
@@ -793,7 +837,7 @@ extract_prediction_outputs <- function(run) {
 }
 ```
 
-### 8.5 Métricas preditivas e de ajuste
+### 8.6 Métricas preditivas e de ajuste
 
 As métricas são calculadas separadamente dentro de cada ajuste
 característica-fold-método. A correlação OOF, RMSE, MAE, viés e inclinação de
@@ -1042,10 +1086,8 @@ convergence_summary$Method_label <-
   unname(method_labels[convergence_summary$Method])
 ```
 
-Os metadados internos de integridade são adicionados somente depois que as
-tabelas científicas foram construídas. Eles são mantidos apenas para
-compatibilidade com as verificações dos módulos posteriores e não são
-apresentados como resultado científico.
+Os metadados internos de integridade exigidos pelos módulos posteriores são
+adicionados internamente após a construção das tabelas científicas.
 
 ```{r add-internal-integrity-fields, include=FALSE, eval=RUN_M03_FIT}
 cv_metrics_by_fold$Signature <- analysis_signature
@@ -1071,7 +1113,7 @@ Antes da gravação, são conferidas as dimensões esperadas. Essas verificaçõ
 protegem o pipeline contra uma execução incompleta, mas não fazem parte da
 seleção de modelos.
 
-```{r validate-and-save, eval=RUN_M03_FIT}
+```{r validate-results, eval=RUN_M03_FIT}
 expected_fits <- nrow(run_design)
 expected_predictions <-
   length(ids) * length(traits) * length(method_names)
@@ -1081,11 +1123,33 @@ stopifnot(
   nrow(cv_metrics_by_fold) == expected_fits,
   nrow(cv_predictions) == expected_predictions,
   nrow(genomic_values_by_fold) == length(ids) * expected_fits,
-  nrow(convergence_diagnostics) == 2L * expected_fits,
+  nrow(convergence_diagnostics) == 2L * expected_fits
+)
+```
+
+```{r validate-internal-integrity, include=FALSE, eval=RUN_M03_FIT}
+stopifnot(
   length(unique(cv_metrics_by_fold$Signature)) == 1L,
   identical(unique(cv_metrics_by_fold$Signature), analysis_signature)
 )
 
+models_object <- list(
+  signature = analysis_signature,
+  settings = analysis_settings,
+  run_design = run_design,
+  model_catalogue = model_catalogue,
+  trait_dictionary = trait_dictionary,
+  predictions = cv_predictions,
+  genomic_values_by_fold = genomic_values_by_fold,
+  metrics_by_fold = cv_metrics_by_fold,
+  convergence_diagnostics = convergence_diagnostics
+)
+```
+
+As tabelas analíticas e o objeto completo do Módulo 03 são então gravados em
+`output/models/`.
+
+```{r save-model-results, eval=RUN_M03_FIT}
 write.csv(
   cv_predictions,
   file.path(OUTPUT_DIR, "cv_predictions.csv"),
@@ -1112,20 +1176,7 @@ write.csv(
   row.names = FALSE
 )
 
-saveRDS(
-  list(
-    signature = analysis_signature,
-    settings = analysis_settings,
-    run_design = run_design,
-    model_catalogue = model_catalogue,
-    trait_dictionary = trait_dictionary,
-    predictions = cv_predictions,
-    genomic_values_by_fold = genomic_values_by_fold,
-    metrics_by_fold = cv_metrics_by_fold,
-    convergence_diagnostics = convergence_diagnostics
-  ),
-  MODELS_FILE
-)
+saveRDS(models_object, MODELS_FILE)
 
 cat("\nAjuste do M03 concluído.\n")
 cat("Ajustes:", nrow(cv_metrics_by_fold), "\n")
