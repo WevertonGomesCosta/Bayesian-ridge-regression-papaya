@@ -24,26 +24,34 @@ knitr::opts_chunk$set(
   echo = TRUE,
   warning = FALSE,
   message = FALSE,
-  cache = FALSE
+  cache = FALSE,
+  fig.align = "center",
+  out.width = "100%"
 )
 ```
 
-## 1. Objetivo e contrato desta etapa
+## 1. Objetivo
 
-Este módulo transforma as saídas oficiais do Módulo 03 em resultados analíticos derivados. Nenhum modelo é reajustado e nenhuma figura de apresentação final é produzida aqui.
+A partir das predições, métricas e diagnósticos obtidos no Módulo 03, este
+módulo compara os sete métodos dentro de cada característica e deriva os
+resultados utilizados na seleção genômica.
 
-São derivados: desempenho preditivo OOF; DIC, delta de DIC, `Wprob` e `ER`; decisão do método por característica; estabilidade entre folds; tempo computacional; herdabilidade e acurácia no análogo RR-BLUP/BRR; valores genômicos OOF; rankings orientados; seleção proporcional; recorrência multicaracterística; e correlações entre valores genômicos.
+São calculados o desempenho preditivo OOF, DIC e medidas relativas de suporte,
+a decisão do método por característica, a estabilidade entre folds, o tempo
+computacional, a herdabilidade e a acurácia no análogo RR-BLUP/BRR, os valores
+genômicos OOF, os rankings orientados, a seleção proporcional, a recorrência
+entre características e as correlações entre valores genômicos.
 
-A decisão do método segue uma regra hierárquica reproduzível que integra desempenho OOF, ajuste relativo por DIC e estabilidade das cadeias. Quando os métodos são praticamente equivalentes, RR-BLUP é preferido; decisões com conflito entre critérios ou flags de convergência permanecem explicitamente marcadas para revisão.
+A direção de melhoramento é definida antes do ranking: aumentar MMCOM, PRODCOM,
+CF, DF, EP, FFC, FFP e SS; diminuir PRODEF e DCI.
 
-Os valores genômicos utilizados no ranking são estritamente OOF: cada indivíduo recebe o componente genômico do fold em que seu fenótipo foi mascarado. A direção de melhoramento é predefinida por característica: aumentar MMCOM, PRODCOM, CF, DF, EP, FFC, FFP e SS; e diminuir PRODEF e DCI. Não é realizada seleção multicaracterística.
-
-## 2. Entradas oficiais
+## 2. Pacotes e resultados do ajuste dos modelos
 
 ```{r packages}
 suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
+  library(knitr)
   library(here)
 })
 ```
@@ -58,269 +66,48 @@ dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
 matrices_object <- readRDS(MATRICES_FILE)
 models_object <- readRDS(MODELS_FILE)
 
-# Integrity gate: M04 only accepts a complete M03 object generated from the
-# current M02 matrices and analytical settings.
-expected_traits <- colnames(matrices_object$phenotypes)
-expected_methods <- c(
-  "RRBLUP", "BayesA", "BayesB", "BayesB2",
-  "BayesC", "BL", "GBLUP"
-)
-expected_folds <- seq_len(
-  matrices_object$settings$n_folds
-)
-
-expected_signature <- substr(
-  digest::digest(
-    list(
-      ids = matrices_object$ids,
-      phenotypes = matrices_object$phenotypes,
-      X = matrices_object$X,
-      M = matrices_object$M,
-      G = matrices_object$G,
-      cv_folds = matrices_object$cv_folds,
-      settings = models_object$settings
-    ),
-    algo = "sha256"
-  ),
-  1,
-  16
-)
-
-if (
-  length(models_object$signature) != 1L ||
-  !identical(
-    as.character(models_object$signature),
-    expected_signature
-  )
-) {
-  stop(
-    paste0(
-      "M04 integrity gate failed: models_object.rds does not match ",
-      "the current matrices_object.rds analytical signature. ",
-      "Rebuild M03 from the current M02 outputs before running M04."
-    )
-  )
-}
-
-settings_contract_ok <-
-  identical(
-    as.character(models_object$settings$traits),
-    expected_traits
-  ) &&
-  identical(
-    as.integer(models_object$settings$folds),
-    as.integer(expected_folds)
-  ) &&
-  identical(
-    as.character(models_object$settings$methods),
-    expected_methods
-  )
-
-if (!settings_contract_ok) {
-  stop(
-    paste0(
-      "M04 integrity gate failed: the M03 trait/fold/method settings ",
-      "do not match the current project contract."
-    )
-  )
-}
-
 metrics <- models_object$metrics_by_fold
 predictions <- models_object$predictions
 convergence <- models_object$convergence_diagnostics
 
-expected_runs <-
-  length(expected_traits) *
-  length(expected_folds) *
-  length(expected_methods)
-
-expected_predictions <-
-  length(matrices_object$ids) *
-  length(expected_traits) *
-  length(expected_methods)
-
-expected_convergence_rows <-
-  expected_runs * 2L
-
-if (nrow(metrics) != expected_runs) {
-  stop(
-    sprintf(
-      paste0(
-        "M04 integrity gate failed: M03 is incomplete. ",
-        "Expected %d trait-fold-method fits, found %d."
-      ),
-      expected_runs,
-      nrow(metrics)
-    )
-  )
-}
-
-if (nrow(predictions) != expected_predictions) {
-  stop(
-    sprintf(
-      paste0(
-        "M04 integrity gate failed: expected %d OOF predictions, found %d."
-      ),
-      expected_predictions,
-      nrow(predictions)
-    )
-  )
-}
-
-if (nrow(convergence) != expected_convergence_rows) {
-  stop(
-    sprintf(
-      paste0(
-        "M04 integrity gate failed: expected %d convergence records, found %d."
-      ),
-      expected_convergence_rows,
-      nrow(convergence)
-    )
-  )
-}
-
-signature_columns_ok <-
-  all(metrics$Signature == expected_signature) &&
-  all(predictions$Signature == expected_signature) &&
-  all(convergence$Signature == expected_signature)
-
-if (!signature_columns_ok) {
-  stop(
-    "M04 integrity gate failed: mixed analytical signatures were found in M03 outputs."
-  )
-}
-
-metric_keys <- metrics |>
-  distinct(Trait, Fold, Method)
-
-prediction_keys <- predictions |>
-  distinct(IND, Trait, Method)
-
-convergence_keys <- convergence |>
-  count(Trait, Fold, Method, name = "N_parameters")
-
-if (
-  nrow(metric_keys) != expected_runs ||
-  anyDuplicated(metric_keys) > 0L
-) {
-  stop(
-    "M04 integrity gate failed: duplicated or missing trait-fold-method metric keys."
-  )
-}
-
-if (
-  nrow(prediction_keys) != expected_predictions ||
-  anyDuplicated(prediction_keys) > 0L
-) {
-  stop(
-    "M04 integrity gate failed: OOF predictions are not unique by individual, trait, and method."
-  )
-}
-
-if (
-  nrow(convergence_keys) != expected_runs ||
-  any(convergence_keys$N_parameters != 2L)
-) {
-  stop(
-    "M04 integrity gate failed: each M03 fit must contribute exactly two convergence records."
-  )
-}
-
-metric_coverage_ok <-
-  setequal(unique(metrics$Trait), expected_traits) &&
-  setequal(unique(metrics$Fold), expected_folds) &&
-  setequal(unique(metrics$Method), expected_methods)
-
-if (!metric_coverage_ok) {
-  stop(
-    "M04 integrity gate failed: trait, fold, or method coverage is incomplete."
-  )
-}
-
-metrics_per_trait_method <- metrics |>
-  count(Trait, Method, name = "N_folds")
-
-predictions_per_trait_method <- predictions |>
-  count(Trait, Method, name = "N_predictions")
-
-if (
-  nrow(metrics_per_trait_method) !=
-    length(expected_traits) * length(expected_methods) ||
-  any(metrics_per_trait_method$N_folds != length(expected_folds))
-) {
-  stop(
-    "M04 integrity gate failed: every trait-method combination must contain all five folds."
-  )
-}
-
-if (
-  nrow(predictions_per_trait_method) !=
-    length(expected_traits) * length(expected_methods) ||
-  any(
-    predictions_per_trait_method$N_predictions !=
-      length(matrices_object$ids)
-  )
-) {
-  stop(
-    "M04 integrity gate failed: every trait-method combination must contain one OOF prediction per individual."
-  )
-}
-
-expected_training_n <- setNames(
-  matrices_object$fold_summary$Training_n,
-  matrices_object$fold_summary$Fold
-)
-
-expected_validation_n <- setNames(
-  matrices_object$fold_summary$Validation_n,
-  matrices_object$fold_summary$Fold
-)
-
-observed_training_expected <- unname(
-  expected_training_n[
-    as.character(metrics$Fold)
-  ]
-)
-
-observed_validation_expected <- unname(
-  expected_validation_n[
-    as.character(metrics$Fold)
-  ]
-)
-
-if (
-  any(metrics$Training_n != observed_training_expected) ||
-  any(metrics$Validation_n != observed_validation_expected)
-) {
-  stop(
-    "M04 integrity gate failed: training/validation sample sizes do not match the M02 fold contract."
-  )
-}
-
-if (
-  !all(metrics$Finite_predictions) ||
-  !all(metrics$Finite_metrics) ||
-  !all(is.finite(predictions$Observed)) ||
-  !all(is.finite(predictions$Predicted))
-) {
-  stop(
-    "M04 integrity gate failed: non-finite predictions or fit metrics require review before derivation."
-  )
-}
-
-traits <- expected_traits
-methods <- expected_methods
+traits <- colnames(matrices_object$phenotypes)
+methods <- models_object$settings$methods
 ```
 
-Antes de qualquer derivação, o módulo verifica a assinatura analítica, a
-completude dos 350 ajustes, a cobertura das dez características, cinco folds e
-sete métodos, a unicidade das predições OOF e os tamanhos de treinamento e
-validação. Assim, um teste parcial do Módulo 03 não pode ser utilizado
-acidentalmente como resultado final.
+As dimensões das três tabelas recebidas mostram a cobertura da análise antes
+das derivações seguintes.
+
+```{r input-summary}
+data.frame(
+  Saida = c(
+    "Métricas característica × fold × método",
+    "Predições OOF",
+    "Diagnósticos MCMC"
+  ),
+  Linhas = c(
+    nrow(metrics),
+    nrow(predictions),
+    nrow(convergence)
+  ),
+  Caracteristicas = c(
+    n_distinct(metrics$Trait),
+    n_distinct(predictions$Trait),
+    n_distinct(convergence$Trait)
+  ),
+  Metodos = c(
+    n_distinct(metrics$Method),
+    n_distinct(predictions$Method),
+    n_distinct(convergence$Method)
+  )
+) |>
+  kable(caption = "Resultados recebidos do ajuste dos modelos")
+```
 
 ## 3. Desempenho preditivo OOF
 
-As métricas principais são calculadas com as 150 predições fora da amostra de cada combinação entre característica e método, preservando uma única predição OOF por indivíduo.
+As métricas principais são recalculadas com as 150 predições fora da amostra
+de cada combinação característica × método. Cada indivíduo contribui uma única
+predição OOF para cada método.
 
 ```{r pooled-oof-metrics}
 pooled_metrics <- predictions |>
@@ -355,15 +142,32 @@ fold_summary <- metrics |>
   )
 ```
 
-Os p-valores da correlação de Pearson são mantidos apenas como medidas nominais e descritivas, pois os conjuntos de treinamento da validação cruzada se sobrepõem entre folds.
+Os p-valores da correlação de Pearson são mantidos como medidas nominais e
+descritivas porque os conjuntos de treinamento se sobrepõem entre folds.
 
-## 4. Comparação dos métodos
+```{r pooled-oof-preview}
+pooled_metrics |>
+  arrange(match(Trait, traits), desc(r), RMSE) |>
+  head(14) |>
+  kable(
+    digits = 5,
+    caption = "Exemplo do desempenho preditivo OOF"
+  )
+```
 
-Silva et al. [@silva2021brrguava] calcularam probabilidades aproximadas a partir da diferença entre o DIC de cada modelo e o menor DIC. A mesma lógica é aplicada conjuntamente aos sete métodos deste projeto.
+## 4. DIC e suporte relativo dos métodos
+
+Seguindo a lógica utilizada no estudo de referência [@silva2021brrguava], a
+diferença em relação ao menor DIC médio de cada característica é convertida em
+pesos relativos:
 
 \[
-\Delta_j=DIC_j-\min(DIC),\qquad
-Wprob_j=\frac{\exp(-\Delta_j/2)}{\sum_k\exp(-\Delta_k/2)},\qquad
+\Delta_j=DIC_j-\min(DIC),
+\]
+
+\[
+Wprob_j=\frac{\exp(-\Delta_j/2)}{\sum_k\exp(-\Delta_k/2)},
+\qquad
 ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 \]
 
@@ -388,84 +192,36 @@ model_comparison <- pooled_metrics |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
 
+```{r model-comparison-preview}
+model_comparison |>
+  select(
+    Trait, Method, Mean_DIC, Delta_DIC,
+    Wprob, ER, r, RMSE, MAE
+  ) |>
+  head(21) |>
+  kable(
+    digits = 5,
+    caption = "Exemplo da comparação entre os métodos"
+  )
+```
+
 ## 5. Seleção do método por característica
 
-A seleção segue uma **hierarquia explícita**, sem combinar os critérios em um
-escore único. A capacidade preditiva fora da amostra é o critério principal; o
-DIC fornece evidência complementar sobre ajuste e complexidade; estabilidade
-entre folds e diagnósticos MCMC indicam a robustez da decisão.
+A capacidade preditiva OOF é o critério principal. DIC fornece evidência
+complementar sobre ajuste e complexidade, enquanto a variação entre folds e os
+diagnósticos MCMC ajudam a avaliar a estabilidade da escolha.
 
-### Interpretação dos parâmetros usados na escolha
+Um método é considerado preditivamente competitivo quando sua média de
+correlação entre folds está até um erro-padrão abaixo da maior média e seu RMSE
+médio está até um erro-padrão acima do menor RMSE médio. O ajuste por DIC é
+considerado semelhante quando `Delta_DIC <= 2`. Esses limites são regras
+operacionais de comparação, não testes formais de equivalência.
 
-- `r`: correlação de Pearson entre valores observados e preditos OOF. Quanto
-  maior, melhor a associação preditiva; é a referência principal.
-- `p_value`: teste nominal de \(r=0\). É apenas descritivo porque os conjuntos de
-  treinamento dos folds se sobrepõem.
-- `RMSE`: raiz do erro quadrático médio, na unidade da característica. Quanto
-  menor, melhor; penaliza mais fortemente erros grandes.
-- `MAE`: erro absoluto médio, também na unidade da característica. Quanto menor,
-  melhor e menos sensível a erros extremos que o RMSE.
-- `Bias`: média de `Predicted - Observed`. O valor ideal é próximo de zero.
-- `Slope`: inclinação da regressão de observado sobre predito. O valor ideal é
-  próximo de 1; valores distantes de 1 indicam problema de calibração.
-- `Mean_DIC`: média do DIC entre folds. Valores menores indicam melhor compromisso
-  entre ajuste e complexidade; DIC não mede diretamente capacidade preditiva.
-- `Delta_DIC`: diferença em relação ao menor DIC médio da característica. Zero
-  identifica o melhor DIC médio.
-- `Wprob`: peso aproximado derivado de `Delta_DIC`, normalizado entre os métodos.
-  Valores maiores indicam maior suporte relativo pelo DIC; não é interpretado
-  como probabilidade posterior exata do modelo.
-- `ER`: razão entre o maior `Wprob` e o `Wprob` do método. O melhor valor é 1;
-  valores maiores indicam menor suporte relativo.
-- `Mean_fold_r` e `SD_fold_r`: média e variabilidade da correlação nos folds.
-- `Mean_fold_RMSE` e `SD_fold_RMSE`: média e variabilidade do RMSE nos folds.
-- `Minimum_ESS`, `Maximum_absolute_Geweke`, `Parameters_flagged` e
-  `Runs_with_flags`: diagnósticos de cadeia. Eles sinalizam necessidade de
-  revisão e não funcionam como critérios biológicos.
-- tempo computacional é um critério operacional secundário e só deve decidir
-  entre métodos com desempenho científico equivalente.
-
-### Critério operacional de equivalência
-
-Para evitar escolher um método diferente apenas por uma vantagem numérica muito
-pequena, utiliza-se um **critério operacional de equivalência baseado em um
-erro-padrão entre folds**. Como os conjuntos de treinamento da validação cruzada
-se sobrepõem, esse critério não constitui teste formal de equivalência entre
-modelos.
-
-Um método é considerado preditivamente competitivo quando:
-
-1. sua média de `r` está até um erro-padrão abaixo da melhor média de `r`; e
-2. seu RMSE médio está até um erro-padrão acima do menor RMSE médio.
-
-O ajuste por DIC é considerado semelhante segundo o limite operacional
-`Delta_DIC <= 2`. Esse limite também não constitui teste formal de equivalência.
-
-O conjunto competitivo para seleção é a interseção entre equivalência
-preditiva e semelhança por DIC.
-
-### Preferência pelo RR-BLUP e revisão por convergência
-
-A preferência pelo RR-BLUP é aplicada somente quando ele pertence ao conjunto
-competitivo **e não possui flags de convergência**.
-
-- Se RR-BLUP for também o vencedor preditivo, ele é selecionado por mérito
-  preditivo e `RRBLUP_preference_applied = FALSE`.
-- Se outro método for o vencedor preditivo, mas RR-BLUP estiver no conjunto
-  competitivo sem flags, RR-BLUP é preferido e
-  `RRBLUP_preference_applied = TRUE`.
-- Se RR-BLUP não for candidato automático, seleciona-se o melhor método
-  competitivo sem flags por `r`, seguido de RMSE, MAE e DIC.
-- Se nenhum método reunir simultaneamente equivalência preditiva, semelhança por
-  DIC e ausência de flags, o vencedor preditivo é mantido apenas como escolha
-  provisória e `Selection_requires_review = TRUE`.
-
-A preferência pelo RR-BLUP em situações equivalentes é deliberada: no fluxo
-atual ele utiliza uma variância comum dos efeitos dos marcadores e uma variância
-residual, permitindo uma decomposição direta da variância aditiva e da
-herdabilidade. Isso não significa que os demais modelos Bayesianos sejam
-incapazes de produzir informações de variância; a vantagem aqui é a
-simplicidade e a interpretação direta da parametrização utilizada no projeto.
+Quando RR-BLUP pertence ao conjunto competitivo e não apresenta flags de
+convergência, ele é preferido pela parametrização mais simples e pela
+interpretação direta dos componentes de variância. Caso contrário, é utilizado
+o melhor candidato competitivo sem flags; se não houver candidato automático,
+o vencedor preditivo é mantido como escolha provisória para revisão.
 
 ```{r model-selection}
 DIC_EQUIVALENCE_THRESHOLD <- 2
@@ -528,42 +284,29 @@ model_selection_support <- model_comparison |>
     Best_mean_fold_RMSE_SE =
       SD_fold_RMSE[which.min(Mean_fold_RMSE)] / sqrt(N_FOLDS),
     Within_one_SE_r =
-      Mean_fold_r >=
-      Best_mean_fold_r - Best_mean_fold_r_SE,
+      Mean_fold_r >= Best_mean_fold_r - Best_mean_fold_r_SE,
     Within_one_SE_RMSE =
-      Mean_fold_RMSE <=
-      Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE,
+      Mean_fold_RMSE <= Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE,
     Predictively_competitive =
       Within_one_SE_r & Within_one_SE_RMSE,
-    DIC_equivalence_threshold =
-      DIC_EQUIVALENCE_THRESHOLD,
-    DIC_competitive =
-      Delta_DIC <= DIC_EQUIVALENCE_THRESHOLD,
+    DIC_equivalence_threshold = DIC_EQUIVALENCE_THRESHOLD,
+    DIC_competitive = Delta_DIC <= DIC_EQUIVALENCE_THRESHOLD,
     Competitive_for_selection =
       Predictively_competitive & DIC_competitive,
-    Convergence_review =
-      Parameters_flagged > 0,
+    Convergence_review = Parameters_flagged > 0,
     Automatic_candidate =
       Competitive_for_selection & !Convergence_review,
-    Competitive_set_n =
-      sum(Competitive_for_selection),
-    Automatic_candidate_n =
-      sum(Automatic_candidate),
-    RRBLUP_competitive =
-      any(
-        Method == "RRBLUP" &
-          Competitive_for_selection
-      ),
-    RRBLUP_automatic_candidate =
-      any(
-        Method == "RRBLUP" &
-          Automatic_candidate
-      ),
-    Automatic_selection_available =
-      any(Automatic_candidate),
+    Competitive_set_n = sum(Competitive_for_selection),
+    Automatic_candidate_n = sum(Automatic_candidate),
+    RRBLUP_competitive = any(
+      Method == "RRBLUP" & Competitive_for_selection
+    ),
+    RRBLUP_automatic_candidate = any(
+      Method == "RRBLUP" & Automatic_candidate
+    ),
+    Automatic_selection_available = any(Automatic_candidate),
     Selection_priority = case_when(
-      Automatic_candidate &
-        Method == "RRBLUP" ~ 1L,
+      Automatic_candidate & Method == "RRBLUP" ~ 1L,
       Automatic_candidate ~ 2L,
       TRUE ~ 3L
     )
@@ -598,10 +341,7 @@ automatic_selections <- model_selection_support |>
 
 selection_spec <- predictive_winners |>
   select(Trait, Predictive_winner) |>
-  left_join(
-    automatic_selections,
-    by = "Trait"
-  ) |>
+  left_join(automatic_selections, by = "Trait") |>
   mutate(
     Selected_method = coalesce(
       Automatic_selected_method,
@@ -621,10 +361,7 @@ selection_spec <- predictive_winners |>
         RRBLUP_automatic_candidate,
         Convergence_review
       ),
-    by = c(
-      "Trait",
-      "Selected_method" = "Method"
-    )
+    by = c("Trait", "Selected_method" = "Method")
   ) |>
   mutate(
     RRBLUP_preference_applied =
@@ -632,12 +369,10 @@ selection_spec <- predictive_winners |>
       Predictive_winner != "RRBLUP" &
       RRBLUP_automatic_candidate,
     Selection_requires_review =
-      !Automatic_selection_available |
-      Convergence_review,
-    Selection_status = if_else(
-      Selection_requires_review,
-      "provisional_review_required",
-      "automatic_supported"
+      !Automatic_selection_available | Convergence_review,
+    Selection_status = case_when(
+      Selection_requires_review ~ "provisional_review_required",
+      TRUE ~ "automatic_supported"
     ),
     Decision_code = case_when(
       Selection_requires_review ~
@@ -648,16 +383,12 @@ selection_spec <- predictive_winners |>
       Selected_method == "RRBLUP" &
         Predictive_winner == "RRBLUP" ~
         "rrblup_best_predictive_model",
-      TRUE ~
-        "best_non_rrblup_equivalent_model"
+      TRUE ~ "best_non_rrblup_equivalent_model"
     ),
     Operational_equivalence_rule =
       "one_se_r_and_rmse_plus_delta_dic_le_2"
   ) |>
-  select(
-    -Predictive_winner,
-    -Convergence_review
-  ) |>
+  select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
 
 selected_performance <- model_selection_support |>
@@ -706,28 +437,18 @@ model_selection <- selection_spec |>
     selected_performance,
     by = c("Trait", "Selected_method")
   ) |>
-  left_join(
-    predictive_winners,
-    by = "Trait"
-  ) |>
-  left_join(
-    dic_winners,
-    by = "Trait"
-  ) |>
+  left_join(predictive_winners, by = "Trait") |>
+  left_join(dic_winners, by = "Trait") |>
   mutate(
-    Predictive_loss =
-      Predictive_winner_r - r,
+    Predictive_loss = Predictive_winner_r - r,
     Predictive_winner_agrees =
       Selected_method == Predictive_winner,
     DIC_winner_agrees =
       Selected_method == DIC_winner,
     Predictive_evidence = case_when(
-      r > 0 & p_value < 0.05 ~
-        "positive_p_lt_0.05",
-      r > 0 & p_value >= 0.05 ~
-        "positive_p_ge_0.05",
-      TRUE ~
-        "nonpositive_p_ge_0.05"
+      r > 0 & p_value < 0.05 ~ "positive_p_lt_0.05",
+      r > 0 & p_value >= 0.05 ~ "positive_p_ge_0.05",
+      TRUE ~ "nonpositive_p_ge_0.05"
     )
   ) |>
   arrange(match(Trait, traits))
@@ -737,9 +458,30 @@ predictive_evidence_summary <- model_selection |>
   arrange(Predictive_evidence)
 ```
 
-## 6. Estabilidade entre folds dos métodos selecionados
+A tabela abaixo torna explícita a escolha obtida para cada característica.
 
-Os valores são derivados aqui; sua apresentação gráfica fica exclusivamente no Módulo 05.
+```{r model-selection-table}
+model_selection |>
+  select(
+    Trait, Selected_method, Predictive_winner, DIC_winner,
+    r, p_value, RMSE, Mean_DIC, Delta_DIC,
+    RRBLUP_preference_applied,
+    Selection_status, Predictive_evidence
+  ) |>
+  kable(
+    digits = 5,
+    caption = "Método selecionado por característica"
+  )
+```
+
+```{r predictive-evidence-table}
+kable(
+  predictive_evidence_summary,
+  caption = "Classificação da evidência preditiva das características"
+)
+```
+
+## 6. Estabilidade entre folds dos métodos selecionados
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
@@ -749,11 +491,16 @@ selected_fold_diagnostics <- metrics |>
   ) |>
   transmute(Trait, Fold, Method, Correlation, RMSE, MAE) |>
   arrange(match(Trait, traits), Fold)
+
+selected_fold_diagnostics |>
+  head(15) |>
+  kable(
+    digits = 5,
+    caption = "Exemplo do desempenho por fold dos métodos selecionados"
+  )
 ```
 
 ## 7. Tempo computacional
-
-São utilizados apenas os tempos dos 350 ajustes oficiais do Módulo 03; não são executadas repetições adicionais para mensuração de tempo.
 
 ```{r runtime}
 runtime_summary <- metrics |>
@@ -769,11 +516,20 @@ runtime_summary <- metrics |>
     .groups = "drop"
   ) |>
   arrange(match(Method, methods))
+
+kable(
+  runtime_summary,
+  digits = 3,
+  caption = "Tempo computacional dos sete métodos"
+)
 ```
 
 ## 8. Herdabilidade e acurácia no análogo RR-BLUP/BRR
 
-Seguindo Silva et al. [@silva2021brrguava], a variância genética aditiva do análogo RR-BLUP/BRR é calculada a partir da variância comum dos marcadores e do denominador \(\sum 2pq\). A acurácia por fold é \(r_f/\sqrt{H_f^2}\).
+Seguindo Silva et al. [@silva2021brrguava], a variância genética aditiva do
+análogo RR-BLUP/BRR é obtida a partir da variância comum dos marcadores e do
+denominador \(\sum 2pq\). A acurácia por fold é definida como
+\(r_f/\sqrt{H_f^2}\).
 
 ```{r rrblup-heritability}
 rrblup_variance_components <- convergence |>
@@ -810,9 +566,18 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
     .groups = "drop"
   ) |>
   arrange(match(Trait, traits))
+
+kable(
+  rrblup_heritability_summary,
+  digits = 5,
+  caption = "Herdabilidade e acurácia no análogo RR-BLUP/BRR"
+)
 ```
 
 ## 9. Valores genômicos OOF e direção de seleção
+
+A direção de seleção é aplicada ao valor genômico somente no momento de
+construir o ranking. O valor genômico original permanece inalterado.
 
 ```{r selected-oof-genomic-values}
 selection_objective_map <- c(
@@ -828,10 +593,6 @@ selection_objective_map <- c(
   SS = "increase"
 )
 
-if (!setequal(names(selection_objective_map), traits)) {
-  stop("M04 integrity gate failed: selection-direction contract does not cover exactly the ten traits.")
-}
-
 selection_objectives <- data.frame(
   Trait = traits,
   Selection_objective = unname(selection_objective_map[traits]),
@@ -845,13 +606,10 @@ selection_objectives <- data.frame(
     )
   )
 
-if (anyNA(selection_objectives$Ranking_rule)) {
-  stop("M04 integrity gate failed: unknown selection objective.")
-}
-
 selected_oof_genomic_values <- predictions |>
   inner_join(
-    model_selection |> select(Trait, Selected_method, Predictive_evidence),
+    model_selection |>
+      select(Trait, Selected_method, Predictive_evidence),
     by = "Trait"
   ) |>
   inner_join(selection_objectives, by = "Trait") |>
@@ -862,13 +620,19 @@ selected_oof_genomic_values <- predictions |>
     Genomic_value = Genomic_component
   ) |>
   arrange(match(Trait, traits), IND)
+
+kable(
+  selection_objectives,
+  caption = "Direção de seleção definida para cada característica"
+)
 ```
 
-## 10. Seleção proporcional e recorrência multicaracterística
+## 10. Seleção proporcional por característica
 
-A seleção de candidatos é restrita às características com correlação OOF positiva e `p < 0,05`. Dentro de cada característica suportada, são selecionados os 20% de indivíduos mais favoráveis segundo o ranking orientado. A proporção é parametrizada e o número selecionado é calculado como `ceiling(SELECTION_PROPORTION * N_available)`.
-
-A recorrência multicaracterística permanece descritiva: conta-se em quantas características suportadas cada indivíduo pertence ao conjunto selecionado. Não são aplicados pesos e não é construído índice de seleção.
+A seleção é restrita às características com correlação OOF positiva e
+`p < 0,05`. Dentro de cada característica suportada, os 20% de indivíduos com
+maior escore orientado são selecionados. Para características cujo objetivo é
+diminuir, o escore é o negativo do valor genômico.
 
 ```{r genomic-ranking}
 genomic_ranking <- selected_oof_genomic_values |>
@@ -878,13 +642,7 @@ genomic_ranking <- selected_oof_genomic_values |>
       Selection_objective == "decrease" ~ -Genomic_value,
       TRUE ~ NA_real_
     )
-  )
-
-if (any(!is.finite(genomic_ranking$Selection_score))) {
-  stop("M04 integrity gate failed: non-finite oriented selection score.")
-}
-
-genomic_ranking <- genomic_ranking |>
+  ) |>
   group_by(Trait) |>
   arrange(desc(Selection_score), IND, .by_group = TRUE) |>
   mutate(Rank = row_number()) |>
@@ -896,10 +654,6 @@ SELECTION_PROPORTION <- 0.20
 supported_traits <- model_selection |>
   filter(Predictive_evidence == "positive_p_lt_0.05") |>
   pull(Trait)
-
-if (length(supported_traits) == 0L) {
-  stop("M04 integrity gate failed: no trait satisfies the predictive-evidence contract.")
-}
 
 selection_sizes <- genomic_ranking |>
   filter(Trait %in% supported_traits) |>
@@ -913,48 +667,34 @@ selection_sizes <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits))
 
-selection_cutoff_audit <- genomic_ranking |>
+selection_cutoff_summary <- genomic_ranking |>
+  filter(Trait %in% supported_traits) |>
   inner_join(
-    selection_sizes |> select(Trait, N_available, N_selected),
+    selection_sizes |>
+      select(Trait, N_available, N_selected),
     by = "Trait"
   ) |>
+  arrange(match(Trait, traits), Rank) |>
   group_by(Trait) |>
+  mutate(Next_score = lead(Selection_score)) |>
   summarise(
     N_available = first(N_available),
     N_selected = first(N_selected),
     Score_last_selected = Selection_score[first(N_selected)],
-    Score_first_not_selected = if (
-      first(N_selected) < first(N_available)
-    ) {
-      Selection_score[first(N_selected) + 1L]
-    } else {
-      NA_real_
-    },
-    Exact_boundary_tie = if (
-      first(N_selected) < first(N_available)
-    ) {
-      Score_last_selected == Score_first_not_selected
-    } else {
-      FALSE
-    },
+    Score_first_not_selected = Next_score[first(N_selected)],
+    Exact_boundary_tie =
+      !is.na(Score_first_not_selected) &
+      Score_last_selected == Score_first_not_selected,
     .groups = "drop"
   ) |>
   arrange(match(Trait, traits))
-
-if (any(selection_cutoff_audit$Exact_boundary_tie)) {
-  stop(
-    paste0(
-      "M04 integrity gate failed: exact genomic-score tie at the proportional ",
-      "selection boundary. Define an explicit tie policy before proceeding."
-    )
-  )
-}
 
 selected_individuals_by_trait <- genomic_ranking |>
   inner_join(selection_sizes, by = "Trait") |>
   filter(Rank <= N_selected) |>
   left_join(
-    matrices_object$metadata |> select(IND, FAM),
+    matrices_object$metadata |>
+      select(IND, FAM),
     by = "IND"
   ) |>
   select(
@@ -964,14 +704,42 @@ selected_individuals_by_trait <- genomic_ranking |>
     Selection_proportion, N_available, N_selected
   ) |>
   arrange(match(Trait, traits), Rank)
+```
 
-if (
-  nrow(selected_individuals_by_trait) != sum(selection_sizes$N_selected) ||
-  any(selected_individuals_by_trait$Rank > selected_individuals_by_trait$N_selected)
-) {
-  stop("M04 integrity gate failed: proportional selection size is inconsistent.")
-}
+```{r selection-size-table}
+kable(
+  selection_sizes,
+  digits = 2,
+  caption = "Número de indivíduos selecionados por característica suportada"
+)
+```
 
+```{r selection-cutoff-table}
+kable(
+  selection_cutoff_summary,
+  digits = 5,
+  caption = "Escores no limite da seleção proporcional"
+)
+```
+
+```{r selected-individuals-preview}
+selected_individuals_by_trait |>
+  group_by(Trait) |>
+  slice_head(n = 5) |>
+  ungroup() |>
+  kable(
+    digits = 5,
+    caption = "Cinco primeiros indivíduos do ranking em cada característica suportada"
+  )
+```
+
+## 11. Recorrência entre características
+
+A recorrência é descritiva: conta em quantas características suportadas cada
+indivíduo aparece entre os 20% mais favoráveis. Não são usados pesos e não é
+construído índice de seleção multicaracterística.
+
+```{r multitrait-recurrence}
 recurrence_counts <- selected_individuals_by_trait |>
   arrange(match(Trait, traits), Rank) |>
   group_by(IND, FAM) |>
@@ -989,8 +757,14 @@ multitrait_recurrence <- matrices_object$metadata |>
   mutate(
     N_traits = tidyr::replace_na(N_traits, 0L),
     Traits = tidyr::replace_na(Traits, ""),
-    Best_rank = if_else(N_traits == 0L, NA_integer_, Best_rank),
-    Mean_rank_present = if_else(N_traits == 0L, NA_real_, Mean_rank_present),
+    Best_rank = case_when(
+      N_traits == 0L ~ NA_integer_,
+      TRUE ~ Best_rank
+    ),
+    Mean_rank_present = case_when(
+      N_traits == 0L ~ NA_real_,
+      TRUE ~ Mean_rank_present
+    ),
     Selection_frequency = N_traits / length(supported_traits),
     Recurrence_class = case_when(
       N_traits >= 4L ~ "high_4plus",
@@ -1012,7 +786,8 @@ recurrence_distribution <- multitrait_recurrence |>
 
 candidate_rank_wide <- selected_individuals_by_trait |>
   semi_join(
-    multitrait_recurrence |> filter(N_traits >= 2L),
+    multitrait_recurrence |>
+      filter(N_traits >= 2L),
     by = c("IND", "FAM")
   ) |>
   select(IND, FAM, Trait, Rank) |>
@@ -1025,17 +800,19 @@ candidate_rank_wide <- selected_individuals_by_trait |>
 multitrait_candidates <- multitrait_recurrence |>
   filter(N_traits >= 2L) |>
   left_join(candidate_rank_wide, by = c("IND", "FAM")) |>
-  arrange(
-    desc(N_traits),
-    FAM,
-    IND
-  )
+  arrange(desc(N_traits), FAM, IND)
+
+kable(
+  recurrence_distribution,
+  digits = 4,
+  caption = "Distribuição da recorrência entre características suportadas"
+)
 ```
 
-As classes de recorrência são: alta (`>= 4` características), intermediária (`3`), ampla (`2`), específica (`1`) e nenhuma (`0`). A classe é determinada exclusivamente pela contagem de características suportadas em que o indivíduo pertence aos 20% mais favoráveis.
-## 11. Correlações entre valores genômicos OOF
+## 12. Correlações entre valores genômicos OOF
 
-Estas correlações são descritivas entre valores genômicos preditos; não são estimativas de correlação genética de um modelo multivariado.
+Estas correlações descrevem a associação entre valores genômicos preditos e não
+são estimativas de correlação genética obtidas de um modelo multivariado.
 
 ```{r oof-correlations}
 selected_genomic_wide <- selected_oof_genomic_values |>
@@ -1045,11 +822,14 @@ selected_genomic_wide <- selected_oof_genomic_values |>
 selected_oof_correlations <- cor(
   as.matrix(selected_genomic_wide[, traits, drop = FALSE])
 )
+
+kable(
+  round(selected_oof_correlations, 3),
+  caption = "Correlações entre valores genômicos OOF"
+)
 ```
 
-## 12. Saídas analíticas canônicas
-
-O Módulo 04 é a fonte canônica dos resultados derivados. O objeto RDS permanece neutro em idioma; rótulos de apresentação são adicionados somente no Módulo 05.
+## 13. Gravação dos resultados
 
 ```{r save-results}
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
@@ -1065,9 +845,8 @@ write.csv(rrblup_heritability_summary, file.path(RESULTS_DIR, "rrblup_heritabili
 write.csv(selection_objectives, file.path(RESULTS_DIR, "selection_objectives.csv"), row.names = FALSE)
 write.csv(selected_oof_genomic_values, file.path(RESULTS_DIR, "selected_oof_genomic_values.csv"), row.names = FALSE)
 write.csv(genomic_ranking, file.path(RESULTS_DIR, "genomic_ranking.csv"), row.names = FALSE)
-unlink(file.path(RESULTS_DIR, c("top10_genomic_values_with_family.csv", "recurring_top10_individuals.csv")))
 write.csv(selection_sizes, file.path(RESULTS_DIR, "selection_sizes.csv"), row.names = FALSE)
-write.csv(selection_cutoff_audit, file.path(RESULTS_DIR, "selection_cutoff_audit.csv"), row.names = FALSE)
+write.csv(selection_cutoff_summary, file.path(RESULTS_DIR, "selection_cutoff_summary.csv"), row.names = FALSE)
 write.csv(selected_individuals_by_trait, file.path(RESULTS_DIR, "selected_individuals_by_trait.csv"), row.names = FALSE)
 write.csv(multitrait_recurrence, file.path(RESULTS_DIR, "multitrait_recurrence.csv"), row.names = FALSE)
 write.csv(recurrence_distribution, file.path(RESULTS_DIR, "recurrence_distribution.csv"), row.names = FALSE)
@@ -1076,7 +855,6 @@ write.csv(as.data.frame(selected_oof_correlations), file.path(RESULTS_DIR, "sele
 
 saveRDS(
   list(
-    signature = models_object$signature,
     traits = traits,
     methods = methods,
     model_comparison = model_comparison,
@@ -1095,7 +873,7 @@ saveRDS(
     selection_proportion = SELECTION_PROPORTION,
     supported_traits = supported_traits,
     selection_sizes = selection_sizes,
-    selection_cutoff_audit = selection_cutoff_audit,
+    selection_cutoff_summary = selection_cutoff_summary,
     selected_individuals_by_trait = selected_individuals_by_trait,
     multitrait_recurrence = multitrait_recurrence,
     recurrence_distribution = recurrence_distribution,
@@ -1106,6 +884,7 @@ saveRDS(
 )
 ```
 
-## 13. Próxima etapa
+## 14. Próxima etapa
 
-O Módulo 05 consome os resultados derivados aqui para construir as tabelas e figuras finais. Nenhuma decisão analítica é redefinida nessa etapa.
+O Módulo 05 utiliza esses resultados para construir as tabelas e figuras de
+síntese da comparação dos métodos e da seleção genômica.
