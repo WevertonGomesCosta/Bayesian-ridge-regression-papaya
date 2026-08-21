@@ -388,11 +388,23 @@ stopifnot(
   is.finite(BL_MSX), BL_MSX > 0,
   is.finite(BL_LAMBDA), BL_LAMBDA > 0
 )
+```
 
+```{r bl-lambda-table}
 kable(
   data.frame(
-    Quantity = c("MSx", "Global R2", "BL component R2", "Fixed lambda0"),
-    Value = c(BL_MSX, R2_PRIOR, BL_COMPONENT_R2, BL_LAMBDA)
+    Quantity = c(
+      "MSx",
+      "Global R2",
+      "BL component R2",
+      "Fixed lambda0"
+    ),
+    Value = c(
+      BL_MSX,
+      R2_PRIOR,
+      BL_COMPONENT_R2,
+      BL_LAMBDA
+    )
   ),
   digits = 6,
   caption = "Calibration of the fixed Bayesian-Lasso shrinkage parameter"
@@ -524,7 +536,7 @@ stopifnot(nrow(run_design) == 350L)
 Metadata required only by downstream integrity checks are generated internally
 and are not part of the tutorial output.
 
-```{r internal-integrity-metadata, include=FALSE, eval=RUN_M03_FIT}
+```{r internal-integrity-metadata, include=FALSE, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 PIPELINE_VERSION <- "module03-full-v4-bl-fixed"
 
 analysis_settings <- list(
@@ -1006,7 +1018,7 @@ The main loop is now short: each iteration fits one model and delegates
 prediction, metric, and convergence calculations to the helper functions shown
 above.
 
-```{r fit-all-models, eval=RUN_M03_FIT}
+```{r fit-all-models, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 metric_parts <- vector("list", nrow(run_design))
 prediction_parts <- vector("list", nrow(run_design))
 genomic_value_parts <- vector("list", nrow(run_design))
@@ -1036,7 +1048,7 @@ for (run_index in seq_len(nrow(run_design))) {
 The individual run outputs are then combined into the five analytical exports
 used by the next module.
 
-```{r combine-model-results, eval=RUN_M03_FIT}
+```{r combine-model-results, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 cv_metrics_by_fold <- bind_rows(metric_parts)
 cv_predictions <- bind_rows(prediction_parts)
 genomic_values_by_fold <- bind_rows(genomic_value_parts)
@@ -1062,7 +1074,7 @@ convergence_summary$Method_label <-
 Integrity metadata required by the later modules is added internally after the
 scientific tables have been constructed.
 
-```{r add-internal-integrity-fields, include=FALSE, eval=RUN_M03_FIT}
+```{r add-internal-integrity-fields, include=FALSE, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 cv_metrics_by_fold$Signature <- analysis_signature
 cv_metrics_by_fold <- cv_metrics_by_fold |>
   relocate(Signature, .after = Run_id)
@@ -1085,7 +1097,7 @@ convergence_diagnostics <- convergence_diagnostics |>
 Before saving, the expected dimensions are checked. These checks protect the
 pipeline from an incomplete fit but are not part of model selection.
 
-```{r validate-results, eval=RUN_M03_FIT}
+```{r validate-results, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 expected_fits <- nrow(run_design)
 expected_predictions <-
   length(ids) * length(traits) * length(method_names)
@@ -1099,7 +1111,7 @@ stopifnot(
 )
 ```
 
-```{r validate-internal-integrity, include=FALSE, eval=RUN_M03_FIT}
+```{r validate-internal-integrity, include=FALSE, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 stopifnot(
   length(unique(cv_metrics_by_fold$Signature)) == 1L,
   identical(unique(cv_metrics_by_fold$Signature), analysis_signature)
@@ -1121,7 +1133,7 @@ models_object <- list(
 The analytical tables and the complete Module 03 object are then written to
 `output/models/`.
 
-```{r save-model-results, eval=RUN_M03_FIT}
+```{r save-model-results, eval=identical(tolower(Sys.getenv("PAPAYA_RUN_M03_FIT", unset = "")), "en")}
 write.csv(
   cv_predictions,
   file.path(OUTPUT_DIR, "cv_predictions.csv"),
