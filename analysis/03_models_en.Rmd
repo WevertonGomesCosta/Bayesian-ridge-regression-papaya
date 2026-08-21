@@ -32,8 +32,10 @@ knitr::opts_chunk$set(
 
 ## 1. Objective
 
-This module performs the complete cross-validated fitting of seven genomic
-prediction methods for ten papaya traits. The same five deterministic,
+This module documents the complete cross-validated fitting of seven genomic
+prediction methods for ten papaya traits. The 350 fits are executed once by
+`analysis/03_models_fit.R`; this page reads and presents the resulting canonical
+object without refitting models. The same five deterministic,
 family-stratified folds are used for every method and trait.
 
 The complete analysis contains:
@@ -104,1448 +106,119 @@ obtained from BGLR's own calibration. Because the predictor contains two
 BL component. Matrix `M` is global, so `MSx` and `lambda0` are also global
 and identical across traits and folds.
 
-## 3. Reproducible and resumable execution
+## 3. Single canonical execution
 
-Each trait-fold-method combination has:
+Model fitting is separated from presentation. The complete analysis is executed explicitly with:
 
-- a deterministic seed;
-- a unique run identifier;
-- an individual compact RDS result;
-- a persistent directory containing the native files written by BGLR;
-- a row in the run manifest.
+```bash
+Rscript --vanilla analysis/03_models_fit.R
+```
 
-The compact RDS is the checkpoint that determines whether a statistical fit is
-missing during an ordinary rebuild. Completed checkpoints are skipped, so an
-ordinary rebuild does not refit completed models.
+The script performs the 350 trait-fold-method fits sequentially in one R session. Deterministic seeds are defined for every fit.
 
-Native BGLR files are preserved under
-`output/models/bglr/Trait/Fold/Method/`. They contain the thinned chains written
-by BGLR and are used directly for posterior diagnostics and final graphical
-summaries. The compact RDS, rather than the native chain files, remains the
-criterion used to resume the 350-fit analysis.
+Native BGLR files are written directly to `output/models/bglr/Trait/Fold/Method/`. The compact canonical analytical object is `output/models/models_object.rds`. Rendering this page never fits or refits a genomic model.
 
-## 4. Packages and complete-analysis settings
+## 4. Canonical M03 outputs
 
 ```{r packages}
 suppressPackageStartupMessages({
-  library(BGLR)
-  library(coda)
-  library(digest)
   library(dplyr)
   library(knitr)
   library(here)
 })
 ```
 
-```{r complete-settings}
-MATRICES_FILE <- here(
-  "output",
-  "matrices",
-  "matrices_object.rds"
-)
+```{r load-model-object}
+MODELS_FILE <- here("output", "models", "models_object.rds")
+BGLR_DIR <- here("output", "models", "bglr")
 
-OUTPUT_DIR <- here(
-  "output",
-  "models"
-)
+if (!file.exists(MODELS_FILE)) {
+  stop("Canonical M03 object not found. Run `Rscript --vanilla analysis/03_models_fit.R` first.")
+}
 
-RUNS_DIR <- file.path(
-  OUTPUT_DIR,
-  "runs"
-)
+models_object <- readRDS(MODELS_FILE)
+settings <- models_object$settings
+run_design <- models_object$run_design
+model_catalogue <- models_object$model_catalogue
+cv_predictions <- models_object$predictions
+genomic_values_by_fold <- models_object$genomic_values_by_fold
+cv_metrics_by_fold <- models_object$metrics_by_fold
+convergence_diagnostics <- models_object$convergence_diagnostics
 
-BGLR_RUNS_DIR <- file.path(
-  OUTPUT_DIR,
-  "bglr"
-)
-
-N_ITER <- 1000000L
-BURN_IN <- 200000L
-THIN <- 4L
-R2_PRIOR <- 0.5
-
-RAW_SAVED_SAMPLES <- floor(
-  N_ITER / THIN
-)
-
-BURN_IN_SAVED_SAMPLES <- floor(
-  BURN_IN / THIN
-)
-
-RETAINED_SAMPLES <-
-  RAW_SAVED_SAMPLES -
-  BURN_IN_SAVED_SAMPLES
-
-PIPELINE_VERSION <-
-  "module03-full-v4-bl-fixed"
-
-MAX_NEW_RUNS_PER_BUILD <- as.integer(
-  Sys.getenv(
-    "PAPAYA_MAX_NEW_RUNS",
-    unset = "350"
-  )
-)
-
-SEED_BASE <- 202608050L
-
-BAYESB2_ZERO_PROBABILITY <- 1e-5
-BAYESB2_PROB_IN <-
-  1 - BAYESB2_ZERO_PROBABILITY
-BAYESB2_COUNTS <- 1e6
-
-ESS_REVIEW_THRESHOLD <- 1000
-GEWEKE_REVIEW_THRESHOLD <- 2
-
-BL_LAMBDA_TYPE <- "FIXED"
-BL_LAMBDA_TOLERANCE_REL <- 1e-10
-
-dir.create(
-  RUNS_DIR,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-
-dir.create(
-  BGLR_RUNS_DIR,
-  recursive = TRUE,
-  showWarnings = FALSE
-)
-```
-
-### Meaning of the fitting settings
-
-The settings above control MCMC sampling and prior calibration; they are not
-model-selection criteria.
-
-- `N_ITER` is the total number of MCMC iterations.
-- `BURN_IN` defines the initial iterations discarded before posterior summaries.
-- `THIN` is the interval between saved samples. With the adopted settings,
-  200,000 posterior samples remain for each fit.
-- `R2 = 0.5` is used by BGLR to calibrate prior hyperparameters when they are
-  not specified directly. It represents the proportion of variance expected
-  **a priori** to be explained by the regression and must not be interpreted as
-  an estimate of heritability [@perez2014bglr].
-- For `BayesB2`, `BAYESB2_ZERO_PROBABILITY = 1e-5` is the intended probability
-  of a zero marker effect. Because BGLR defines `probIn` as the probability of
-  a nonzero effect, the implementation uses `probIn = 1 - 1e-5`.
-- `BAYESB2_COUNTS = 1e6` makes the beta prior for `probIn` extremely
-  concentrated around that value, approximating the nearly fixed probability
-  convention used in the reference article.
-- `ESS_REVIEW_THRESHOLD` and `GEWEKE_REVIEW_THRESHOLD` are diagnostic limits
-  used to flag chains for additional inspection. They are not biological
-  parameters and do not automatically exclude a method.
-
-## 5. Input objects and invariant matrices
-
-```{r input-objects}
-matrices_object <- readRDS(
-  MATRICES_FILE
-)
-
-ids <- matrices_object$ids
-metadata <- matrices_object$metadata
-phenotypes <- matrices_object$phenotypes
-trait_dictionary <- matrices_object$trait_dictionary
-X <- matrices_object$X
-M <- matrices_object$M
-G <- matrices_object$G
-cv_folds <- matrices_object$cv_folds
-
-traits <- colnames(
-  phenotypes
-)
-
-X_fixed <- X[
-  ,
-  colnames(X) != "(Intercept)",
-  drop = FALSE
-]
-
-method_names <- c(
-  "RRBLUP",
-  "BayesA",
-  "BayesB",
-  "BayesB2",
-  "BayesC",
-  "BL",
-  "GBLUP"
-)
-
-method_labels <- c(
-  RRBLUP = "RR-BLUP",
-  BayesA = "BayesA",
-  BayesB = "BayesB",
-  BayesB2 = "BayesB2",
-  BayesC = "BayesC",
-  BL = "Bayesian Lasso",
-  GBLUP = "GBLUP"
-)
-```
-
-
-## 6. Model catalogue and BGLR specifications
-
-```{r model-catalogue}
-model_catalogue <- data.frame(
-  Method = method_names,
-  Label = unname(
-    method_labels[
-      method_names
-    ]
-  ),
-  BGLR_component = c(
-    "BRR",
-    "BayesA",
-    "BayesB",
-    "BayesB",
-    "BayesC",
-    "BL",
-    "RKHS"
-  ),
-  Genomic_input = c(
-    "M",
-    "M",
-    "M",
-    "M",
-    "M",
-    "M",
-    "G"
-  ),
-  Main_assumption = c(
-    "Common Gaussian variance for all marker effects",
-    "Marker-specific scaled-t variances",
-    "Scaled-t slab and a point mass at zero",
-    "BayesB with zero-effect probability near 1e-5",
-    "Common Gaussian slab and a point mass at zero",
-    "Double-exponential marginal prior; lambda fixed at BGLR-calibrated lambda0",
-    "Genomic values structured by G"
-  )
-)
-
-kable(
-  model_catalogue,
-  caption = "Seven genomic prediction methods"
-)
-```
-
-```{r eta-specifications}
-# BGLR counts both ETA terms when it allocates R2 to the BL component:
-# one family FIXED term and one genomic BL term.
-BL_N_LINEAR_TERMS <- 2L
-BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
-
-# Exact BGLR default calibration used by setLT.BL when lambda is omitted.
-# M is global, so MSx and lambda0 are global constants across traits/folds.
-BL_MSX <-
-  sum(
-    apply(
-      M,
-      2,
-      function(x) sum(x^2)
-    )
-  ) / nrow(M) -
-  sum(
-    colMeans(M)^2
-  )
-
-BL_LAMBDA_SQUARED <-
-  2 *
-  (1 - R2_PRIOR) /
-  BL_COMPONENT_R2 *
-  BL_MSX
-
-BL_LAMBDA <- sqrt(
-  BL_LAMBDA_SQUARED
-)
-
-BL_LAMBDA_TOLERANCE <- max(
-  1e-12,
-  abs(BL_LAMBDA) *
-    BL_LAMBDA_TOLERANCE_REL
-)
+expected_fits <-
+  length(settings$traits) * length(settings$folds) * length(settings$methods)
 
 stopifnot(
-  is.finite(BL_COMPONENT_R2),
-  BL_COMPONENT_R2 > 0,
-  is.finite(BL_MSX),
-  BL_MSX > 0,
-  is.finite(BL_LAMBDA),
-  BL_LAMBDA > 0
-)
-
-ETA_models <- list(
-  RRBLUP = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      X = M,
-      model = "BRR"
-    )
-  ),
-  BayesA = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      X = M,
-      model = "BayesA"
-    )
-  ),
-  BayesB = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      X = M,
-      model = "BayesB"
-    )
-  ),
-  BayesB2 = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      X = M,
-      model = "BayesB",
-      probIn = BAYESB2_PROB_IN,
-      counts = BAYESB2_COUNTS
-    )
-  ),
-  BayesC = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      X = M,
-      model = "BayesC"
-    )
-  ),
-  BL = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      X = M,
-      model = "BL",
-      type = BL_LAMBDA_TYPE,
-      lambda = BL_LAMBDA
-    )
-  ),
-  GBLUP = list(
-    fixed = list(
-      X = X_fixed,
-      model = "FIXED"
-    ),
-    genomic = list(
-      K = G,
-      model = "RKHS"
-    )
-  )
+  expected_fits == 350L,
+  nrow(run_design) == expected_fits,
+  nrow(cv_metrics_by_fold) == expected_fits,
+  nrow(cv_predictions) == 150L * length(settings$traits) * length(settings$methods),
+  nrow(genomic_values_by_fold) == 150L * expected_fits,
+  nrow(convergence_diagnostics) == 2L * expected_fits
 )
 ```
 
-The official BGLR implementation writes a residual-variance chain for every
-model. The second stochastic scalar used for convergence review differs by
-method: marker variance for RR-BLUP, scale for BayesA and BayesB, common
-marker variance for BayesC, the intercept for the Bayesian Lasso with fixed
-`lambda`, and genomic variance for GBLUP. The BL `lambda` chain is validated
-separately against the deterministic global value and is not assigned ESS or
-Geweke diagnostics.
+The root of `output/models/` contains the canonical object and direct analytical exports. The only subdirectory belonging to the final M03 pipeline is `bglr/`.
 
-```{r trace-contract}
-genomic_trace_suffix <- c(
-  RRBLUP = "ETA_genomic_varB.dat",
-  BayesA = "ETA_genomic_ScaleBayesA.dat",
-  BayesB = "ETA_genomic_parBayesB.dat",
-  BayesB2 = "ETA_genomic_parBayesB.dat",
-  BayesC = "ETA_genomic_parBayesC.dat",
-  BL = "mu.dat",
-  GBLUP = "ETA_genomic_varU.dat"
-)
+## 5. Fitting settings
 
-genomic_trace_header <- c(
-  RRBLUP = FALSE,
-  BayesA = FALSE,
-  BayesB = TRUE,
-  BayesB2 = TRUE,
-  BayesC = TRUE,
-  BL = FALSE,
-  GBLUP = FALSE
+```{r settings-table}
+settings_table <- data.frame(
+  Setting = c(
+    "Pipeline version", "Iterations", "Burn-in", "Thinning", "R2 prior",
+    "Seed base", "BayesB2 zero probability", "BL lambda type", "BL lambda"
+  ),
+  Value = c(
+    settings$pipeline_version, settings$n_iter, settings$burn_in, settings$thin,
+    settings$R2, settings$seed_base, settings$bayesb2_zero_probability,
+    settings$bl_lambda_type, settings$bl_lambda
+  )
 )
-
-genomic_trace_column <- c(
-  RRBLUP = 1L,
-  BayesA = 1L,
-  BayesB = 2L,
-  BayesB2 = 2L,
-  BayesC = 2L,
-  BL = 1L,
-  GBLUP = 1L
-)
-
-genomic_trace_parameter <- c(
-  RRBLUP = "Marker_variance",
-  BayesA = "Scale",
-  BayesB = "Scale",
-  BayesB2 = "Scale",
-  BayesC = "Marker_variance",
-  BL = "Intercept",
-  GBLUP = "Genomic_variance"
-)
+kable(settings_table, caption = "Canonical M03 fitting settings")
 ```
 
-## 7. Run design and analytical signature
+These settings are fitting specifications, not model-selection criteria.
 
-```{r run-design}
-run_design <- expand.grid(
-  Trait = traits,
-  Fold = seq_len(
-    matrices_object$settings$n_folds
-  ),
-  Method = method_names,
-  stringsAsFactors = FALSE
+## 6. Model catalogue
+
+```{r model-catalogue-table}
+kable(model_catalogue, caption = "Seven genomic prediction methods")
+```
+
+The complete `ETA` specifications and the fixed-lambda Bayesian Lasso contract are centralized in `analysis/03_models_fit.R`.
+
+## 7. Run design
+
+```{r run-design-table}
+stopifnot(
+  length(unique(run_design$Signature)) == 1L,
+  identical(as.character(unique(run_design$Signature)), as.character(models_object$signature))
 )
-
-run_design <- run_design[
-  order(
-    match(
-      run_design$Trait,
-      traits
-    ),
-    run_design$Fold,
-    match(
-      run_design$Method,
-      method_names
-    )
-  ),
-]
-
-rownames(run_design) <- NULL
-
-run_design$Run_number <- seq_len(
-  nrow(run_design)
-)
-
-run_design$Seed <-
-  SEED_BASE +
-  run_design$Run_number
-
-analysis_settings <- list(
-  pipeline_version =
-    PIPELINE_VERSION,
-  n_iter = N_ITER,
-  burn_in = BURN_IN,
-  thin = THIN,
-  R2 = R2_PRIOR,
-  seed_base = SEED_BASE,
-  bayesb2_zero_probability =
-    BAYESB2_ZERO_PROBABILITY,
-  bayesb2_prob_in =
-    BAYESB2_PROB_IN,
-  bayesb2_counts =
-    BAYESB2_COUNTS,
-  bl_lambda_type =
-    BL_LAMBDA_TYPE,
-  bl_n_linear_terms =
-    BL_N_LINEAR_TERMS,
-  bl_component_R2 =
-    BL_COMPONENT_R2,
-  bl_msx =
-    BL_MSX,
-  bl_lambda_squared =
-    BL_LAMBDA_SQUARED,
-  bl_lambda =
-    BL_LAMBDA,
-  bl_lambda_tolerance =
-    BL_LAMBDA_TOLERANCE,
-  bl_tau2_warning_policy =
-    "review_not_structural",
-  traits = traits,
-  folds = seq_len(
-    matrices_object$settings$n_folds
-  ),
-  methods = method_names
-)
-
-analysis_signature <- substr(
-  digest::digest(
-    list(
-      ids = ids,
-      phenotypes = phenotypes,
-      X = X,
-      M = M,
-      G = G,
-      cv_folds = cv_folds,
-      settings = analysis_settings
-    ),
-    algo = "sha256"
-  ),
-  1,
-  16
-)
-
-run_design$Signature <-
-  analysis_signature
-
-run_design$Run_id <- paste(
-  run_design$Trait,
-  paste0(
-    "F",
-    run_design$Fold
-  ),
-  run_design$Method,
-  sep = "_"
-)
-
-run_design$Result_relative_file <- file.path(
-  "output",
-  "models",
-  "runs",
-  paste0(
-    run_design$Run_id,
-    "_",
-    analysis_signature,
-    ".rds"
-  )
-)
-
-result_files <- file.path(
-  here(),
-  run_design$Result_relative_file
-)
-
-run_design$Completed_before_build <-
-  file.exists(
-    result_files
-  )
-
-write.csv(
-  run_design,
-  file.path(
-    OUTPUT_DIR,
-    "run_design.csv"
-  ),
-  row.names = FALSE
-)
-
 kable(
-  head(
-    run_design,
-    14
-  ),
-  caption = paste(
-    "First fourteen planned runs; analytical signature",
-    analysis_signature
-  )
+  head(run_design, 14),
+  caption = paste("First fourteen planned fits; analytical signature", models_object$signature)
 )
 ```
 
-## 8. Complete fitting with checkpointing
+The design contains 350 deterministic fits: ten traits, five family-stratified folds, and seven methods. `run_design.csv` is a permanent design manifest, not an execution-state file.
 
-The loop below fits only runs whose compact result file is absent. A completed
-run is never recomputed by an ordinary rebuild of this module. The optional
-`PAPAYA_MAX_NEW_RUNS` environment variable limits how many new fits are
-performed in one build. Its default value is 350, so an ordinary build fits
-all remaining runs. Setting it to 7 validates one complete trait-fold block
-containing all methods before the remaining analysis is launched.
+## 8. Analytical results
 
-The native BGLR files are preserved permanently for every new fit. For the
-single-chain diagnostics used in this module, two of those saved chains are read
-directly:
-
-- residual variance;
-- one method-specific second stochastic scalar; for BL with fixed `lambda`,
-  this second scalar is the intercept.
-
-For each stochastic chain, the effective sample size and the Geweke
-diagnostic are calculated with `coda`. For BL with fixed `lambda`, the two
-stochastic chains reviewed are residual variance and the intercept; `lambda`
-is validated directly against the deterministic contract. The limits below
-are review indicators rather than automatic model-exclusion rules:
-
-- ESS below 1,000;
-- absolute Geweke statistic above 2.
-
-```{r complete-fitting, results="hide"}
-pending_indices <- head(
-  which(
-    !file.exists(
-      result_files
-    )
-  ),
-  n = MAX_NEW_RUNS_PER_BUILD
+```{r fit-status}
+fit_status <- data.frame(
+  Planned_fits = expected_fits,
+  Completed_fits = nrow(cv_metrics_by_fold),
+  Prediction_rows = nrow(cv_predictions),
+  Genomic_value_rows = nrow(genomic_values_by_fold)
 )
-
-for (run_index in pending_indices) {
-  trait_name <-
-    run_design$Trait[
-      run_index
-    ]
-
-  fold_number <-
-    run_design$Fold[
-      run_index
-    ]
-
-  method_name <-
-    run_design$Method[
-      run_index
-    ]
-
-  run_id <-
-    run_design$Run_id[
-      run_index
-    ]
-
-  run_seed <-
-    run_design$Seed[
-      run_index
-    ]
-
-  result_file <-
-    result_files[
-      run_index
-    ]
-
-  temporary_result_file <- paste0(
-    result_file,
-    ".tmp"
-  )
-
-  bglr_run_dir <- file.path(
-    BGLR_RUNS_DIR,
-    trait_name,
-    paste0(
-      "F",
-      fold_number
-    ),
-    method_name
-  )
-
-  dir.create(
-    bglr_run_dir,
-    recursive = TRUE,
-    showWarnings = FALSE
-  )
-
-  save_prefix <- file.path(
-    bglr_run_dir,
-    "bglr_"
-  )
-
-  unlink(
-    Sys.glob(
-      paste0(
-        save_prefix,
-        "*"
-      )
-    )
-  )
-
-  y_observed <- phenotypes[
-    ,
-    trait_name
-  ]
-
-  names(y_observed) <- ids
-
-  validation_index <- which(
-    cv_folds$Fold == fold_number
-  )
-
-  training_index <- which(
-    cv_folds$Fold != fold_number
-  )
-
-  y_model <- y_observed
-  y_model[validation_index] <- NA_real_
-
-  set.seed(
-    run_seed
-  )
-
-  fit_start <- proc.time()[["elapsed"]]
-
-  run_warning_messages <- character(0)
-
-  fit <- withCallingHandlers(
-    BGLR::BGLR(
-      y = y_model,
-      ETA = ETA_models[[method_name]],
-      response_type = "gaussian",
-      nIter = N_ITER,
-      burnIn = BURN_IN,
-      thin = THIN,
-      R2 = R2_PRIOR,
-      saveAt = save_prefix,
-      verbose = FALSE,
-      rmExistingFiles = TRUE
-    ),
-    warning = function(w) {
-      run_warning_messages <<- c(
-        run_warning_messages,
-        conditionMessage(w)
-      )
-      invokeRestart(
-        "muffleWarning"
-      )
-    }
-  )
-
-  fit_end <- proc.time()[["elapsed"]]
-
-  tau2_warning_count <- sum(
-    grepl(
-      "tau2 was not updated",
-      run_warning_messages,
-      fixed = TRUE
-    )
-  )
-
-  lambda_update_warning_count <- sum(
-    grepl(
-      "lambda was not updated",
-      run_warning_messages,
-      fixed = TRUE
-    )
-  )
-
-  bl_lambda_observed <- NA_real_
-  bl_lambda_max_abs_error <- NA_real_
-  bl_lambda_native_value <- NA_real_
-  bl_lambda_native_unique <- NA_integer_
-  bl_lambda_native_serialization_error <- NA_real_
-  bl_lambda_native_valid <- NA
-  bl_lambda_valid <- NA
-
-  if (method_name == "BL") {
-    # The analytical contract is checked against the in-memory BGLR object.
-    # The native text file is intentionally not used for full-precision
-    # equality because BGLR serializes this trace with limited text precision.
-    bl_lambda_observed <- as.numeric(
-      fit$ETA$genomic$lambda
-    )
-
-    bl_lambda_max_abs_error <- abs(
-      bl_lambda_observed -
-        BL_LAMBDA
-    )
-
-    bl_lambda_trace_full <- scan(
-      paste0(
-        save_prefix,
-        "ETA_genomic_lambda.dat"
-      ),
-      quiet = TRUE
-    )
-
-    bl_lambda_native_unique <- length(
-      unique(
-        bl_lambda_trace_full
-      )
-    )
-
-    bl_lambda_native_value <- if (
-      length(
-        bl_lambda_trace_full
-      ) > 0L
-    ) {
-      bl_lambda_trace_full[1]
-    } else {
-      NA_real_
-    }
-
-    bl_lambda_native_serialization_error <- if (
-      is.finite(
-        bl_lambda_native_value
-      )
-    ) {
-      abs(
-        bl_lambda_native_value -
-          BL_LAMBDA
-      )
-    } else {
-      Inf
-    }
-
-    bl_lambda_native_valid <-
-      length(
-        bl_lambda_trace_full
-      ) == RAW_SAVED_SAMPLES &&
-      all(
-        is.finite(
-          bl_lambda_trace_full
-        )
-      ) &&
-      all(
-        bl_lambda_trace_full > 0
-      ) &&
-      bl_lambda_native_unique == 1L
-
-    bl_lambda_valid <-
-      length(
-        bl_lambda_observed
-      ) == 1L &&
-      is.finite(
-        bl_lambda_observed
-      ) &&
-      bl_lambda_observed > 0 &&
-      bl_lambda_max_abs_error <=
-        BL_LAMBDA_TOLERANCE &&
-      bl_lambda_native_valid
-
-    if (!bl_lambda_valid) {
-      stop(
-        "BL FIXED-lambda contract failed for ",
-        run_id
-      )
-    }
-
-    if (lambda_update_warning_count > 0L) {
-      stop(
-        "Unexpected lambda-update warning under BL type=FIXED for ",
-        run_id
-      )
-    }
-  }
-
-  predicted_validation <- fit$yHat[
-    validation_index
-  ]
-
-  observed_validation <- y_observed[
-    validation_index
-  ]
-
-  fixed_component <- as.vector(
-    X_fixed %*%
-      fit$ETA$fixed$b
-  )
-
-  genomic_component <- as.vector(
-    fit$yHat -
-      fit$mu -
-      fixed_component
-  )
-
-  genomic_value_table <- data.frame(
-    Run_id = rep(
-      run_id,
-      length(ids)
-    ),
-    Signature = rep(
-      analysis_signature,
-      length(ids)
-    ),
-    IND = ids,
-    Trait = rep(
-      trait_name,
-      length(ids)
-    ),
-    Fold = rep(
-      fold_number,
-      length(ids)
-    ),
-    Method = rep(
-      method_name,
-      length(ids)
-    ),
-    Genomic_value =
-      genomic_component
-  )
-
-  prediction_table <- data.frame(
-    Run_id = run_id,
-    Signature = analysis_signature,
-    IND = ids[
-      validation_index
-    ],
-    Trait = trait_name,
-    Fold = fold_number,
-    Method = method_name,
-    Observed = observed_validation,
-    Predicted = predicted_validation,
-    Fixed_component =
-      fixed_component[
-        validation_index
-      ],
-    Genomic_component =
-      genomic_component[
-        validation_index
-      ]
-  )
-
-  posterior_prob_in <- c(
-    fit$ETA$genomic$probIn,
-    NA_real_
-  )[1]
-
-  metric_table <- data.frame(
-    Run_id = run_id,
-    Signature = analysis_signature,
-    Trait = trait_name,
-    Fold = fold_number,
-    Method = method_name,
-    Seed = run_seed,
-    Training_n = length(
-      training_index
-    ),
-    Validation_n = length(
-      validation_index
-    ),
-    Correlation = cor(
-      observed_validation,
-      predicted_validation
-    ),
-    RMSE = sqrt(
-      mean(
-        (
-          observed_validation -
-            predicted_validation
-        )^2
-      )
-    ),
-    MAE = mean(
-      abs(
-        observed_validation -
-          predicted_validation
-      )
-    ),
-    Prediction_bias = mean(
-      predicted_validation -
-        observed_validation
-    ),
-    Regression_slope =
-      cov(
-        observed_validation,
-        predicted_validation
-      ) /
-      var(
-        predicted_validation
-      ),
-    DIC = fit$fit$DIC,
-    Effective_parameters =
-      fit$fit$pD,
-    Log_likelihood_at_posterior_mean =
-      fit$fit$
-        logLikAtPostMean,
-    Posterior_mean =
-      fit$mu,
-    Posterior_mean_SD = c(
-      fit$SD.mu,
-      NA_real_
-    )[1],
-    Residual_variance =
-      fit$varE,
-    Residual_variance_SD = c(
-      fit$SD.varE,
-      NA_real_
-    )[1],
-    BL_lambda =
-      bl_lambda_observed,
-    BL_lambda_native_value =
-      bl_lambda_native_value,
-    BL_lambda_native_serialization_error =
-      bl_lambda_native_serialization_error,
-    BL_lambda_native_valid =
-      bl_lambda_native_valid,
-    BL_lambda_valid =
-      bl_lambda_valid,
-    BGLR_warning_count =
-      length(
-        run_warning_messages
-      ),
-    Tau2_warning_count =
-      tau2_warning_count,
-    Lambda_update_warning_count =
-      lambda_update_warning_count,
-    Posterior_probIn =
-      posterior_prob_in,
-    Elapsed_seconds =
-      fit_end - fit_start,
-    Finite_predictions = all(
-      is.finite(
-        predicted_validation
-      )
-    )
-  )
-
-  metric_table$Finite_metrics <- all(
-    is.finite(
-      as.numeric(
-        metric_table[
-          ,
-          c(
-            "Correlation",
-            "RMSE",
-            "MAE",
-            "Prediction_bias",
-            "Regression_slope",
-            "DIC",
-            "Effective_parameters",
-            "Log_likelihood_at_posterior_mean",
-            "Posterior_mean",
-            "Residual_variance",
-            "Elapsed_seconds"
-          )
-        ]
-      )
-    )
-  )
-
-  fixed_effect_table <- data.frame(
-    Run_id = rep(
-      run_id,
-      length(
-        fit$ETA$fixed$b
-      )
-    ),
-    Signature = rep(
-      analysis_signature,
-      length(
-        fit$ETA$fixed$b
-      )
-    ),
-    Trait = rep(
-      trait_name,
-      length(
-        fit$ETA$fixed$b
-      )
-    ),
-    Fold = rep(
-      fold_number,
-      length(
-        fit$ETA$fixed$b
-      )
-    ),
-    Method = rep(
-      method_name,
-      length(
-        fit$ETA$fixed$b
-      )
-    ),
-    Effect = names(
-      fit$ETA$fixed$b
-    ),
-    Posterior_mean = as.numeric(
-      fit$ETA$fixed$b
-    ),
-    Posterior_SD = as.numeric(
-      fit$ETA$fixed$SD.b
-    )
-  )
-
-  marker_count <-
-    as.integer(
-      method_name != "GBLUP"
-    ) *
-    ncol(M)
-
-  marker_indices <- seq_len(
-    marker_count
-  )
-
-  marker_effect_values <-
-    c(
-      fit$ETA$genomic$b
-    )[
-      marker_indices
-    ]
-
-  marker_effect_sds <-
-    c(
-      fit$ETA$genomic$SD.b
-    )[
-      marker_indices
-    ]
-
-  marker_effect_table <- data.frame(
-    Run_id = rep(
-      run_id,
-      marker_count
-    ),
-    Signature = rep(
-      analysis_signature,
-      marker_count
-    ),
-    Trait = rep(
-      trait_name,
-      marker_count
-    ),
-    Fold = rep(
-      fold_number,
-      marker_count
-    ),
-    Method = rep(
-      method_name,
-      marker_count
-    ),
-    Marker = colnames(M)[
-      marker_indices
-    ],
-    Posterior_mean = as.numeric(
-      marker_effect_values
-    ),
-    Posterior_SD = as.numeric(
-      marker_effect_sds
-    )
-  )
-
-  residual_trace_full <- scan(
-    paste0(
-      save_prefix,
-      "varE.dat"
-    ),
-    quiet = TRUE
-  )
-
-  genomic_trace_table_full <- read.table(
-    paste0(
-      save_prefix,
-      genomic_trace_suffix[
-        method_name
-      ]
-    ),
-    header =
-      genomic_trace_header[
-        method_name
-      ],
-    check.names = FALSE
-  )
-
-  genomic_trace_full <-
-    genomic_trace_table_full[
-      ,
-      genomic_trace_column[
-        method_name
-      ]
-    ]
-
-  posterior_sample_indices <- seq.int(
-    from =
-      BURN_IN_SAVED_SAMPLES +
-      1L,
-    to = length(
-      residual_trace_full
-    )
-  )
-
-  residual_trace <-
-    residual_trace_full[
-      posterior_sample_indices
-    ]
-
-  genomic_trace <-
-    genomic_trace_full[
-      posterior_sample_indices
-    ]
-
-  trace_matrix <- cbind(
-    Residual_variance =
-      residual_trace,
-    Genomic_parameter =
-      genomic_trace
-  )
-
-  trace_object <- coda::mcmc(
-    trace_matrix,
-    start = BURN_IN + THIN,
-    thin = THIN
-  )
-
-  trace_ess <- coda::effectiveSize(
-    trace_object
-  )
-
-  trace_geweke <- coda::geweke.diag(
-    trace_object
-  )$z
-
-  trace_parameter_names <- c(
-    "Residual_variance",
-    unname(
-      genomic_trace_parameter[
-        method_name
-      ]
-    )
-  )
-
-  convergence_table <- data.frame(
-    Run_id = rep(
-      run_id,
-      length(
-        trace_parameter_names
-      )
-    ),
-    Signature = rep(
-      analysis_signature,
-      length(
-        trace_parameter_names
-      )
-    ),
-    Trait = rep(
-      trait_name,
-      length(
-        trace_parameter_names
-      )
-    ),
-    Fold = rep(
-      fold_number,
-      length(
-        trace_parameter_names
-      )
-    ),
-    Method = rep(
-      method_name,
-      length(
-        trace_parameter_names
-      )
-    ),
-    Parameter =
-      trace_parameter_names,
-    Retained_samples = rep(
-      nrow(
-        trace_matrix
-      ),
-      length(
-        trace_parameter_names
-      )
-    ),
-    Posterior_mean = colMeans(
-      trace_matrix
-    ),
-    Posterior_SD = apply(
-      trace_matrix,
-      2,
-      sd
-    ),
-    Effective_sample_size = as.numeric(
-      trace_ess
-    ),
-    Geweke_Z = as.numeric(
-      trace_geweke
-    )
-  )
-
-  convergence_table$Review_flag <-
-    !is.finite(
-      convergence_table$
-        Effective_sample_size
-    ) |
-    convergence_table$
-      Effective_sample_size <
-      ESS_REVIEW_THRESHOLD |
-    !is.finite(
-      convergence_table$
-        Geweke_Z
-    ) |
-    abs(
-      convergence_table$
-        Geweke_Z
-    ) >
-      GEWEKE_REVIEW_THRESHOLD
-
-  run_audit <- data.frame(
-    Run_id = run_id,
-    Signature = analysis_signature,
-    Trait = trait_name,
-    Fold = fold_number,
-    Method = method_name,
-    Seed = run_seed,
-    Expected_raw_saved_samples =
-      RAW_SAVED_SAMPLES,
-    Observed_raw_saved_samples =
-      length(
-        residual_trace_full
-      ),
-    Expected_retained_samples =
-      RETAINED_SAMPLES,
-    Observed_retained_samples =
-      length(
-        residual_trace
-      ),
-    Finite_predictions = all(
-      is.finite(
-        predicted_validation
-      )
-    ),
-    Minimum_effective_sample_size =
-      min(
-        convergence_table$
-          Effective_sample_size,
-        na.rm = TRUE
-      ),
-    Maximum_absolute_Geweke =
-      max(
-        abs(
-          convergence_table$
-            Geweke_Z
-        ),
-        na.rm = TRUE
-      ),
-    Parameters_flagged_for_review =
-      sum(
-        convergence_table$
-          Review_flag
-      ),
-    BGLR_warning_count =
-      length(
-        run_warning_messages
-      ),
-    Tau2_warning_count =
-      tau2_warning_count,
-    Lambda_update_warning_count =
-      lambda_update_warning_count,
-    BL_lambda_expected =
-      ifelse(
-        method_name == "BL",
-        BL_LAMBDA,
-        NA_real_
-      ),
-    BL_lambda_observed =
-      bl_lambda_observed,
-    BL_lambda_max_abs_error =
-      bl_lambda_max_abs_error,
-    BL_lambda_native_value =
-      bl_lambda_native_value,
-    BL_lambda_native_unique =
-      bl_lambda_native_unique,
-    BL_lambda_native_serialization_error =
-      bl_lambda_native_serialization_error,
-    BL_lambda_native_valid =
-      bl_lambda_native_valid,
-    BL_lambda_valid =
-      bl_lambda_valid,
-    Elapsed_seconds =
-      fit_end - fit_start
-  )
-
-  compact_result <- list(
-    run = run_design[
-      run_index,
-      ,
-      drop = FALSE
-    ],
-    metrics = metric_table,
-    predictions = prediction_table,
-    genomic_values =
-      genomic_value_table,
-    fixed_effects = fixed_effect_table,
-    marker_effects = marker_effect_table,
-    convergence = convergence_table,
-    run_audit = run_audit,
-    warnings = run_warning_messages,
-    settings = analysis_settings
-  )
-
-  saveRDS(
-    compact_result,
-    temporary_result_file
-  )
-
-  file.rename(
-    temporary_result_file,
-    result_file
-  )
-
-  progress_table <- run_design
-  progress_table$Completed <-
-    file.exists(
-      result_files
-    )
-
-  write.csv(
-    progress_table,
-    file.path(
-      OUTPUT_DIR,
-      "run_progress.csv"
-    ),
-    row.names = FALSE
-  )
-
-  progress_summary <- data.frame(
-    Signature =
-      analysis_signature,
-    Completed_runs = sum(
-      progress_table$Completed
-    ),
-    Total_runs = nrow(
-      progress_table
-    ),
-    Remaining_runs = sum(
-      !progress_table$Completed
-    ),
-    Last_completed_run =
-      run_id,
-    Updated_at = format(
-      Sys.time(),
-      "%Y-%m-%d %H:%M:%S %Z"
-    )
-  )
-
-  write.csv(
-    progress_summary,
-    file.path(
-      OUTPUT_DIR,
-      "progress_summary.csv"
-    ),
-    row.names = FALSE
-  )
-
-  fit <- NULL
-  compact_result <- NULL
-  trace_object <- NULL
-
-  gc(
-    verbose = FALSE
-  )
-}
+kable(fit_status, caption = "Canonical M03 analytical output dimensions")
 ```
 
+The direct fold-level exports are `cv_predictions.csv`, `genomic_values_by_fold.csv`, `cv_metrics_by_fold.csv`, `convergence_diagnostics.csv`, and `convergence_summary.csv`.
 
-## 9. Consolidation of the official results
+## 9. MCMC convergence diagnostics
 
-The compact checkpoints are consolidated without refitting completed models.
-The final analytical object retains the fields required by the comparison and
-ranking modules: the analytical signature and settings, run design, model
-catalogue, OOF predictions, fold-specific metrics, genomic values by fold, and
-formal convergence diagnostics.
-
-```{r consolidate-results}
-completed_after_build <- file.exists(
-  result_files
-)
-
-completed_indices <- which(
-  completed_after_build
-)
-
-metric_parts <- vector("list", length(completed_indices))
-prediction_parts <- vector("list", length(completed_indices))
-genomic_value_parts <- vector("list", length(completed_indices))
-convergence_parts <- vector("list", length(completed_indices))
-
-for (part_index in seq_along(completed_indices)) {
-  run_index <- completed_indices[part_index]
-  compact_result <- readRDS(result_files[run_index])
-  metric_parts[[part_index]] <- compact_result$metrics
-  prediction_parts[[part_index]] <- compact_result$predictions
-  genomic_value_parts[[part_index]] <- compact_result$genomic_values
-  convergence_parts[[part_index]] <- compact_result$convergence
-}
-
-cv_metrics_by_fold <- bind_rows(metric_parts)
-cv_predictions <- bind_rows(prediction_parts)
-genomic_values_by_fold <- bind_rows(genomic_value_parts)
-convergence_diagnostics <- bind_rows(convergence_parts)
-
+```{r convergence-summary}
 convergence_summary <- convergence_diagnostics |>
   group_by(Method) |>
   summarise(
@@ -1558,88 +231,54 @@ convergence_summary <- convergence_diagnostics |>
     Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
     .groups = "drop"
   )
-
 convergence_summary$Method_label <-
-  unname(method_labels[convergence_summary$Method])
-
-fit_status <- data.frame(
-  Planned_fits = nrow(run_design),
-  Completed_fits = sum(completed_after_build),
-  Remaining_fits = sum(!completed_after_build)
-)
+  unname(setNames(model_catalogue$Label, model_catalogue$Method)[convergence_summary$Method])
 
 kable(
-  fit_status,
-  caption = "Status of the planned genomic-prediction fits"
+  convergence_summary |>
+    select(Method_label, Runs, Parameters_reviewed, Parameters_flagged,
+           Runs_with_flags, Minimum_ESS, Median_ESS, Maximum_absolute_Geweke),
+  digits = 3,
+  caption = "Single-chain MCMC diagnostics by method"
 )
 ```
 
-## 10. Analytical outputs
-
-The fold-level files are kept as direct analytical exports. Detailed fixed
-effects, marker effects, run-completion audits, native-file inventories, and
-duplicated predictive or runtime summaries are not part of the final
-consolidated object because they are not required by the downstream scientific
-workflow.
-
-```{r save-complete-outputs}
-write.csv(cv_predictions, file.path(OUTPUT_DIR, "cv_predictions.csv"), row.names = FALSE)
-write.csv(genomic_values_by_fold, file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"), row.names = FALSE)
-write.csv(cv_metrics_by_fold, file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"), row.names = FALSE)
-write.csv(convergence_diagnostics, file.path(OUTPUT_DIR, "convergence_diagnostics.csv"), row.names = FALSE)
-write.csv(convergence_summary, file.path(OUTPUT_DIR, "convergence_summary.csv"), row.names = FALSE)
-
-saveRDS(
-  list(
-    signature = analysis_signature,
-    settings = analysis_settings,
-    run_design = run_design,
-    model_catalogue = model_catalogue,
-    trait_dictionary = trait_dictionary,
-    predictions = cv_predictions,
-    genomic_values_by_fold = genomic_values_by_fold,
-    metrics_by_fold = cv_metrics_by_fold,
-    convergence_diagnostics = convergence_diagnostics
-  ),
-  file.path(OUTPUT_DIR, "models_object.rds")
-)
-```
-
-## 11. MCMC convergence diagnostics
-
-ESS and the Geweke statistic are single-chain diagnostics. They do not prove
-convergence, but they identify runs and scalar parameters that require closer
-inspection. The review thresholds are diagnostic indicators and are not
-automatic model-exclusion rules.
-
-```{r convergence-summary-table}
-convergence_summary |>
-  select(
-    Method_label, Runs, Parameters_reviewed, Parameters_flagged,
-    Runs_with_flags, Minimum_ESS, Median_ESS, Maximum_absolute_Geweke
-  ) |>
-  kable(
-    digits = 3,
-    caption = "Single-chain MCMC diagnostics by method"
-  )
-```
-
-```{r convergence-flag-table}
+```{r convergence-flags}
 convergence_diagnostics |>
   filter(Review_flag) |>
   arrange(Method, Trait, Fold, Parameter) |>
-  kable(
-    digits = 4,
-    caption = "Scalar chains flagged for additional review"
-  )
+  kable(digits = 4, caption = "Scalar chains flagged for additional review")
 ```
 
-The native BGLR chains remain in `output/models/bglr/` for posterior inspection
-and for the final graphical summaries. They are not duplicated in this module.
+ESS and the Geweke statistic are single-chain diagnostics. They identify chains for additional inspection but do not prove convergence and are not automatic method-exclusion rules.
 
-## 12. Next step
+## 10. Native BGLR outputs
 
-Module 04 uses these official outputs, without refitting models, to compare the
-seven methods within each trait, integrate OOF predictive performance, DIC and
-MCMC diagnostics, derive the selected OOF genomic values, and construct
-trait-specific genomic rankings.
+```{r bglr-inventory}
+expected_bglr_dirs <- expand.grid(
+  Trait = settings$traits,
+  Fold = settings$folds,
+  Method = settings$methods,
+  stringsAsFactors = FALSE
+)
+expected_bglr_paths <- file.path(
+  BGLR_DIR,
+  expected_bglr_dirs$Trait,
+  paste0("F", expected_bglr_dirs$Fold),
+  expected_bglr_dirs$Method
+)
+if (!all(dir.exists(expected_bglr_paths))) stop("M03 BGLR inventory is incomplete.")
+
+bglr_inventory <- data.frame(
+  Trait_directories = length(list.dirs(BGLR_DIR, recursive = FALSE)),
+  Fit_directories = sum(dir.exists(expected_bglr_paths)),
+  Native_files = length(list.files(BGLR_DIR, recursive = TRUE))
+)
+kable(bglr_inventory, caption = "Native BGLR output inventory")
+```
+
+The native files contain the thinned MCMC chains used for posterior diagnostics and graphical inspection.
+
+## 11. Next step
+
+Module 04 reads `models_object.rds` without refitting models to compare the seven methods within each trait and derive the downstream genomic results.
