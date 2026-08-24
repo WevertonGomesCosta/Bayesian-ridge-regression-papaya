@@ -1,0 +1,170 @@
+name: Refine OOF ranking interpretation v6
+
+on:
+  push:
+    branches:
+      - refine-oof-ranking-interpretation
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refine-oof-ranking-interpretation
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.1'
+
+      - name: Apply audited transformation
+        shell: bash
+        run: |
+          awk '
+            /- name: Refine Modules 04 and 05/ {in_step=1; next}
+            in_step && /python - <<'\''PY'\''/ {capture=1; next}
+            capture && /^          PY$/ {exit}
+            capture {sub(/^          /, ""); print}
+          ' .github/workflows/refine-oof-ranking-v3.yml > /tmp/refine_oof.py
+          test -s /tmp/refine_oof.py
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/refine_oof.py')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          out = []
+          patched = 0
+          i = 0
+          while i < len(lines):
+              if (
+                  lines[i].strip() == 'if n != 1:' and
+                  i + 2 < len(lines) and
+                  'expected 1 match' in lines[i + 1] and
+                  lines[i + 2].strip() == 'return out'
+              ):
+                  indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+                  out.extend([
+                      indent + 'if n != 1:',
+                      indent + "    if label == 'texto da recorrência' and n == 0:",
+                      indent + '        return text',
+                      lines[i + 1],
+                      lines[i + 2],
+                  ])
+                  patched += 1
+                  i += 3
+              else:
+                  out.append(lines[i])
+                  i += 1
+          if patched != 1:
+              raise RuntimeError(f'Expected to patch sub1 once, patched {patched}')
+          p.write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
+
+          python /tmp/refine_oof.py
+
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('analysis/05_results_pt.Rmd')
+          t = p.read_text(encoding='utf-8')
+          anchor = 'cada indivíduo aparece entre os 20% mais favoráveis.'
+          addition = (
+              'cada indivíduo aparece entre os 20% mais favoráveis. '
+              'Recorrências que dependam de sinais OOF positivos fracos devem permanecer exploratórias.'
+          )
+          if t.count(anchor) != 1:
+              raise RuntimeError(f'Expected one PT recurrence anchor, found {t.count(anchor)}')
+          t = t.replace(anchor, addition, 1)
+          t = t.replace('frequência de seleção e ranks', 'frequência de seleção e rankings')
+          p.write_text(t, encoding='utf-8', newline='\n')
+          PY
+
+      - name: Validate scientific interface and R syntax
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          files = [
+              'analysis/04_results_en.Rmd', 'analysis/04_results_pt.Rmd',
+              'analysis/05_results_en.Rmd', 'analysis/05_results_pt.Rmd'
+          ]
+          text = '\n'.join(Path(f).read_text(encoding='utf-8') for f in files)
+          if 'selection_eligible_traits' in text:
+              raise RuntimeError('Old eligibility variable remains')
+          for token in [
+              'positive_oof_traits',
+              'OOF_nominal_signal',
+              'positive_nominal_p_lt_0.05',
+              'positive_nominal_p_ge_0.05',
+              'OOF_nominal_p_value'
+          ]:
+              if token not in text:
+                  raise RuntimeError(f'Missing expected construct: {token}')
+          if 'filter(Predictive_evidence == "positive_p_lt_0.05")' in text:
+              raise RuntimeError('Old p-value gate remains')
+
+          out = Path('.audit-r')
+          out.mkdir(exist_ok=True)
+          for f in files:
+              chunks = []
+              current = None
+              for line in Path(f).read_text(encoding='utf-8').splitlines():
+                  s = line.strip()
+                  if current is None and s.startswith('```{r') and s.endswith('}'):
+                      current = []
+                      continue
+                  if current is not None and s == '```':
+                      chunks.append(current)
+                      current = None
+                      continue
+                  if current is not None:
+                      current.append(line)
+              if current is not None:
+                  raise RuntimeError(f'Unclosed R chunk in {f}')
+              for i, code in enumerate(chunks, 1):
+                  (out / f'{Path(f).stem}_{i:02d}.R').write_text(
+                      '\n'.join(code) + '\n', encoding='utf-8'
+                  )
+              print(f'{f}: {len(chunks)} chunks')
+          PY
+
+          Rscript --vanilla -e '
+            fs <- list.files(".audit-r", pattern="[.]R$", full.names=TRUE)
+            stopifnot(length(fs) > 0)
+            for (f in fs) parse(file=f)
+            cat("Parsed", length(fs), "R chunks successfully.\n")
+          '
+          rm -rf .audit-r
+
+          git add \
+            analysis/04_results_en.Rmd \
+            analysis/04_results_pt.Rmd \
+            analysis/05_results_en.Rmd \
+            analysis/05_results_pt.Rmd
+          git diff --cached --check
+
+          changed="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' \
+            analysis/04_results_en.Rmd \
+            analysis/04_results_pt.Rmd \
+            analysis/05_results_en.Rmd \
+            analysis/05_results_pt.Rmd | sort)"
+          test "$changed" = "$expected"
+
+      - name: Commit validated source and remove temporary workflows
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f \
+            .github/workflows/refine-oof-ranking.yml \
+            .github/workflows/refine-oof-ranking-v2.yml \
+            .github/workflows/refine-oof-ranking-v3.yml \
+            .github/workflows/refine-oof-ranking-v4.yml \
+            .github/workflows/refine-oof-ranking-v5.yml \
+            .github/workflows/refine-oof-ranking-v6.yml
+          git commit -m "Clarify exploratory OOF candidate rankings"
+          git push origin HEAD:refine-oof-ranking-interpretation
