@@ -68,7 +68,7 @@ runtime_summary <- m04$runtime
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
 selection_objectives <- m04$selection_objectives
 selection_proportion <- m04$selection_proportion
-selection_eligible_traits <- m04$selection_eligible_traits
+positive_oof_traits <- m04$positive_oof_traits
 selection_sizes <- m04$selection_sizes
 selected_individuals_by_trait <- m04$selected_individuals_by_trait
 multitrait_recurrence <- m04$multitrait_recurrence
@@ -123,7 +123,7 @@ data.frame(
     length(methods),
     nrow(model_comparison),
     nrow(model_selection),
-    length(selection_eligible_traits)
+    length(positive_oof_traits)
   )
 ) |>
   kable(caption = "Estrutura dos resultados apresentados neste módulo")
@@ -540,13 +540,15 @@ ggsave(
 )
 ```
 
-## 10. Seleção proporcional por característica
+## 10. Ranking exploratório proporcional de candidatos por característica
 
-A seleção é apresentada para as características cujo método selecionado possui
-correlação OOF positiva. Os p-valores nominais são descritivos e não determinam
-a elegibilidade. A proporção utilizada é de
+Os rankings de candidatos são apresentados para as características cujo método
+selecionado possui correlação OOF positiva. Os p-valores nominais são
+descritivos e não determinam se um ranking é apresentado. Rankings com
+`p >= 0,05` são explicitamente exploratórios e não devem ser interpretados como
+utilidade preditiva demonstrada. A proporção apresentada é de
 `r sprintf("%.0f%%", 100 * selection_proportion)` dos indivíduos por
-característica; trata-se de uma regra configurável do tutorial, e não de uma
+característica e constitui uma regra configurável do tutorial, e não uma
 intensidade ótima estimada. Os rankings utilizam valores genômicos OOF
 cross-fitted, e não valores genéticos finais de um modelo reajustado com todos
 os fenótipos.
@@ -558,6 +560,11 @@ selection_sizes_display <- selection_sizes |>
       select(Trait, Selection_objective),
     by = "Trait"
   ) |>
+  left_join(
+    model_selection |>
+      select(Trait, r, p_value, OOF_nominal_signal),
+    by = "Trait"
+  ) |>
   mutate(
     Objetivo = unname(
       selection_objective_labels[Selection_objective]
@@ -566,6 +573,9 @@ selection_sizes_display <- selection_sizes |>
   select(
     Trait,
     Objetivo,
+    r,
+    p_value,
+    OOF_nominal_signal,
     Selection_proportion,
     N_available,
     N_selected
@@ -574,12 +584,12 @@ selection_sizes_display <- selection_sizes |>
 kable(
   selection_sizes_display,
   digits = 2,
-  caption = "Proporção e número de indivíduos selecionados por característica"
+  caption = "Resumo exploratório do ranking de candidatos por característica com OOF positivo"
 )
 ```
 
-Os primeiros indivíduos de cada ranking permitem visualizar diretamente a
-seleção produzida.
+Os primeiros indivíduos de cada ranking mostram os candidatos priorizados pela
+regra exploratória.
 
 ```{r proportional-selection-preview}
 selected_individuals_by_trait |>
@@ -588,11 +598,12 @@ selected_individuals_by_trait |>
   ungroup() |>
   select(
     Trait, Rank, IND, FAM, Method,
-    Selection_objective, Genomic_value, Selection_score
+    Selection_objective, Genomic_value, Selection_score,
+    OOF_r, OOF_nominal_p_value, OOF_nominal_signal
   ) |>
   kable(
     digits = 5,
-    caption = "Cinco primeiros indivíduos selecionados por característica"
+    caption = "Cinco primeiros candidatos do ranking em cada característica com OOF positivo"
   )
 ```
 
@@ -654,8 +665,8 @@ kable(
 )
 ```
 
-A recorrência resume, entre as características elegíveis para seleção, em quantas
-cada indivíduo aparece entre os 20% mais favoráveis. `N_traits`, frequência de seleção e ranks
+A recorrência resume, entre as características com correlação OOF positiva, em quantas
+cada indivíduo aparece entre os 20% mais favoráveis. Recorrências que dependam de sinais OOF positivos fracos devem permanecer exploratórias. `N_traits`, frequência de seleção e rankings
 não são combinados em um índice multicaracterística.
 
 ## 12. Síntese
