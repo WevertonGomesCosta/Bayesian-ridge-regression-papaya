@@ -744,9 +744,56 @@ for (run_index in seq_len(nrow(run_design))) {
 }
 ```
 
+### 9.1 Assembling and writing the primary outputs
+
+After the 350 fits, the lists populated inside the loop are combined into the
+four tables used by the diagnostics and downstream modules. In a complete
+reanalysis, this block must be run immediately after `fit-models`.
+
+```{r assemble-fit-results, eval=FALSE}
+cv_metrics_by_fold <- bind_rows(metric_parts)
+cv_predictions <- bind_rows(prediction_parts)
+genomic_values_by_fold <- bind_rows(genomic_value_parts)
+convergence_diagnostics <- bind_rows(convergence_parts)
+
+write.csv(
+  run_design,
+  file.path(OUTPUT_DIR, "run_design.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  cv_predictions,
+  file.path(OUTPUT_DIR, "cv_predictions.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  genomic_values_by_fold,
+  file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  cv_metrics_by_fold,
+  file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  convergence_diagnostics,
+  file.path(OUTPUT_DIR, "convergence_diagnostics.csv"),
+  row.names = FALSE
+)
+```
+
 ## 10. Predictions, genomic values, and fold-level metrics
 
-The tables produced by the fits are used in the following steps.
+To publish the tutorial without repeating the 350 fits, the `fit-models` and
+`assemble-fit-results` blocks remain at `eval=FALSE`. During rendering, the
+existing scientific outputs are read directly from `output/models/`. In a
+complete reanalysis, those same outputs are created in Section 9.1 before
+they are read below.
 
 ```{r combine-results}
 cv_metrics_by_fold <- read.csv(
@@ -897,10 +944,11 @@ convergence_diagnostics |>
   )
 ```
 
-## 12. Saving the outputs
+## 12. Saving diagnostics and the final object
 
-The results used by the following modules are written after all 350 fits have
-been completed.
+After the diagnostics, the convergence table is updated with the review
+indicators, the method-level summary is written, and the final object is
+assembled for use by the following modules.
 
 ```{r save-results, eval=FALSE}
 analysis_settings <- list(
@@ -938,30 +986,11 @@ model_catalogue <- data.frame(
 )
 
 write.csv(
-  run_design,
-  file.path(OUTPUT_DIR, "run_design.csv"),
-  row.names = FALSE
-)
-write.csv(
-  cv_predictions,
-  file.path(OUTPUT_DIR, "cv_predictions.csv"),
-  row.names = FALSE
-)
-write.csv(
-  genomic_values_by_fold,
-  file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
-  row.names = FALSE
-)
-write.csv(
-  cv_metrics_by_fold,
-  file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
-  row.names = FALSE
-)
-write.csv(
   convergence_diagnostics,
   file.path(OUTPUT_DIR, "convergence_diagnostics.csv"),
   row.names = FALSE
 )
+
 write.csv(
   convergence_summary,
   file.path(OUTPUT_DIR, "convergence_summary.csv"),

@@ -747,9 +747,56 @@ for (run_index in seq_len(nrow(run_design))) {
 }
 ```
 
+### 9.1 Consolidação e gravação das saídas primárias
+
+Após os 350 ajustes, as listas preenchidas no laço são reunidas nas quatro
+tabelas que alimentam os diagnósticos e os módulos seguintes. Em uma reanálise
+completa, este bloco deve ser executado imediatamente após `fit-models`.
+
+```{r assemble-fit-results, eval=FALSE}
+cv_metrics_by_fold <- bind_rows(metric_parts)
+cv_predictions <- bind_rows(prediction_parts)
+genomic_values_by_fold <- bind_rows(genomic_value_parts)
+convergence_diagnostics <- bind_rows(convergence_parts)
+
+write.csv(
+  run_design,
+  file.path(OUTPUT_DIR, "run_design.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  cv_predictions,
+  file.path(OUTPUT_DIR, "cv_predictions.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  genomic_values_by_fold,
+  file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  cv_metrics_by_fold,
+  file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  convergence_diagnostics,
+  file.path(OUTPUT_DIR, "convergence_diagnostics.csv"),
+  row.names = FALSE
+)
+```
+
 ## 10. Predições, valores genômicos e métricas por fold
 
-As tabelas produzidas pelos ajustes são utilizadas nas etapas seguintes.
+Para publicar o tutorial sem repetir os 350 ajustes, os blocos `fit-models` e
+`assemble-fit-results` permanecem com `eval=FALSE`. Nesta renderização, as
+saídas científicas já produzidas são lidas diretamente de `output/models/`.
+Em uma reanálise completa, essas mesmas saídas são criadas pela etapa 9.1
+antes de serem lidas abaixo.
 
 ```{r combine-results}
 cv_metrics_by_fold <- read.csv(
@@ -901,10 +948,11 @@ convergence_diagnostics |>
   )
 ```
 
-## 12. Gravação das saídas
+## 12. Gravação dos diagnósticos e do objeto final
 
-Os resultados utilizados nos módulos seguintes são gravados após a conclusão
-dos 350 ajustes.
+Após os diagnósticos, a tabela de convergência é atualizada com os indicadores
+de revisão, o resumo por método é gravado e o objeto final é reunido para uso
+nos módulos seguintes.
 
 ```{r save-results, eval=FALSE}
 analysis_settings <- list(
@@ -942,30 +990,11 @@ model_catalogue <- data.frame(
 )
 
 write.csv(
-  run_design,
-  file.path(OUTPUT_DIR, "run_design.csv"),
-  row.names = FALSE
-)
-write.csv(
-  cv_predictions,
-  file.path(OUTPUT_DIR, "cv_predictions.csv"),
-  row.names = FALSE
-)
-write.csv(
-  genomic_values_by_fold,
-  file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
-  row.names = FALSE
-)
-write.csv(
-  cv_metrics_by_fold,
-  file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
-  row.names = FALSE
-)
-write.csv(
   convergence_diagnostics,
   file.path(OUTPUT_DIR, "convergence_diagnostics.csv"),
   row.names = FALSE
 )
+
 write.csv(
   convergence_summary,
   file.path(OUTPUT_DIR, "convergence_summary.csv"),
