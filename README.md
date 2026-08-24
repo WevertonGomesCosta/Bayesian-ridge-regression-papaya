@@ -29,7 +29,7 @@ The website is organized into five bilingual modules:
 - `analysis/`: bilingual workflowr source pages for the site and Modules 01--05;
 - `data/`: canonical source workbooks and the data contract;
 - `docs/`: generated website;
-- `output/`: local analytical objects, diagnostics, tables, and figures used by the tutorial;
+- `output/`: analytical objects, diagnostics, tables, and figures used by the tutorial;
 - `renv.lock` and `renv/`: reproducible R environment metadata.
 
 The detailed analytical workflow, including fixed effects, matrix construction, cross-validation, model specification, model comparison, genomic selection, and presentation rules, is documented in the corresponding module pages.
@@ -45,7 +45,7 @@ renv::restore()
 renv::status()
 ```
 
-The complete methodological code is presented throughout the modules so that the analytical workflow can be reproduced. Computationally intensive chunks may remain disabled during routine website rendering without changing the procedure documented in the tutorial.
+The modules present the complete methodological code and the sequence of analytical steps required to reproduce the workflow from data preprocessing through genomic prediction, model comparison, and selection.
 
 ### Data and references
 
@@ -82,7 +82,7 @@ O site está organizado em cinco módulos bilíngues:
 - `analysis/`: páginas-fonte bilíngues do workflowr para o site e os Módulos 01--05;
 - `data/`: planilhas-fonte canônicas e contrato dos dados;
 - `docs/`: site gerado;
-- `output/`: objetos analíticos locais, diagnósticos, tabelas e figuras utilizados pelo tutorial;
+- `output/`: objetos analíticos, diagnósticos, tabelas e figuras utilizados pelo tutorial;
 - `renv.lock` e `renv/`: metadados do ambiente R reprodutível.
 
 O fluxo analítico detalhado, incluindo efeitos fixos, construção das matrizes, validação cruzada, especificação dos modelos, comparação dos métodos, seleção genômica e apresentação, está documentado nas páginas dos módulos correspondentes.
@@ -98,7 +98,7 @@ renv::restore()
 renv::status()
 ```
 
-O código metodológico completo é apresentado ao longo dos módulos para permitir a reprodução do fluxo analítico. Chunks computacionalmente intensivos podem permanecer desativados durante a renderização rotineira do site sem alterar o procedimento documentado no tutorial.
+Os módulos apresentam o código metodológico completo e a sequência de etapas analíticas necessária para reproduzir o fluxo desde o pré-processamento dos dados até a predição genômica, a comparação dos métodos e a seleção.
 
 ### Dados e referências
 
