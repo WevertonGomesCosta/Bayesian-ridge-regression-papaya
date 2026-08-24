@@ -68,7 +68,7 @@ runtime_summary <- m04$runtime
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
 selection_objectives <- m04$selection_objectives
 selection_proportion <- m04$selection_proportion
-supported_traits <- m04$supported_traits
+selection_eligible_traits <- m04$selection_eligible_traits
 selection_sizes <- m04$selection_sizes
 selected_individuals_by_trait <- m04$selected_individuals_by_trait
 multitrait_recurrence <- m04$multitrait_recurrence
@@ -116,14 +116,14 @@ data.frame(
     "Métodos",
     "Linhas da comparação dos métodos",
     "Características com método selecionado",
-    "Características com evidência preditiva suportada"
+    "Características com capacidade preditiva OOF positiva"
   ),
   Valor = c(
     length(traits),
     length(methods),
     nrow(model_comparison),
     nrow(model_selection),
-    length(supported_traits)
+    length(selection_eligible_traits)
   )
 ) |>
   kable(caption = "Estrutura dos resultados apresentados neste módulo")
@@ -201,18 +201,18 @@ final_results_summary <- model_selection |>
     DIC_winner_label = unname(method_labels[DIC_winner]),
     Decision_label = case_when(
       Decision_code == "rrblup_best_predictive_model" ~
-        "RR-BLUP foi o melhor modelo preditivo",
-      Decision_code == "rrblup_preferred_among_equivalent_models" ~
-        "RR-BLUP preferido entre métodos equivalentes",
-      Decision_code == "best_non_rrblup_equivalent_model" ~
+        "RR-BLUP/BRR foi o melhor modelo preditivo",
+      Decision_code == "rrblup_preferred_among_competitive_models" ~
+        "RR-BLUP/BRR preferido entre métodos competitivos",
+      Decision_code == "best_non_rrblup_competitive_model" ~
         "Melhor método competitivo não RR-BLUP",
       Decision_code == "predictive_winner_provisional_review_required" ~
         "Vencedor preditivo provisório; revisão necessária",
       TRUE ~ Decision_code
     ),
     Selection_status_label = case_when(
-      Selection_status == "automatic_supported" ~
-        "Seleção automática sustentada",
+      Selection_status == "rule_based_selected" ~
+        "Seleção baseada na regra",
       Selection_status == "provisional_review_required" ~
         "Seleção provisória; revisão necessária",
       TRUE ~ Selection_status
@@ -236,14 +236,14 @@ final_results_summary <- model_selection |>
     ER,
     Parameters_flagged,
     Runs_with_flags,
-    Predictive_evidence
+    OOF_predictive_direction
   ) |>
   arrange(match(Trait, traits))
 
 kable(
   final_results_summary,
   digits = 5,
-  caption = "Métodos selecionados e evidências por característica"
+  caption = "Métodos selecionados e diagnósticos por característica"
 )
 ```
 
@@ -463,7 +463,7 @@ ggsave(
 )
 ```
 
-## 8. Herdabilidade e acurácia no análogo RR-BLUP/BRR
+## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR
 
 ```{r rrblup-heritability-table}
 rrblup_table <- rrblup_heritability_summary |>
@@ -478,7 +478,7 @@ rrblup_table <- rrblup_heritability_summary |>
 kable(
   rrblup_table,
   digits = 5,
-  caption = "Herdabilidade e acurácia preditiva no análogo RR-BLUP/BRR"
+  caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR"
 )
 ```
 
@@ -542,10 +542,14 @@ ggsave(
 
 ## 10. Seleção proporcional por característica
 
-A seleção utiliza as características com correlação OOF positiva e
-`p < 0,05`. A proporção utilizada é de
+A seleção é apresentada para as características cujo método selecionado possui
+correlação OOF positiva. Os p-valores nominais são descritivos e não determinam
+a elegibilidade. A proporção utilizada é de
 `r sprintf("%.0f%%", 100 * selection_proportion)` dos indivíduos por
-característica, respeitando a direção de melhoramento definida no Módulo 04.
+característica; trata-se de uma regra configurável do tutorial, e não de uma
+intensidade ótima estimada. Os rankings utilizam valores genômicos OOF
+cross-fitted, e não valores genéticos finais de um modelo reajustado com todos
+os fenótipos.
 
 ```{r proportional-selection-table}
 selection_sizes_display <- selection_sizes |>
@@ -650,7 +654,7 @@ kable(
 )
 ```
 
-A recorrência resume em quantas características suportadas cada indivíduo
+A recorrência resume em quantas características elegíveis para seleção cada indivíduo
 aparece entre os 20% mais favoráveis. `N_traits`, frequência de seleção e ranks
 não são combinados em um índice multicaracterística.
 
