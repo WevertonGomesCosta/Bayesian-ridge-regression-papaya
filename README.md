@@ -20,8 +20,8 @@ The website is organized into five bilingual modules:
 
 1. **Data preprocessing and diagnostics** — reading, alignment, missing data, SSR quality control, phenotype summaries, and descriptive diagnostics.
 2. **Matrix construction and diagnostics** — allele-dosage coding, construction of `X`, `M`, and `G`, and definition of the five family-stratified folds.
-3. **Model fitting and MCMC diagnostics** — fitting the seven genomic prediction methods with BGLR and summarizing posterior diagnostics.
-4. **Derivation and model selection** — OOF predictive performance, DIC-based comparison, model selection by trait, OOF genomic values, and trait-specific rankings.
+3. **Model fitting and MCMC diagnostics** — specification of the seven genomic prediction methods with BGLR, cross-validation structure, and posterior diagnostics.
+4. **Result derivation and model selection** — OOF predictive performance, DIC-based comparison, model selection by trait, OOF genomic values, and trait-specific rankings.
 5. **Results presentation** — presentation of the final tables and figures used as the analytical basis for the manuscript.
 
 ### Repository structure
@@ -29,47 +29,23 @@ The website is organized into five bilingual modules:
 - `analysis/`: bilingual workflowr source pages for the site and Modules 01--05;
 - `data/`: canonical source workbooks and the data contract;
 - `docs/`: generated website;
-- `output/`: local analytical objects, checkpoints, diagnostics, tables, and figures;
+- `output/`: local analytical objects, diagnostics, tables, and figures used by the tutorial;
 - `renv.lock` and `renv/`: reproducible R environment metadata.
 
-The detailed analytical contract, including fixed effects, matrix construction,
-cross-validation, fitting, selection, and presentation rules, is documented in
-the corresponding module pages.
+The detailed analytical workflow, including fixed effects, matrix construction, cross-validation, model specification, model comparison, genomic selection, and presentation rules, is documented in the corresponding module pages.
 
-### Reproduction
+### Tutorial website
 
-Restore the project environment:
+The repository is designed primarily as a documented analytical tutorial. The `analysis/` pages contain the methodological code and explanations, while `docs/` contains the rendered bilingual website.
+
+To restore the recorded R environment:
 
 ```r
 renv::restore()
 renv::status()
 ```
 
-Build the complete bilingual workflow:
-
-```r
-workflowr::wflow_build(
-  c(
-    "analysis/index.Rmd",
-    "analysis/01_preprocessing_en.Rmd",
-    "analysis/01_preprocessing_pt.Rmd",
-    "analysis/02_matrices_en.Rmd",
-    "analysis/02_matrices_pt.Rmd",
-    "analysis/03_models_en.Rmd",
-    "analysis/03_models_pt.Rmd",
-    "analysis/04_results_en.Rmd",
-    "analysis/04_results_pt.Rmd",
-    "analysis/05_results_en.Rmd",
-    "analysis/05_results_pt.Rmd",
-    "analysis/about.Rmd",
-    "analysis/license.Rmd"
-  )
-)
-```
-
-Module 03 contains the complete code for the 350 model fits. In the published tutorial, the fitting and output-writing chunks use `eval=FALSE`, so rebuilding the website does not repeat the computationally intensive BGLR fits. The subsequent chunks read the previously fitted local outputs used by Modules 03--05.
-
-A complete scientific reanalysis from the raw data requires deliberately executing the model-fitting and output-writing code in Module 03 before rebuilding the downstream modules. The fitted BGLR chains and analytical outputs are local generated artifacts and are not versioned in the repository.
+The computationally intensive model-fitting chunks in Module 03 are displayed as part of the methodological tutorial but are not executed during routine website rendering. The rendered modules use the validated analytical outputs already produced for this project.
 
 ### Data and references
 
@@ -97,8 +73,8 @@ O site está organizado em cinco módulos bilíngues:
 
 1. **Pré-processamento e diagnóstico dos dados** — leitura, alinhamento, dados ausentes, controle de qualidade dos SSR, resumos fenotípicos e diagnósticos descritivos.
 2. **Construção e diagnóstico das matrizes** — codificação das dosagens alélicas, construção de `X`, `M` e `G` e definição dos cinco folds estratificados por família.
-3. **Ajuste dos modelos e diagnósticos MCMC** — ajuste dos sete métodos de predição genômica com BGLR e resumo dos diagnósticos posteriores.
-4. **Derivação e seleção dos modelos** — desempenho preditivo OOF, comparação por DIC, seleção do método por característica, valores genômicos OOF e rankings específicos por característica.
+3. **Ajuste dos modelos e diagnósticos MCMC** — especificação dos sete métodos de predição genômica com BGLR, estrutura da validação cruzada e diagnósticos posteriores.
+4. **Derivação dos resultados e seleção dos modelos** — desempenho preditivo OOF, comparação por DIC, seleção do método por característica, valores genômicos OOF e rankings específicos por característica.
 5. **Apresentação dos resultados** — apresentação das tabelas e figuras finais utilizadas como base analítica para o manuscrito.
 
 ### Estrutura do repositório
@@ -106,47 +82,23 @@ O site está organizado em cinco módulos bilíngues:
 - `analysis/`: páginas-fonte bilíngues do workflowr para o site e os Módulos 01--05;
 - `data/`: planilhas-fonte canônicas e contrato dos dados;
 - `docs/`: site gerado;
-- `output/`: objetos analíticos locais, checkpoints, diagnósticos, tabelas e figuras;
+- `output/`: objetos analíticos locais, diagnósticos, tabelas e figuras utilizados pelo tutorial;
 - `renv.lock` e `renv/`: metadados do ambiente R reprodutível.
 
-O contrato analítico detalhado, incluindo efeitos fixos, construção das matrizes,
-validação cruzada, ajuste, seleção e apresentação, está documentado nas páginas
-dos módulos correspondentes.
+O fluxo analítico detalhado, incluindo efeitos fixos, construção das matrizes, validação cruzada, especificação dos modelos, comparação dos métodos, seleção genômica e apresentação, está documentado nas páginas dos módulos correspondentes.
 
-### Reprodução
+### Site tutorial
 
-Restaure o ambiente do projeto:
+O repositório foi estruturado principalmente como um tutorial analítico documentado. As páginas em `analysis/` contêm o código metodológico e as explicações, enquanto `docs/` contém o site bilíngue renderizado.
+
+Para restaurar o ambiente R registrado:
 
 ```r
 renv::restore()
 renv::status()
 ```
 
-Construa o fluxo bilíngue completo:
-
-```r
-workflowr::wflow_build(
-  c(
-    "analysis/index.Rmd",
-    "analysis/01_preprocessing_en.Rmd",
-    "analysis/01_preprocessing_pt.Rmd",
-    "analysis/02_matrices_en.Rmd",
-    "analysis/02_matrices_pt.Rmd",
-    "analysis/03_models_en.Rmd",
-    "analysis/03_models_pt.Rmd",
-    "analysis/04_results_en.Rmd",
-    "analysis/04_results_pt.Rmd",
-    "analysis/05_results_en.Rmd",
-    "analysis/05_results_pt.Rmd",
-    "analysis/about.Rmd",
-    "analysis/license.Rmd"
-  )
-)
-```
-
-O Módulo 03 contém o código completo dos 350 ajustes. No tutorial publicado, os chunks de ajuste e de gravação das saídas utilizam `eval=FALSE`, de modo que a reconstrução do site não repete os ajustes computacionalmente intensivos do BGLR. Os chunks seguintes leem as saídas locais previamente ajustadas utilizadas pelos Módulos 03--05.
-
-Uma reanálise científica completa a partir dos dados brutos requer a execução deliberada do código de ajuste e de gravação do Módulo 03 antes da reconstrução dos módulos seguintes. As cadeias ajustadas pelo BGLR e as saídas analíticas são artefatos locais gerados e não são versionados no repositório.
+Os chunks computacionalmente intensivos de ajuste do Módulo 03 são apresentados como parte do tutorial metodológico, mas não são executados durante a renderização rotineira do site. Os módulos renderizados utilizam as saídas analíticas validadas já produzidas para este projeto.
 
 ### Dados e referências
 
