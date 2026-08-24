@@ -10,7 +10,7 @@
 
 This repository contains a bilingual and reproducible `workflowr` tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers.
 
-The validated analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is included as the only categorical fixed effect; block is removed during preprocessing and is not used in the models.
+The analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is included as the only categorical fixed effect; block is removed during preprocessing and is not used in the models.
 
 Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
 
@@ -36,7 +36,7 @@ The detailed analytical workflow, including fixed effects, matrix construction, 
 
 ### Tutorial website
 
-The repository is designed primarily as a documented analytical tutorial. The `analysis/` pages contain the methodological code and explanations, while `docs/` contains the rendered bilingual website.
+The repository is designed as a documented analytical tutorial. The `analysis/` pages contain the methodological code and explanations, while `docs/` contains the rendered bilingual website.
 
 To restore the recorded R environment:
 
@@ -45,7 +45,7 @@ renv::restore()
 renv::status()
 ```
 
-The computationally intensive model-fitting chunks in Module 03 are displayed as part of the methodological tutorial but are not executed during routine website rendering. The rendered modules use the validated analytical outputs already produced for this project.
+The complete methodological code is presented throughout the modules so that the analytical workflow can be reproduced. Computationally intensive chunks may remain disabled during routine website rendering without changing the procedure documented in the tutorial.
 
 ### Data and references
 
@@ -63,7 +63,7 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR
 
 Este repositório contém um tutorial bilíngue e reprodutível em `workflowr` para predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos.
 
-O conjunto analítico validado contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é incluída como o único efeito fixo categórico; bloco é removido durante o pré-processamento e não é utilizado nos modelos.
+O conjunto analítico contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é incluída como o único efeito fixo categórico; bloco é removido durante o pré-processamento e não é utilizado nos modelos.
 
 Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
 
@@ -89,7 +89,7 @@ O fluxo analítico detalhado, incluindo efeitos fixos, construção das matrizes
 
 ### Site tutorial
 
-O repositório foi estruturado principalmente como um tutorial analítico documentado. As páginas em `analysis/` contêm o código metodológico e as explicações, enquanto `docs/` contém o site bilíngue renderizado.
+O repositório foi estruturado como um tutorial analítico documentado. As páginas em `analysis/` contêm o código metodológico e as explicações, enquanto `docs/` contém o site bilíngue renderizado.
 
 Para restaurar o ambiente R registrado:
 
@@ -98,7 +98,7 @@ renv::restore()
 renv::status()
 ```
 
-Os chunks computacionalmente intensivos de ajuste do Módulo 03 são apresentados como parte do tutorial metodológico, mas não são executados durante a renderização rotineira do site. Os módulos renderizados utilizam as saídas analíticas validadas já produzidas para este projeto.
+O código metodológico completo é apresentado ao longo dos módulos para permitir a reprodução do fluxo analítico. Chunks computacionalmente intensivos podem permanecer desativados durante a renderização rotineira do site sem alterar o procedimento documentado no tutorial.
 
 ### Dados e referências
 
