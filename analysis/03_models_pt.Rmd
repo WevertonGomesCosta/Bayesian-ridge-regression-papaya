@@ -52,8 +52,8 @@ A análise completa contém
 350\ \text{ajustes}.
 \]
 
-Os métodos avaliados são RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Lasso
-Bayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR
+Os métodos avaliados são RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,
+Lasso Bayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR
 [@perez2014bglr].
 
 ## 2. Pacotes, entradas e diretórios de saída
@@ -187,7 +187,11 @@ kable(
 
 Durante cada ajuste, os fenótipos dos indivíduos pertencentes ao fold de
 validação são substituídos por `NA`. O BGLR utiliza os fenótipos restantes para
-o ajuste e retorna as predições para os indivíduos mascarados.
+o ajuste e retorna as predições para os indivíduos mascarados. Os candidatos de
+validação permanecem nas matrizes fixas derivadas dos genótipos descritas no
+Módulo 02. Consequentemente, o desempenho de validação cruzada representa a
+predição dentro da população de melhoramento representada, e não uma
+generalização leave-family-out.
 
 ## 5. Configuração das cadeias MCMC
 
@@ -248,7 +252,7 @@ method_names <- c(
 )
 
 method_labels <- c(
-  RRBLUP = "RR-BLUP",
+  RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
   BayesB = "BayesB",
   BayesB2 = "BayesB2",
@@ -277,11 +281,12 @@ data.frame(
   kable(caption = "Métodos de predição genômica avaliados")
 ```
 
-### 6.1 RR-BLUP
+### 6.1 RR-BLUP/BRR
 
-O RR-BLUP é implementado por meio do componente `BRR` do BGLR. Todos os
-efeitos de marcadores compartilham uma variância Gaussiana comum, resultando em
-contração do tipo ridge [@endelman2011rrblup; @perez2014bglr].
+O RR-BLUP é representado pelo componente `BRR` do BGLR, o análogo Bayesiano
+de regressão ridge do ridge-regression BLUP. Todos os efeitos de marcadores
+compartilham uma variância Gaussiana comum e recebem a mesma contração do tipo
+ridge [@endelman2011rrblup; @perez2014bglr].
 
 ### 6.2 BayesA
 
@@ -380,10 +385,11 @@ data.frame(
 
 Para estes dados, \(MS_x\approx25.6050\) e
 \(\lambda_0\approx10.1203\). O mesmo valor é utilizado para todas as
-características e folds. A decisão de mantê-lo fixo foi tomada após a
-atualização estocástica padrão apresentar instabilidade numérica, sem utilizar
-correlação preditiva, RMSE, DIC ou qualquer resultado específico de
-característica para escolher o valor.
+características e folds. Neste tutorial, \(\lambda\) é fixado nessa
+calibração do BGLR para que o parâmetro de contração permaneça comum entre
+características e folds. Essa é uma escolha de modelagem distinta de uma
+especificação com lambda estocástico; nenhuma métrica preditiva específica de
+característica é utilizada para determinar \(\lambda\).
 
 ### 6.7 GBLUP
 

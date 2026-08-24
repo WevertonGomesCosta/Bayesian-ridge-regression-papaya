@@ -52,8 +52,9 @@ The complete analysis contains
 350\ \text{fits}.
 \]
 
-The evaluated methods are RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Bayesian
-Lasso (BL), and GBLUP. All models are fitted with BGLR [@perez2014bglr].
+The evaluated methods are RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,
+Bayesian Lasso (BL), and GBLUP. All models are fitted with BGLR
+[@perez2014bglr].
 
 ## 2. Packages, inputs, and output directories
 
@@ -185,7 +186,10 @@ kable(
 
 During each fit, phenotypes of the individuals in the validation fold are set
 to `NA`. BGLR fits the model using the remaining phenotypes and returns
-predictions for the masked individuals.
+predictions for the masked individuals. Validation candidates remain present in
+the fixed genotype-derived matrices described in Module 02. Consequently, the
+reported cross-validation performance targets prediction within the represented
+breeding population rather than leave-family-out generalization.
 
 ## 5. MCMC settings
 
@@ -246,7 +250,7 @@ method_names <- c(
 )
 
 method_labels <- c(
-  RRBLUP = "RR-BLUP",
+  RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
   BayesB = "BayesB",
   BayesB2 = "BayesB2",
@@ -275,10 +279,11 @@ data.frame(
   kable(caption = "Genomic prediction methods evaluated")
 ```
 
-### 6.1 RR-BLUP
+### 6.1 RR-BLUP/BRR
 
-RR-BLUP is implemented with the BGLR `BRR` component. All marker effects share
-a common Gaussian variance, producing ridge-type shrinkage
+RR-BLUP is represented by the BGLR `BRR` component, the Bayesian ridge
+regression analogue of homogeneous ridge-regression BLUP. All marker effects
+share a common Gaussian variance and receive the same ridge-type shrinkage
 [@endelman2011rrblup; @perez2014bglr].
 
 ### 6.2 BayesA
@@ -378,9 +383,10 @@ data.frame(
 
 For these data, \(MS_x\approx25.6050\) and
 \(\lambda_0\approx10.1203\). The same value is used for every trait and fold.
-It was held fixed after the standard stochastic update showed numerical
-instability, without using predictive correlation, RMSE, DIC, or any
-trait-specific result to choose the value.
+In this tutorial, \(\lambda\) is fixed at this BGLR calibration so that the
+shrinkage parameter remains common across traits and folds. This is a modeling
+choice distinct from a stochastic-lambda specification; no trait-specific
+predictive metric is used to determine \(\lambda\).
 
 ### 6.7 GBLUP
 

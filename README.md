@@ -14,6 +14,8 @@ The analytical dataset contains 150 individuals, 34 retained SSR loci expanded i
 
 Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
 
+The five-fold cross-validation is stratified by family and therefore evaluates prediction within the represented breeding population; it is not a leave-family-out assessment of entirely new families.
+
 ### Tutorial workflow
 
 The website is organized into five bilingual modules:
@@ -29,7 +31,7 @@ The website is organized into five bilingual modules:
 - `analysis/`: bilingual workflowr source pages for the site and Modules 01--05;
 - `data/`: canonical source workbooks and the data contract;
 - `docs/`: generated website;
-- `output/`: analytical objects, diagnostics, tables, and figures used by the tutorial;
+- `output/`: analytical objects, diagnostics, tables, and figures generated when the modules are executed; this directory is ignored by Git;
 - `renv.lock` and `renv/`: reproducible R environment metadata.
 
 The detailed analytical workflow, including fixed effects, matrix construction, cross-validation, model specification, model comparison, genomic selection, and presentation rules, is documented in the corresponding module pages.
@@ -67,6 +69,8 @@ O conjunto analítico contém 150 indivíduos, 34 locos SSR mantidos e expandido
 
 Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
 
+A validação cruzada em cinco folds é estratificada por família e, portanto, avalia a predição dentro da população de melhoramento representada; não constitui uma avaliação leave-family-out de famílias inteiramente novas.
+
 ### Fluxo do tutorial
 
 O site está organizado em cinco módulos bilíngues:
@@ -82,7 +86,7 @@ O site está organizado em cinco módulos bilíngues:
 - `analysis/`: páginas-fonte bilíngues do workflowr para o site e os Módulos 01--05;
 - `data/`: planilhas-fonte canônicas e contrato dos dados;
 - `docs/`: site gerado;
-- `output/`: objetos analíticos, diagnósticos, tabelas e figuras utilizados pelo tutorial;
+- `output/`: objetos analíticos, diagnósticos, tabelas e figuras gerados durante a execução dos módulos; esse diretório é ignorado pelo Git;
 - `renv.lock` e `renv/`: metadados do ambiente R reprodutível.
 
 O fluxo analítico detalhado, incluindo efeitos fixos, construção das matrizes, validação cruzada, especificação dos modelos, comparação dos métodos, seleção genômica e apresentação, está documentado nas páginas dos módulos correspondentes.
