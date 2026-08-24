@@ -552,8 +552,10 @@ selected_performance |>
 
 ### 5.6 Final selection result and predictive evidence
 
-Finally, the selected method, predictive and DIC winners, and the descriptive
-predictive-evidence classification are brought together for each trait.
+Finally, the selected method, predictive and DIC winners, OOF direction, and a
+nominal signal class are brought together for each trait. The nominal class is
+reported only to make weak positive correlations explicit; it is not used as a
+selection gate.
 
 ```{r final-model-selection}
 model_selection <- selection_spec |>
@@ -573,6 +575,11 @@ model_selection <- selection_spec |>
       r > 0,
       "positive",
       "nonpositive"
+    ),
+    OOF_nominal_signal = case_when(
+      r > 0 & p_value < 0.05 ~ "positive_nominal_p_lt_0.05",
+      r > 0 ~ "positive_nominal_p_ge_0.05",
+      TRUE ~ "nonpositive"
     )
   ) |>
   arrange(match(Trait, traits))
@@ -588,7 +595,7 @@ model_selection |>
     Trait, Selected_method, Predictive_winner, DIC_winner,
     r, p_value, RMSE, Mean_DIC, Delta_DIC,
     RRBLUP_preference_applied,
-    Selection_status, OOF_predictive_direction
+    Selection_status, OOF_predictive_direction, OOF_nominal_signal
   ) |>
   kable(
     digits = 5,
@@ -739,13 +746,17 @@ selection_objectives <- data.frame(
 selected_oof_genomic_values <- predictions |>
   inner_join(
     model_selection |>
-      select(Trait, Selected_method, OOF_predictive_direction),
+      select(
+        Trait, Selected_method, OOF_predictive_direction,
+        OOF_nominal_signal, r, p_value
+      ),
     by = "Trait"
   ) |>
   inner_join(selection_objectives, by = "Trait") |>
   filter(Method == Selected_method) |>
   transmute(
     IND, Trait, Fold, Method, OOF_predictive_direction,
+    OOF_nominal_signal, OOF_r = r, OOF_nominal_p_value = p_value,
     Selection_objective, Ranking_rule,
     Genomic_value = Genomic_component
   ) |>
@@ -757,14 +768,16 @@ kable(
 )
 ```
 
-## 10. Proportional selection by trait
+## 10. Exploratory proportional candidate ranking by trait
 
-Selection is restricted to traits for which the selected method has positive
-OOF correlation. Nominal p-values remain descriptive and do not determine
-eligibility. Within each eligible trait, the 20% of individuals with the
-largest oriented score are selected; this 20% is a configurable tutorial rule,
-not an estimated optimal selection intensity. For traits whose objective is to
-decrease, the score is the negative genomic value.
+Candidate rankings are shown for traits whose selected method has positive OOF
+correlation. Nominal p-values remain descriptive and do not determine whether a
+ranking is produced. Positive correlations with nominal `p >= 0.05` are kept
+explicitly as weak/exploratory signals and should not be interpreted as
+demonstrated predictive utility. Within each positive-OOF trait, the 20% of
+individuals with the largest oriented score are listed; this 20% is a
+configurable tutorial rule, not an estimated optimal selection intensity. For
+traits whose objective is to decrease, the score is the negative genomic value.
 
 ```{r genomic-ranking}
 genomic_ranking <- selected_oof_genomic_values |>
@@ -783,12 +796,12 @@ genomic_ranking <- selected_oof_genomic_values |>
 
 SELECTION_PROPORTION <- 0.20
 
-selection_eligible_traits <- model_selection |>
+positive_oof_traits <- model_selection |>
   filter(OOF_predictive_direction == "positive") |>
   pull(Trait)
 
 selection_sizes <- genomic_ranking |>
-  filter(Trait %in% selection_eligible_traits) |>
+  filter(Trait %in% positive_oof_traits) |>
   count(Trait, name = "N_available") |>
   mutate(
     Selection_proportion = SELECTION_PROPORTION,
@@ -800,7 +813,7 @@ selection_sizes <- genomic_ranking |>
   arrange(match(Trait, traits))
 
 selection_cutoff_summary <- genomic_ranking |>
-  filter(Trait %in% selection_eligible_traits) |>
+  filter(Trait %in% positive_oof_traits) |>
   inner_join(
     selection_sizes |>
       select(Trait, N_available, N_selected),
@@ -833,6 +846,7 @@ selected_individuals_by_trait <- genomic_ranking |>
     Trait, Rank, IND, FAM, Method,
     Selection_objective, Ranking_rule,
     Genomic_value, Selection_score, OOF_predictive_direction,
+    OOF_nominal_signal, OOF_r, OOF_nominal_p_value,
     Selection_proportion, N_available, N_selected
   ) |>
   arrange(match(Trait, traits), Rank)
@@ -842,7 +856,7 @@ selected_individuals_by_trait <- genomic_ranking |>
 kable(
   selection_sizes,
   digits = 2,
-  caption = "Number of individuals selected for each supported trait"
+  caption = "Exploratory candidate-ranking size for each positive-OOF trait"
 )
 ```
 
@@ -861,15 +875,16 @@ selected_individuals_by_trait |>
   ungroup() |>
   kable(
     digits = 5,
-    caption = "Top five individuals in the ranking for each supported trait"
+    caption = "Top five candidates in each positive-OOF trait ranking"
   )
 ```
 
 ## 11. Recurrence across traits
 
-Recurrence is descriptive: it counts the selection-eligible traits for which each
-individual belongs to the most favorable 20%. No weights are used and no
-multi-trait selection index is constructed.
+Recurrence is descriptive: among traits with positive OOF correlation, it counts
+how many place each individual among the most favorable 20%. Weak positive OOF
+signals remain exploratory. No weights are used and no multi-trait selection
+index is constructed.
 
 ```{r multitrait-recurrence}
 recurrence_counts <- selected_individuals_by_trait |>
@@ -897,7 +912,7 @@ multitrait_recurrence <- matrices_object$metadata |>
       N_traits == 0L ~ NA_real_,
       TRUE ~ Mean_rank_present
     ),
-    Selection_frequency = N_traits / length(selection_eligible_traits),
+    Selection_frequency = N_traits / length(positive_oof_traits),
     Recurrence_class = case_when(
       N_traits >= 4L ~ "high_4plus",
       N_traits == 3L ~ "intermediate_3",
@@ -937,7 +952,7 @@ multitrait_candidates <- multitrait_recurrence |>
 kable(
   recurrence_distribution,
   digits = 4,
-  caption = "Distribution of recurrence across selection-eligible traits"
+  caption = "Distribution of recurrence across traits with positive OOF correlation"
 )
 ```
 
@@ -1003,7 +1018,7 @@ saveRDS(
     selected_oof_genomic_values = selected_oof_genomic_values,
     genomic_ranking = genomic_ranking,
     selection_proportion = SELECTION_PROPORTION,
-    selection_eligible_traits = selection_eligible_traits,
+    positive_oof_traits = positive_oof_traits,
     selection_sizes = selection_sizes,
     selection_cutoff_summary = selection_cutoff_summary,
     selected_individuals_by_trait = selected_individuals_by_trait,

@@ -68,7 +68,7 @@ runtime_summary <- m04$runtime
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
 selection_objectives <- m04$selection_objectives
 selection_proportion <- m04$selection_proportion
-selection_eligible_traits <- m04$selection_eligible_traits
+positive_oof_traits <- m04$positive_oof_traits
 selection_sizes <- m04$selection_sizes
 selected_individuals_by_trait <- m04$selected_individuals_by_trait
 multitrait_recurrence <- m04$multitrait_recurrence
@@ -123,7 +123,7 @@ data.frame(
     length(methods),
     nrow(model_comparison),
     nrow(model_selection),
-    length(selection_eligible_traits)
+    length(positive_oof_traits)
   )
 ) |>
   kable(caption = "Structure of the results presented in this module")
@@ -540,12 +540,14 @@ ggsave(
 )
 ```
 
-## 10. Proportional selection by trait
+## 10. Exploratory proportional candidate ranking by trait
 
-Selection is presented for traits whose selected method has positive OOF
-correlation. Nominal p-values are descriptive and do not determine eligibility.
-The proportion used is `r sprintf("%.0f%%", 100 * selection_proportion)` of
-the individuals within each trait; it is a configurable tutorial rule rather
+Candidate rankings are presented for traits whose selected method has positive
+OOF correlation. Nominal p-values are descriptive and do not determine whether
+a ranking is shown. Rankings with nominal `p >= 0.05` are explicitly
+exploratory and should not be interpreted as demonstrated predictive utility.
+The proportion shown is `r sprintf("%.0f%%", 100 * selection_proportion)` of
+the individuals within each trait and is a configurable tutorial rule rather
 than an estimated optimal intensity. Rankings use cross-fitted OOF genomic
 values, not final breeding values from a model refitted to all phenotypes.
 
@@ -556,6 +558,11 @@ selection_sizes_display <- selection_sizes |>
       select(Trait, Selection_objective),
     by = "Trait"
   ) |>
+  left_join(
+    model_selection |>
+      select(Trait, r, p_value, OOF_nominal_signal),
+    by = "Trait"
+  ) |>
   mutate(
     Objective = unname(
       selection_objective_labels[Selection_objective]
@@ -564,6 +571,9 @@ selection_sizes_display <- selection_sizes |>
   select(
     Trait,
     Objective,
+    r,
+    p_value,
+    OOF_nominal_signal,
     Selection_proportion,
     N_available,
     N_selected
@@ -572,7 +582,7 @@ selection_sizes_display <- selection_sizes |>
 kable(
   selection_sizes_display,
   digits = 2,
-  caption = "Proportion and number of selected individuals by trait"
+  caption = "Exploratory candidate-ranking summary by positive-OOF trait"
 )
 ```
 
@@ -585,11 +595,12 @@ selected_individuals_by_trait |>
   ungroup() |>
   select(
     Trait, Rank, IND, FAM, Method,
-    Selection_objective, Genomic_value, Selection_score
+    Selection_objective, Genomic_value, Selection_score,
+    OOF_r, OOF_nominal_p_value, OOF_nominal_signal
   ) |>
   kable(
     digits = 5,
-    caption = "Top five selected individuals by trait"
+    caption = "Top five candidates in each positive-OOF trait ranking"
   )
 ```
 
@@ -651,9 +662,10 @@ kable(
 )
 ```
 
-Recurrence summarizes, across selection-eligible traits, how many place each
-individual among the most favorable 20%. `N_traits`, selection frequency, and ranks are not combined
-into a multi-trait index.
+Recurrence summarizes, across traits with positive OOF correlation, how many
+place each individual among the most favorable 20%. Recurrence that depends on
+weak positive OOF signals should remain exploratory. `N_traits`, selection
+frequency, and ranks are not combined into a multi-trait index.
 
 ## 12. Summary
 
