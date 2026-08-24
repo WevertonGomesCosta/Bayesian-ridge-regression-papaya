@@ -67,7 +67,9 @@ workflowr::wflow_build(
 )
 ```
 
-A complete reproduction from raw data can require the 350 model fits from Module 03. When validated checkpoints already exist locally, setting `PAPAYA_MAX_NEW_RUNS=0` prevents new model fits during a site rebuild.
+Module 03 contains the complete code for the 350 model fits. In the published tutorial, the fitting and output-writing chunks use `eval=FALSE`, so rebuilding the website does not repeat the computationally intensive BGLR fits. The subsequent chunks read the previously fitted local outputs used by Modules 03--05.
+
+A complete scientific reanalysis from the raw data requires deliberately executing the model-fitting and output-writing code in Module 03 before rebuilding the downstream modules. The fitted BGLR chains and analytical outputs are local generated artifacts and are not versioned in the repository.
 
 ### Data and references
 
@@ -142,7 +144,9 @@ workflowr::wflow_build(
 )
 ```
 
-Uma reprodução completa a partir dos dados brutos pode exigir os 350 ajustes do Módulo 03. Quando os checkpoints validados já existem localmente, definir `PAPAYA_MAX_NEW_RUNS=0` impede novos ajustes durante uma reconstrução do site.
+O Módulo 03 contém o código completo dos 350 ajustes. No tutorial publicado, os chunks de ajuste e de gravação das saídas utilizam `eval=FALSE`, de modo que a reconstrução do site não repete os ajustes computacionalmente intensivos do BGLR. Os chunks seguintes leem as saídas locais previamente ajustadas utilizadas pelos Módulos 03--05.
+
+Uma reanálise científica completa a partir dos dados brutos requer a execução deliberada do código de ajuste e de gravação do Módulo 03 antes da reconstrução dos módulos seguintes. As cadeias ajustadas pelo BGLR e as saídas analíticas são artefatos locais gerados e não são versionados no repositório.
 
 ### Dados e referências
 
