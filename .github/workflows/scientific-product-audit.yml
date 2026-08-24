@@ -1,0 +1,439 @@
+name: Scientific product audit
+
+on:
+  push:
+    branches:
+      - scientific-product-audit
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: scientific-product-audit
+          fetch-depth: 0
+
+      - name: Apply scientific and editorial corrections
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def read(path):
+              return Path(path).read_text(encoding="utf-8")
+
+          def write(path, text):
+              Path(path).write_text(text, encoding="utf-8", newline="\n")
+
+          def replace_one(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected 1 occurrence, found {count}")
+              return text.replace(old, new, 1)
+
+          # ------------------------------------------------------------------
+          # README: clarify generated output and validation scope.
+          # ------------------------------------------------------------------
+          path = "README.md"
+          text = read(path)
+          text = replace_one(
+              text,
+              "Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.\n",
+              "Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.\n\nThe five-fold cross-validation is stratified by family and therefore evaluates prediction within the represented breeding population; it is not a leave-family-out assessment of entirely new families.\n",
+              "README EN CV scope"
+          )
+          text = replace_one(
+              text,
+              "- `output/`: analytical objects, diagnostics, tables, and figures used by the tutorial;",
+              "- `output/`: analytical objects, diagnostics, tables, and figures generated when the modules are executed; this directory is ignored by Git;",
+              "README EN output"
+          )
+          text = replace_one(
+              text,
+              "Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.\n",
+              "Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.\n\nA validação cruzada em cinco folds é estratificada por família e, portanto, avalia a predição dentro da população de melhoramento representada; não constitui uma avaliação leave-family-out de famílias inteiramente novas.\n",
+              "README PT CV scope"
+          )
+          text = replace_one(
+              text,
+              "- `output/`: objetos analíticos, diagnósticos, tabelas e figuras utilizados pelo tutorial;",
+              "- `output/`: objetos analíticos, diagnósticos, tabelas e figuras gerados durante a execução dos módulos; esse diretório é ignorado pelo Git;",
+              "README PT output"
+          )
+          write(path, text)
+
+          # ------------------------------------------------------------------
+          # M02: define validation scope and multiallelic interpretation.
+          # ------------------------------------------------------------------
+          path = "analysis/02_matrices_en.Rmd"
+          text = read(path)
+          text = replace_one(
+              text,
+              "The matrices are constructed once using all 150 individuals and remain\nunchanged across folds. In Module 03, only the phenotype vector is masked to\nform training and validation sets.\n",
+              "The matrices are constructed once using all 150 individuals and remain\nunchanged across folds. In Module 03, only the phenotype vector is masked to\nform training and validation sets.\n\nBecause candidates in every fold are already genotyped, marker filtering,\nallele frequencies, mean imputation, `M`, and `G` are defined from the full\ngenotype panel and then held fixed. No validation phenotype enters these\nsteps. This corresponds to a transductive candidate-genotype setting and\nshould not be interpreted as external validation in a new genotype population.\n",
+              "M02 EN genotype scope"
+          )
+          text = replace_one(
+              text,
+              "## 8. Five family-stratified folds\n\n",
+              "## 8. Five family-stratified folds\n\nFamily stratification targets prediction among individuals from the represented\nbreeding population. It is not a leave-family-out design and therefore does\nnot estimate predictive performance for entirely new families.\n\n",
+              "M02 EN family scope"
+          )
+          text = replace_one(
+              text,
+              "## 11. Diagnostics of the constructed matrices\n\n",
+              "## 11. Diagnostics of the constructed matrices\n\nAll observed allele columns are retained to preserve a symmetric multiallelic\nrepresentation. Because dosage columns within a locus are linearly dependent,\nindividual allele coefficients are not interpreted in isolation; later modules\nfocus on predictions and genomic values.\n\n",
+              "M02 EN allele interpretation"
+          )
+          write(path, text)
+
+          path = "analysis/02_matrices_pt.Rmd"
+          text = read(path)
+          text = replace_one(
+              text,
+              "As matrizes são construídas uma única vez com os 150 indivíduos e permanecem\ninalteradas entre os folds. No Módulo 03, somente o vetor fenotípico será\nmascarado para formar os conjuntos de treinamento e validação.\n",
+              "As matrizes são construídas uma única vez com os 150 indivíduos e permanecem\ninalteradas entre os folds. No Módulo 03, somente o vetor fenotípico será\nmascarado para formar os conjuntos de treinamento e validação.\n\nComo os candidatos de todos os folds já estão genotipados, a filtragem dos\nmarcadores, as frequências alélicas, a imputação pela média, `M` e `G` são\ndefinidas a partir do painel genotípico completo e depois mantidas fixas. Nenhum\nfenótipo de validação participa dessas etapas. Esse desenho corresponde a um\ncenário transdutivo de candidatos genotipados e não deve ser interpretado como\nvalidação externa em uma nova população genotípica.\n",
+              "M02 PT genotype scope"
+          )
+          text = replace_one(
+              text,
+              "## 8. Cinco folds estratificados por família\n\n",
+              "## 8. Cinco folds estratificados por família\n\nA estratificação por família direciona a avaliação para a predição entre\nindivíduos da população de melhoramento representada. Não se trata de um\ndesenho leave-family-out e, portanto, o desempenho não representa famílias\ninteiramente novas.\n\n",
+              "M02 PT family scope"
+          )
+          text = replace_one(
+              text,
+              "## 11. Diagnósticos das matrizes construídas\n\n",
+              "## 11. Diagnósticos das matrizes construídas\n\nTodas as colunas dos alelos observados são mantidas para preservar uma\nrepresentação multialélica simétrica. Como as colunas de dosagem dentro de um\nmesmo loco são linearmente dependentes, os coeficientes de alelos individuais\nnão são interpretados isoladamente; os módulos seguintes se concentram nas\npredições e nos valores genômicos.\n\n",
+              "M02 PT allele interpretation"
+          )
+          write(path, text)
+
+          # ------------------------------------------------------------------
+          # M03: clarify CV scope, BRR terminology, and fixed-lambda choice.
+          # ------------------------------------------------------------------
+          path = "analysis/03_models_en.Rmd"
+          text = read(path)
+          text = replace_one(
+              text,
+              "The evaluated methods are RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Bayesian\nLasso (BL), and GBLUP. All models are fitted with BGLR [@perez2014bglr].",
+              "The evaluated methods are RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,\nBayesian Lasso (BL), and GBLUP. All models are fitted with BGLR\n[@perez2014bglr].",
+              "M03 EN method list"
+          )
+          text = replace_one(text, '  RRBLUP = "RR-BLUP",', '  RRBLUP = "RR-BLUP/BRR",', "M03 EN label")
+          text = replace_one(text, "### 6.1 RR-BLUP\n", "### 6.1 RR-BLUP/BRR\n", "M03 EN heading")
+          text = replace_one(
+              text,
+              "RR-BLUP is implemented with the BGLR `BRR` component. All marker effects share\na common Gaussian variance, producing ridge-type shrinkage\n[@endelman2011rrblup; @perez2014bglr].",
+              "RR-BLUP is represented by the BGLR `BRR` component, the Bayesian ridge\nregression analogue of homogeneous ridge-regression BLUP. All marker effects\nshare a common Gaussian variance and receive the same ridge-type shrinkage\n[@endelman2011rrblup; @perez2014bglr].",
+              "M03 EN RRBLUP description"
+          )
+          text = replace_one(
+              text,
+              "During each fit, phenotypes of the individuals in the validation fold are set\nto `NA`. BGLR fits the model using the remaining phenotypes and returns\npredictions for the masked individuals.\n",
+              "During each fit, phenotypes of the individuals in the validation fold are set\nto `NA`. BGLR fits the model using the remaining phenotypes and returns\npredictions for the masked individuals. Validation candidates remain present in\nthe fixed genotype-derived matrices described in Module 02. Consequently, the\nreported cross-validation performance targets prediction within the represented\nbreeding population rather than leave-family-out generalization.\n",
+              "M03 EN CV scope"
+          )
+          text = replace_one(
+              text,
+              "For these data, \\(MS_x\\approx25.6050\\) and\n\\(\\lambda_0\\approx10.1203\\). The same value is used for every trait and fold.\nIt was held fixed after the standard stochastic update showed numerical\ninstability, without using predictive correlation, RMSE, DIC, or any\ntrait-specific result to choose the value.",
+              "For these data, \\(MS_x\\approx25.6050\\) and\n\\(\\lambda_0\\approx10.1203\\). The same value is used for every trait and fold.\nIn this tutorial, \\(\\lambda\\) is fixed at this BGLR calibration so that the\nshrinkage parameter remains common across traits and folds. This is a modeling\nchoice distinct from a stochastic-lambda specification; no trait-specific\npredictive metric is used to determine \\(\\lambda\\).",
+              "M03 EN BL lambda"
+          )
+          write(path, text)
+
+          path = "analysis/03_models_pt.Rmd"
+          text = read(path)
+          text = replace_one(
+              text,
+              "Os métodos avaliados são RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Lasso\nBayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR\n[@perez2014bglr].",
+              "Os métodos avaliados são RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,\nLasso Bayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR\n[@perez2014bglr].",
+              "M03 PT method list"
+          )
+          text = replace_one(text, '  RRBLUP = "RR-BLUP",', '  RRBLUP = "RR-BLUP/BRR",', "M03 PT label")
+          text = replace_one(text, "### 6.1 RR-BLUP\n", "### 6.1 RR-BLUP/BRR\n", "M03 PT heading")
+          text = replace_one(
+              text,
+              "O RR-BLUP é implementado por meio do componente `BRR` do BGLR. Todos os\nefeitos de marcadores compartilham uma variância Gaussiana comum, resultando em\ncontração do tipo ridge [@endelman2011rrblup; @perez2014bglr].",
+              "O RR-BLUP é representado pelo componente `BRR` do BGLR, o análogo Bayesiano\nde regressão ridge do ridge-regression BLUP. Todos os efeitos de marcadores\ncompartilham uma variância Gaussiana comum e recebem a mesma contração do tipo\nridge [@endelman2011rrblup; @perez2014bglr].",
+              "M03 PT RRBLUP description"
+          )
+          text = replace_one(
+              text,
+              "Durante cada ajuste, os fenótipos dos indivíduos pertencentes ao fold de\nvalidação são substituídos por `NA`. O BGLR utiliza os fenótipos restantes para\no ajuste e retorna as predições para os indivíduos mascarados.\n",
+              "Durante cada ajuste, os fenótipos dos indivíduos pertencentes ao fold de\nvalidação são substituídos por `NA`. O BGLR utiliza os fenótipos restantes para\no ajuste e retorna as predições para os indivíduos mascarados. Os candidatos de\nvalidação permanecem nas matrizes fixas derivadas dos genótipos descritas no\nMódulo 02. Consequentemente, o desempenho de validação cruzada representa a\npredição dentro da população de melhoramento representada, e não uma\ngeneralização leave-family-out.\n",
+              "M03 PT CV scope"
+          )
+          text = replace_one(
+              text,
+              "Para estes dados, \\(MS_x\\approx25.6050\\) e\n\\(\\lambda_0\\approx10.1203\\). O mesmo valor é utilizado para todas as\ncaracterísticas e folds. A decisão de mantê-lo fixo foi tomada após a\natualização estocástica padrão apresentar instabilidade numérica, sem utilizar\ncorrelação preditiva, RMSE, DIC ou qualquer resultado específico de\ncaracterística para escolher o valor.",
+              "Para estes dados, \\(MS_x\\approx25.6050\\) e\n\\(\\lambda_0\\approx10.1203\\). O mesmo valor é utilizado para todas as\ncaracterísticas e folds. Neste tutorial, \\(\\lambda\\) é fixado nessa\ncalibração do BGLR para que o parâmetro de contração permaneça comum entre\ncaracterísticas e folds. Essa é uma escolha de modelagem distinta de uma\nespecificação com lambda estocástico; nenhuma métrica preditiva específica de\ncaracterística é utilizada para determinar \\(\\lambda\\).",
+              "M03 PT BL lambda"
+          )
+          write(path, text)
+
+          # ------------------------------------------------------------------
+          # M04: keep p-values descriptive, make competition terminology
+          # explicit, and define cross-fitted selection scores.
+          # ------------------------------------------------------------------
+          for path, lang in [("analysis/04_results_en.Rmd", "en"), ("analysis/04_results_pt.Rmd", "pt")]:
+              text = read(path)
+              text = text.replace("DIC_EQUIVALENCE_THRESHOLD", "DIC_COMPETITIVE_THRESHOLD")
+              text = text.replace("DIC_equivalence_threshold", "DIC_competitive_threshold")
+              text = text.replace("rrblup_preferred_among_equivalent_models", "rrblup_preferred_among_competitive_models")
+              text = text.replace("best_non_rrblup_equivalent_model", "best_non_rrblup_competitive_model")
+              text = text.replace("Operational_equivalence_rule", "Operational_competitive_set_rule")
+              text = text.replace('"automatic_supported"', '"rule_based_selected"')
+              text = text.replace("Predictive_evidence", "OOF_predictive_direction")
+              text = text.replace("predictive_evidence_summary", "oof_direction_summary")
+              text = text.replace("supported_traits", "selection_eligible_traits")
+
+              old_direction = '''    OOF_predictive_direction = case_when(\n      r > 0 & p_value < 0.05 ~ "positive_p_lt_0.05",\n      r > 0 & p_value >= 0.05 ~ "positive_p_ge_0.05",\n      TRUE ~ "nonpositive_p_ge_0.05"\n    )'''
+              new_direction = '''    OOF_predictive_direction = if_else(\n      r > 0,\n      "positive",\n      "nonpositive"\n    )'''
+              text = replace_one(text, old_direction, new_direction, f"M04 {lang} OOF direction")
+              text = replace_one(
+                  text,
+                  'filter(OOF_predictive_direction == "positive_p_lt_0.05")',
+                  'filter(OOF_predictive_direction == "positive")',
+                  f"M04 {lang} eligibility filter"
+              )
+
+              if lang == "en":
+                  text = replace_one(
+                      text,
+                      "Pearson-correlation p-values are retained as nominal descriptive measures\nbecause training sets overlap across folds.",
+                      "Pearson-correlation p-values are retained as nominal descriptive measures\nbecause training sets overlap across folds. They are reported for context and\nare not used to determine eligibility for genomic selection.",
+                      "M04 EN p-value interpretation"
+                  )
+                  text = replace_one(
+                      text,
+                      "```{r model-comparison}\n",
+                      "`Wprob` is used here as a DIC-derived relative-support weight. It is not\ninterpreted as a calibrated posterior probability of a model.\n\n```{r model-comparison}\n",
+                      "M04 EN Wprob note"
+                  )
+                  text = replace_one(
+                      text,
+                      "A method is considered predictively competitive when its mean fold correlation\nis within one standard error below the largest mean and its mean RMSE is within\none standard error above the smallest mean RMSE. DIC fit is considered similar\nwhen `Delta_DIC <= 2`. These thresholds are operational comparison rules, not\nformal equivalence tests.\n\nWhen RR-BLUP belongs to the competitive set and has no convergence flags, it is\npreferred because of its simpler parameterization and direct interpretation of\nvariance components. Otherwise, the best competitive candidate without flags\nis used; when no automatic candidate is available, the predictive winner is\nretained as a provisional choice for review.",
+                      "A method is considered predictively competitive when its mean fold correlation\nis within one standard error below the largest mean and its mean RMSE is within\none standard error above the smallest mean RMSE. DIC fit is considered similar\nwhen `Delta_DIC <= 2`. These thresholds define an operational competitive set,\nnot a formal equivalence test.\n\nWhen RR-BLUP/BRR belongs to this competitive set and has no convergence flags,\nit is preferred as the homogeneous-shrinkage benchmark with the simpler\nparameterization. Otherwise, the best competitive candidate without flags is\nused; when no rule-based candidate is available, the predictive winner is\nretained as a provisional choice for review.",
+                      "M04 EN selection rationale"
+                  )
+                  text = replace_one(
+                      text,
+                      "The one-standard-error rule is applied to mean fold correlation and RMSE. The\n`Delta_DIC <= 2` threshold and MCMC diagnostics are then used to determine the\ncandidates eligible for automatic selection.\n",
+                      "The one-standard-error rule is applied to mean fold correlation and RMSE. The\n`Delta_DIC <= 2` threshold and MCMC diagnostics are then used to determine the\ncandidates eligible under the rule. Because the training sets overlap across\nfolds, these standard errors are descriptive tolerances and are not interpreted\nas independent-sample inferential standard errors.\n",
+                      "M04 EN one-SE interpretation"
+                  )
+                  text = replace_one(
+                      text,
+                      "## 8. Heritability and accuracy in the RR-BLUP/BRR analogue\n",
+                      "## 8. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR\n",
+                      "M04 EN heritability heading"
+                  )
+                  text = text.replace('caption = "Heritability and accuracy in the RR-BLUP/BRR analogue"', 'caption = "Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR"')
+                  text = replace_one(
+                      text,
+                      "## 9. OOF genomic values and selection direction\n\n",
+                      "## 9. OOF genomic values and selection direction\n\nEach individual's genomic value is cross-fitted: it comes from the fold in\nwhich that individual's phenotype was masked. These OOF genomic values provide\na validation-consistent ranking because an individual's own phenotype does not\nenter its score. They are not final breeding values from a model refitted to\nall 150 phenotypes.\n\n",
+                      "M04 EN OOF interpretation"
+                  )
+                  text = replace_one(
+                      text,
+                      "Selection is restricted to traits with positive OOF correlation and\n`p < 0.05`. Within each supported trait, the 20% of individuals with the\nlargest oriented score are selected. For traits whose objective is to\ndecrease, the score is the negative genomic value.",
+                      "Selection is restricted to traits for which the selected method has positive\nOOF correlation. Nominal p-values remain descriptive and do not determine\neligibility. Within each eligible trait, the 20% of individuals with the\nlargest oriented score are selected; this 20% is a configurable tutorial rule,\nnot an estimated optimal selection intensity. For traits whose objective is to\ndecrease, the score is the negative genomic value.",
+                      "M04 EN selection eligibility"
+                  )
+                  text = text.replace("supported traits", "selection-eligible traits")
+                  text = text.replace("Supported traits", "Selection-eligible traits")
+                  text = text.replace('file.path(RESULTS_DIR, "predictive_evidence_summary.csv")', 'file.path(RESULTS_DIR, "oof_predictive_direction_summary.csv")')
+              else:
+                  text = replace_one(
+                      text,
+                      "Os p-valores da correlação de Pearson são mantidos como medidas nominais e\ndescritivas porque os conjuntos de treinamento se sobrepõem entre folds.",
+                      "Os p-valores da correlação de Pearson são mantidos como medidas nominais e\ndescritivas porque os conjuntos de treinamento se sobrepõem entre folds. Eles\nsão apresentados como contexto e não são usados para definir a elegibilidade\npara seleção genômica.",
+                      "M04 PT p-value interpretation"
+                  )
+                  text = replace_one(
+                      text,
+                      "```{r model-comparison}\n",
+                      "`Wprob` é utilizado aqui como um peso de suporte relativo derivado do DIC.\nEle não é interpretado como uma probabilidade posterior calibrada de um modelo.\n\n```{r model-comparison}\n",
+                      "M04 PT Wprob note"
+                  )
+                  text = replace_one(
+                      text,
+                      "Um método é considerado preditivamente competitivo quando sua média de\ncorrelação entre folds está até um erro-padrão abaixo da maior média e seu RMSE\nmédio está até um erro-padrão acima do menor RMSE médio. O ajuste por DIC é\nconsiderado semelhante quando `Delta_DIC <= 2`. Esses limites são regras\noperacionais de comparação, não testes formais de equivalência.\n\nQuando RR-BLUP pertence ao conjunto competitivo e não apresenta flags de\nconvergência, ele é preferido pela parametrização mais simples e pela\ninterpretação direta dos componentes de variância. Caso contrário, é utilizado\no melhor candidato competitivo sem flags; se não houver candidato automático,\no vencedor preditivo é mantido como escolha provisória para revisão.",
+                      "Um método é considerado preditivamente competitivo quando sua média de\ncorrelação entre folds está até um erro-padrão abaixo da maior média e seu RMSE\nmédio está até um erro-padrão acima do menor RMSE médio. O ajuste por DIC é\nconsiderado semelhante quando `Delta_DIC <= 2`. Esses limites definem um\nconjunto competitivo operacional, e não um teste formal de equivalência.\n\nQuando RR-BLUP/BRR pertence a esse conjunto competitivo e não apresenta flags\nde convergência, ele é preferido como referência de contração homogênea e de\nparametrização mais simples. Caso contrário, é utilizado o melhor candidato\ncompetitivo sem flags; se não houver candidato elegível pela regra, o vencedor\npreditivo é mantido como escolha provisória para revisão.",
+                      "M04 PT selection rationale"
+                  )
+                  text = replace_one(
+                      text,
+                      "A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds.\nEm seguida, o limite `Delta_DIC <= 2` e os diagnósticos MCMC definem os\ncandidatos que podem ser selecionados automaticamente.\n",
+                      "A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds.\nEm seguida, o limite `Delta_DIC <= 2` e os diagnósticos MCMC definem os\ncandidatos elegíveis pela regra. Como os conjuntos de treinamento se sobrepõem\nentre folds, esses erros-padrão são tolerâncias descritivas e não são\ninterpretados como erros-padrão inferenciais de amostras independentes.\n",
+                      "M04 PT one-SE interpretation"
+                  )
+                  text = replace_one(
+                      text,
+                      "## 8. Herdabilidade e acurácia no análogo RR-BLUP/BRR\n",
+                      "## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR\n",
+                      "M04 PT heritability heading"
+                  )
+                  text = text.replace('caption = "Herdabilidade e acurácia no análogo RR-BLUP/BRR"', 'caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR"')
+                  text = replace_one(
+                      text,
+                      "## 9. Valores genômicos OOF e direção de seleção\n\n",
+                      "## 9. Valores genômicos OOF e direção de seleção\n\nO valor genômico de cada indivíduo é cross-fitted: ele provém do fold em que o\nfenótipo desse indivíduo foi mascarado. Esses valores genômicos OOF permitem um\nranking coerente com a validação, pois o próprio fenótipo do indivíduo não entra\nno seu escore. Eles não correspondem a valores genéticos finais de um modelo\nreajustado com os 150 fenótipos.\n\n",
+                      "M04 PT OOF interpretation"
+                  )
+                  text = replace_one(
+                      text,
+                      "A seleção é restrita às características com correlação OOF positiva e\n`p < 0,05`. Dentro de cada característica suportada, os 20% de indivíduos com\nmaior escore orientado são selecionados. Para características cujo objetivo é\ndiminuir, o escore é o negativo do valor genômico.",
+                      "A seleção é restrita às características para as quais o método selecionado\napresenta correlação OOF positiva. Os p-valores nominais permanecem descritivos\ne não determinam a elegibilidade. Em cada característica elegível, são\nselecionados os 20% de indivíduos com maior escore orientado; essa proporção de\n20% é uma regra configurável do tutorial, e não uma intensidade ótima estimada.\nPara características cujo objetivo é diminuir, o escore é o negativo do valor\ngenômico.",
+                      "M04 PT selection eligibility"
+                  )
+                  text = text.replace("características suportadas", "características elegíveis para seleção")
+                  text = text.replace("Características suportadas", "Características elegíveis para seleção")
+                  text = text.replace("característica suportada", "característica elegível para seleção")
+                  text = text.replace('file.path(RESULTS_DIR, "predictive_evidence_summary.csv")', 'file.path(RESULTS_DIR, "oof_predictive_direction_summary.csv")')
+
+              # Cross-validation scope inherited from Modules 02-03.
+              if lang == "en":
+                  marker = "## 3. OOF predictive performance\n\n"
+                  addition = "The OOF estimates inherit the family-stratified design of Modules 02 and\n03. They quantify prediction within the represented breeding population and do\nnot estimate generalization to entirely new families.\n\n"
+              else:
+                  marker = "## 3. Desempenho preditivo OOF\n\n"
+                  addition = "As estimativas OOF herdam o desenho estratificado por família dos Módulos 02\ne 03. Elas quantificam a predição dentro da população de melhoramento\nrepresentada e não estimam a generalização para famílias inteiramente novas.\n\n"
+              text = replace_one(text, marker, marker + addition, f"M04 {lang} CV scope")
+              write(path, text)
+
+          # ------------------------------------------------------------------
+          # M05: align presentation with corrected M04 semantics.
+          # ------------------------------------------------------------------
+          for path, lang in [("analysis/05_results_en.Rmd", "en"), ("analysis/05_results_pt.Rmd", "pt")]:
+              text = read(path)
+              text = text.replace("supported_traits", "selection_eligible_traits")
+              text = text.replace("Predictive_evidence", "OOF_predictive_direction")
+              text = text.replace("rrblup_preferred_among_equivalent_models", "rrblup_preferred_among_competitive_models")
+              text = text.replace("best_non_rrblup_equivalent_model", "best_non_rrblup_competitive_model")
+              text = text.replace('Selection_status == "automatic_supported"', 'Selection_status == "rule_based_selected"')
+
+              if lang == "en":
+                  text = text.replace("Traits with supported predictive evidence", "Traits with positive OOF predictive ability")
+                  text = text.replace("Supported automatic selection", "Rule-based selection")
+                  text = text.replace("RR-BLUP preferred among equivalent methods", "RR-BLUP/BRR preferred among competitive methods")
+                  text = text.replace("RR-BLUP was the best predictive model", "RR-BLUP/BRR was the best predictive model")
+                  text = replace_one(
+                      text,
+                      'caption = "Selected methods and evidence by trait"',
+                      'caption = "Selected methods and diagnostics by trait"',
+                      "M05 EN selected caption"
+                  )
+                  text = replace_one(
+                      text,
+                      "## 8. Heritability and accuracy in the RR-BLUP/BRR analogue\n",
+                      "## 8. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR\n",
+                      "M05 EN heritability heading"
+                  )
+                  text = text.replace('caption = "Heritability and predictive accuracy in the RR-BLUP/BRR analogue"', 'caption = "Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR"')
+                  text = replace_one(
+                      text,
+                      "Selection uses traits with positive OOF correlation and `p < 0.05`. The\nproportion used is `r sprintf(\"%.0f%%\", 100 * selection_proportion)` of the\nindividuals within each trait, respecting the breeding direction defined in\nModule 04.",
+                      "Selection is presented for traits whose selected method has positive OOF\ncorrelation. Nominal p-values are descriptive and do not determine eligibility.\nThe proportion used is `r sprintf(\"%.0f%%\", 100 * selection_proportion)` of\nthe individuals within each trait; it is a configurable tutorial rule rather\nthan an estimated optimal intensity. Rankings use cross-fitted OOF genomic\nvalues, not final breeding values from a model refitted to all phenotypes.",
+                      "M05 EN selection text"
+                  )
+                  text = text.replace("supported traits", "selection-eligible traits")
+                  text = text.replace("Supported traits", "Selection-eligible traits")
+              else:
+                  text = text.replace("Características com evidência preditiva suportada", "Características com capacidade preditiva OOF positiva")
+                  text = text.replace("Seleção automática sustentada", "Seleção baseada na regra")
+                  text = text.replace("RR-BLUP preferido entre métodos equivalentes", "RR-BLUP/BRR preferido entre métodos competitivos")
+                  text = text.replace("RR-BLUP foi o melhor modelo preditivo", "RR-BLUP/BRR foi o melhor modelo preditivo")
+                  text = replace_one(
+                      text,
+                      'caption = "Métodos selecionados e evidências por característica"',
+                      'caption = "Métodos selecionados e diagnósticos por característica"',
+                      "M05 PT selected caption"
+                  )
+                  text = replace_one(
+                      text,
+                      "## 8. Herdabilidade e acurácia no análogo RR-BLUP/BRR\n",
+                      "## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR\n",
+                      "M05 PT heritability heading"
+                  )
+                  text = text.replace('caption = "Herdabilidade e acurácia preditiva no análogo RR-BLUP/BRR"', 'caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR"')
+                  text = replace_one(
+                      text,
+                      "A seleção utiliza as características com correlação OOF positiva e\n`p < 0,05`. A proporção utilizada é de\n`r sprintf(\"%.0f%%\", 100 * selection_proportion)` dos indivíduos por\ncaracterística, respeitando a direção de melhoramento definida no Módulo 04.",
+                      "A seleção é apresentada para as características cujo método selecionado possui\ncorrelação OOF positiva. Os p-valores nominais são descritivos e não determinam\na elegibilidade. A proporção utilizada é de\n`r sprintf(\"%.0f%%\", 100 * selection_proportion)` dos indivíduos por\ncaracterística; trata-se de uma regra configurável do tutorial, e não de uma\nintensidade ótima estimada. Os rankings utilizam valores genômicos OOF\ncross-fitted, e não valores genéticos finais de um modelo reajustado com todos\nos fenótipos.",
+                      "M05 PT selection text"
+                  )
+                  text = text.replace("características suportadas", "características elegíveis para seleção")
+                  text = text.replace("Características suportadas", "Características elegíveis para seleção")
+
+              write(path, text)
+
+          # ------------------------------------------------------------------
+          # Guardrails: no historical troubleshooting language or p-value gate
+          # remains in tutorial source.
+          # ------------------------------------------------------------------
+          source = "\n".join(
+              read(p) for p in [
+                  "analysis/02_matrices_en.Rmd", "analysis/02_matrices_pt.Rmd",
+                  "analysis/03_models_en.Rmd", "analysis/03_models_pt.Rmd",
+                  "analysis/04_results_en.Rmd", "analysis/04_results_pt.Rmd",
+                  "analysis/05_results_en.Rmd", "analysis/05_results_pt.Rmd",
+              ]
+          )
+          forbidden = [
+              "showed numerical instability",
+              "apresentar instabilidade numérica",
+              "positive_p_lt_0.05",
+              "positive_p_ge_0.05",
+              "nonpositive_p_ge_0.05",
+              "rrblup_preferred_among_equivalent_models",
+              "best_non_rrblup_equivalent_model",
+              "automatic_supported",
+          ]
+          leftovers = [item for item in forbidden if item in source]
+          if leftovers:
+              raise RuntimeError(f"Forbidden leftovers: {leftovers}")
+
+          print("Scientific product audit transformations completed.")
+          PY
+
+      - name: Validate diff
+        shell: bash
+        run: |
+          git diff --check
+          git diff --stat
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            README.md \
+            analysis/02_matrices_en.Rmd \
+            analysis/02_matrices_pt.Rmd \
+            analysis/03_models_en.Rmd \
+            analysis/03_models_pt.Rmd \
+            analysis/04_results_en.Rmd \
+            analysis/04_results_pt.Rmd \
+            analysis/05_results_en.Rmd \
+            analysis/05_results_pt.Rmd | sort)"
+          if [ "$changed" != "$expected" ]; then
+            echo "Unexpected changed-file set"
+            echo "Changed:"
+            echo "$changed"
+            echo "Expected:"
+            echo "$expected"
+            exit 1
+          fi
+
+      - name: Commit audited sources
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md analysis/*.Rmd
+          git rm .github/workflows/scientific-product-audit.yml
+          git commit -m "Strengthen scientific interpretation and selection rules"
+          git push origin HEAD:scientific-product-audit
