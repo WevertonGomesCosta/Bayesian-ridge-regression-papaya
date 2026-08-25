@@ -19,6 +19,8 @@ editor_options:
 github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
 ---
 
+The hidden chunk below defines only page-wide rendering options. This module does not refit models, redefine the selection rule, or recompute the scientific results consolidated in Module 04.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -32,12 +34,11 @@ knitr::opts_chunk$set(
 
 ## 1. Objective
 
-This module organizes the results derived in Module 04 into tables and figures.
-The presentation starts with the comparison of the seven methods, proceeds to
-the selected methods and chain diagnostics, and finishes with genomic-selection
-results and recurrence across traits.
+This module turns the results derived in Module 04 into a visual and tabular synthesis for scientific reading. The sequence follows the tutorial reasoning: first compare the seven methods, then present the trait-specific decisions, illustrate MCMC diagnostics and across-fold stability, and finally show exploratory genomic rankings and recurrence across traits. No table or figure on this page constitutes a new selection or inferential step; they present results already defined upstream.
 
 ## 2. Packages, results, and graphical style
+
+The first chunk loads only the packages used for manipulation, tables, and figures. There is no call to `BGLR()` and no model is fitted on this page.
 
 ```{r packages}
 suppressPackageStartupMessages({
@@ -48,7 +49,7 @@ suppressPackageStartupMessages({
 })
 ```
 
-The next step loads the input objects and defines the visual standard for this module. Labels, colors, base font size, figure dimensions, and export resolution are presentation choices only: none enters performance, selection, or inferential calculations. The palette is held fixed so that each method keeps the same visual identity across figures.
+The module consumes two consolidated objects. `models_object.rds` supplies the settings required to locate and interpret previously saved chains; `module04_results.rds` supplies all tables, decisions, rankings, and correlations derived in Module 04. The chunk also defines the visual standard. Labels, colors, base font size, dimensions, and export resolution are presentation choices only and do not enter performance, selection, or inferential calculations. The fixed palette keeps each method visually consistent throughout the page.
 
 ```{r inputs-and-style}
 # Define output paths and load the objects required by this module.
@@ -116,7 +117,7 @@ project_theme <- theme_bw(base_size = 12) +
   )
 ```
 
-The next step summarizes the coverage of the result objects before presenting the final tables and figures.
+The opening table acts as a coverage check: it confirms how many traits and methods are presented, how many combinations enter the comparison, and how many traits have a selected method and positive OOF correlation. These counts help the reader verify the scope of the synthesis before interpreting the following panels.
 
 ```{r input-summary}
 # Summarize the dimensions and categories of the preprocessing object received by the module.
@@ -142,8 +143,7 @@ data.frame(
 
 ## 3. Comparison of the seven methods
 
-The table combines DIC, difference from the smallest DIC, `Wprob`, `ER`, OOF
-correlation, and nominal p-value for every trait × method combination.
+For every trait × method combination, the table reports mean DIC across folds, `Delta_DIC`, `Wprob`, `ER`, pooled OOF correlation, and the nominal p-value. DIC and its relative weights should be compared only among methods for the same trait; OOF correlation represents predictive performance and remains the primary reference. The p-value is descriptive only, as defined in Module 04.
 
 ```{r model-comparison-table}
 # Assemble the summary table presented in this section.
@@ -171,7 +171,7 @@ kable(
 )
 ```
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The figure translates the OOF-correlation table into a direct visual comparison. The horizontal zero line separates positive from nonpositive association, and every panel uses the same vertical scale so magnitudes can be compared across traits. Bars are point estimates, not uncertainty intervals.
 
 ```{r predictive-correlation-figure, fig.width=13, fig.height=10}
 # Order methods and build the OOF-correlation figure by trait.
@@ -211,7 +211,7 @@ ggsave(
 
 ## 4. Selected methods by trait
 
-The next step organizes, for each trait, the selected method, reference winners, and indicators supporting the decision.
+The following table does not rerun method selection. It translates the decision already consolidated in Module 04, placing the selected method, predictive winner, DIC winner, any RR-BLUP preference, decision status, and main OOF/MCMC indicators side by side. A provisional status still requires review even though a method appears in the selected-method column.
 
 ```{r selected-methods-table}
 # Assemble the summary table presented in this section.
@@ -273,8 +273,7 @@ kable(
 
 ## 5. MCMC chains of the selected methods
 
-For each trait, the posterior chain of \(\mu\), its running mean, and its
-posterior density are shown for the first fold of the selected method.
+For each trait, this section shows only the posterior chain of \(\mu\) from fold 1 of the selected method, its running mean, and its posterior density. Fold 1 provides a consistent visual illustration across traits; it does not replace ESS/Geweke diagnostics over all five folds and does not prove convergence of every model parameter.
 
 ```{r selected-mu-data}
 # Convert burn-in to the saved-sample scale and prepare posterior mu traces and densities.
@@ -346,7 +345,7 @@ selected_mu_trace <- bind_rows(trace_parts)
 selected_mu_density <- bind_rows(density_parts)
 ```
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+In the trace plot, the thin line shows posterior samples of \(\mu\) after burn-in and the colored line shows the running mean. For readability, only one of every 100 posterior samples is drawn; this reduction affects plotting only, while the running mean was computed from the full available posterior chain. Visual stabilization of the mean is descriptive evidence, not a standalone convergence criterion.
 
 ```{r selected-mu-trace-figure, fig.width=13, fig.height=14}
 # Build the visualization used to interpret the results in this section.
@@ -385,7 +384,7 @@ ggsave(
 )
 ```
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The density complements the trace by showing the marginal posterior shape of \(\mu\) in the same fold. `n = 512` controls only the numerical resolution of the density curve and does not alter the chain or inference. Panels use free scales because the location and dispersion of \(\mu\) differ across traits; visual widths across panels should therefore not be compared as though their axes were common.
 
 ```{r selected-mu-density-figure, fig.width=13, fig.height=14}
 # Build the visualization used to interpret the results in this section.
@@ -422,7 +421,7 @@ ggsave(
 
 ## 6. Stability across folds
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+This figure returns the focus to cross-validation. Each panel shows the five validation correlations for the selected method; sign changes or large ranges among points suggest descriptive instability. Because training sets overlap and there are only five folds, the plot is neither a formal heterogeneity test nor a confidence interval.
 
 ```{r selected-fold-figure, fig.width=12, fig.height=10}
 # Add labels to fold-level results and build the stability figure for the selected method.
@@ -464,7 +463,7 @@ ggsave(
 
 ## 7. Computational time
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+Bars show the mean recorded time across the 50 fits of each method, and error bars show one standard deviation across those fits. The comparison is operational for this execution and environment; hardware, system load, implementation, and I/O differences prevent interpreting the plot as a universal speed benchmark.
 
 ```{r runtime-figure, fig.width=11, fig.height=7}
 # Summarize the computational cost of the evaluated methods.
@@ -509,7 +508,7 @@ ggsave(
 
 ## 8. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The table re-presents the quantities derived in Module 04 for RR-BLUP/BRR. `RRBLUP_H2` is a marker-model-based heritability analogue, not an independent classical estimate of narrow-sense heritability. `RRBLUP_predictive_accuracy` is the mean ratio \(r_f/\sqrt{H_f^2}\); because it is derived from sample estimates, it may be negative or exceed 1 and should not be interpreted as a correlation necessarily bounded to `[0, 1]`.
 
 ```{r rrblup-heritability-table}
 rrblup_table <- rrblup_heritability_summary |>
@@ -530,9 +529,7 @@ kable(
 
 ## 9. Correlations among OOF genomic values
 
-Correlations are used without rounding in calculations and in the color scale. Because values are printed to two decimals in the heatmap, only the label of correlations with `|r| < 0.005` is displayed as zero to avoid showing `-0.00`; the original numeric value remains unchanged.
-
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The heatmap presents associations among OOF genomic values produced by the selected method for each trait. Because different traits may use different methods and the values are cross-fitted, these associations are not genetic correlations estimated by a multivariate model. Correlations are used without rounding in calculations and in the color scale; only labels with `|r| < 0.005` are displayed as zero to avoid `-0.00`, without changing the numeric value or fill color.
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
 # Reshape the OOF correlation matrix and build the cross-trait heatmap.
@@ -597,14 +594,7 @@ ggsave(
 
 ## 10. Exploratory proportional candidate ranking by trait
 
-Candidate rankings are presented for traits whose selected method has positive
-OOF correlation. Nominal p-values are descriptive and do not determine whether
-a ranking is shown. Rankings with nominal `p >= 0.05` are explicitly
-exploratory and should not be interpreted as demonstrated predictive utility.
-The proportion shown is `r sprintf("%.0f%%", 100 * selection_proportion)` of
-the individuals within each trait and is a configurable tutorial rule rather
-than an estimated optimal intensity. Rankings use cross-fitted OOF genomic
-values, not final breeding values from a model refitted to all phenotypes.
+Rankings are shown only for traits whose selected method has positive OOF correlation. Nominal p-values are descriptive and do not control display; when `p >= 0.05`, the ranking remains explicitly exploratory and does not demonstrate predictive utility. The proportion shown is `r sprintf("%.0f%%", 100 * selection_proportion)` per trait — 30 of the 150 individuals in this dataset — and is a configurable tutorial rule rather than an estimated optimal intensity. Scores are cross-fitted OOF genomic values, so an individual's own phenotype does not contribute to its score; even so, they are not final breeding values from a model refitted to all phenotypes.
 
 ```{r proportional-selection-table}
 # Combine the selection objective, OOF evidence, and exploratory ranking size for each trait.
@@ -666,7 +656,7 @@ selected_individuals_by_trait |>
 
 The recurrence classes shown here are the same ones defined in Module 04. The complete object retains candidates present in at least two traits; to keep the main table compact, this module displays only intermediate or high recurrence, that is, candidates present in three or more traits. The `N_traits >= 3` cutoff is a presentation choice only and does not redefine the stored candidate set.
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The first recurrence table describes the whole population according to the number of positive-OOF rankings in which each individual appears. The classes are presentation labels defined in Module 04 rather than significance thresholds.
 
 ```{r recurrence-distribution-table}
 # Translate recurrence classes and prepare their distribution for presentation.
@@ -699,7 +689,7 @@ kable(
 )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The main candidate table is deliberately more compact: it shows only individuals recurring in three or more traits. This filter is for presentation only; the complete `multitrait_candidates` object still retains recurrence in at least two traits.
 
 ```{r recurrent-candidates-table}
 # Show only intermediate/high recurrence (>=3) in the main table; the complete object retains >=2.
@@ -730,14 +720,8 @@ kable(
 )
 ```
 
-Recurrence summarizes, across traits with positive OOF correlation, in how many
-traits each individual appears among the most favorable 20%. Recurrence that depends on
-weak positive OOF signals should remain exploratory. `N_traits`, selection
-frequency, and ranks are not combined into a multi-trait index.
+Recurrence summarizes, across traits with positive OOF correlation, in how many lists each individual appears among the most favorable 20%. `Selection_frequency` uses the number of positive-OOF traits as its denominator, not necessarily all ten original traits. Recurrence supported by weak positive OOF signals remains exploratory. `N_traits`, frequency, and ranks are not combined into a multi-trait index; therefore, greater recurrence does not demonstrate joint superiority across multiple traits.
 
 ## 12. Summary
 
-The tables and figures in this module follow the complete sequence from method
-comparison to recurrent candidate identification. Biological interpretation
-should jointly consider predictive evidence, breeding direction, and the
-limitations of the population and marker set.
+The final reading should preserve the hierarchy established throughout the tutorial: OOF performance drives predictive comparison; DIC, across-fold stability, and MCMC diagnostics provide complementary context; rankings are produced only when OOF direction is positive; and recurrence summarizes overlap among rankings without constructing a multi-trait index. All conclusions remain conditional on the represented breeding population, the available SSR panel, and the transductive validation design. For operational selection, OOF rankings should be treated as exploratory evidence rather than substitutes for final breeding values from a prediction stage designed for decision making.
