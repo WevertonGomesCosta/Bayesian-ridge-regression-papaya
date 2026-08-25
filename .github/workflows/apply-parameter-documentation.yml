@@ -1,0 +1,487 @@
+name: Apply parameter documentation audit
+
+on:
+  push:
+    branches:
+      - parameter-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add parameter explanations and semantic comments
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [Path(f'analysis/{m}_{lang}.Rmd') for m in ['01_preprocessing','02_matrices','03_models','04_results','05_results'] for lang in ['pt','en']]
+
+          def executable_signature(text):
+              lines=text.splitlines(); out=[]; inside=False
+              for line in lines:
+                  if re.match(r'^\s*```\{r(?:[\s,}]|$)', line):
+                      inside=True; continue
+                  if inside and re.match(r'^\s*```\s*$', line):
+                      inside=False; continue
+                  if inside:
+                      s=line.lstrip()
+                      if not s or s.startswith('#'):
+                          continue
+                      out.append(line.rstrip())
+              return '\n'.join(out)
+
+          before={p: executable_signature(p.read_text(encoding='utf-8')) for p in files}
+
+          replacements = {
+          Path('analysis/01_preprocessing_pt.Rmd'): [
+          ('''A etapa seguinte define os caminhos dos arquivos usados como entradas e saídas do módulo.''', '''A etapa seguinte define os caminhos dos arquivos usados como entradas e saídas do módulo. Esses caminhos apenas organizam a leitura e a persistência dos resultados e não constituem parâmetros estatísticos.
+
+Dois parâmetros de controle são fixados neste ponto. `CALL_RATE_MIN = 0.90` exige que pelo menos 90% das chamadas de um loco estejam disponíveis; em conjunto com a exigência de pelo menos duas classes genotípicas, esse limite evita manter locos com informação insuficiente. `PHENOTYPE_DISTANCE_THRESHOLD = 4` identifica, apenas para inspeção, observações a pelo menos quatro desvios-padrão da média da característica. Essa regra é diagnóstica: nenhum fenótipo é removido, winsorizado ou alterado por esse limite.'''),
+          ('''```{r caminhos}
+GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
+PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
+OUTPUT_DIR <- here("output", "preprocessing")
+
+CALL_RATE_MIN <- 0.90
+PHENOTYPE_DISTANCE_THRESHOLD <- 4''', '''```{r caminhos}
+# Define os dois arquivos de entrada e a pasta em que o pré-processamento será salvo.
+GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
+PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
+OUTPUT_DIR <- here("output", "preprocessing")
+
+# Exige pelo menos 90% de chamadas disponíveis para manter um loco SSR.
+CALL_RATE_MIN <- 0.90
+# Usa quatro desvios-padrão somente como limiar de sinalização diagnóstica.
+PHENOTYPE_DISTANCE_THRESHOLD <- 4'''),
+          ('''  geom_histogram(bins = 20) +''', '''  # Usa 20 classes apenas para padronizar a resolução visual dos histogramas.
+  geom_histogram(bins = 20) +'''),
+          ],
+          Path('analysis/01_preprocessing_en.Rmd'): [
+          ('''The next step defines the file paths used as inputs and outputs in this module.''', '''The next step defines the file paths used as inputs and outputs in this module. These paths only organize data reading and result persistence and are not statistical parameters.
+
+Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available; together with the requirement of at least two genotype classes, this avoids retaining loci with insufficient information. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.'''),
+          ('''```{r paths}
+GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
+PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
+OUTPUT_DIR <- here("output", "preprocessing")
+
+CALL_RATE_MIN <- 0.90
+PHENOTYPE_DISTANCE_THRESHOLD <- 4''', '''```{r paths}
+# Define the two input files and the directory where preprocessing outputs are stored.
+GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
+PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
+OUTPUT_DIR <- here("output", "preprocessing")
+
+# Require at least 90% available calls for an SSR locus to be retained.
+CALL_RATE_MIN <- 0.90
+# Use four standard deviations only as a diagnostic flagging threshold.
+PHENOTYPE_DISTANCE_THRESHOLD <- 4'''),
+          ('''  geom_histogram(bins = 20) +''', '''  # Use 20 bins only to standardize the visual resolution of the histograms.
+  geom_histogram(bins = 20) +'''),
+          ],
+          Path('analysis/02_matrices_pt.Rmd'): [
+          ('''A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.''', '''A etapa seguinte carrega o objeto de pré-processamento e fixa os parâmetros usados na construção das matrizes e da validação cruzada.
+
+São definidos cinco folds porque, com 150 indivíduos, a partição 5-fold produz 30 indivíduos de validação e 120 de treinamento em cada fold, mantendo a estratificação por família. Cada indivíduo aparece exatamente uma vez em validação; trata-se de uma única partição estratificada em cinco folds, e não de validação cruzada repetida. `SEED_CV = 20260723` serve apenas para reproduzir a mesma alocação dos indivíduos e não possui interpretação inferencial.
+
+O limite `ALLELE_FREQUENCY_MIN = 0.05` mantém colunas alélicas com frequência entre 0,05 e 0,95, desde que também apresentem variação de dosagem positiva. Assim, alelos muito raros ou praticamente fixados não entram em `M`. O limite de taxa de chamada é herdado do Módulo 01 para registrar a mesma regra de controle de qualidade; os locos já chegam a este módulo com essa decisão aplicada.'''),
+          ('''N_FOLDS <- 5L
+# Fixa a semente usada para formar os folds estratificados por família.
+SEED_CV <- 20260723L
+ALLELE_FREQUENCY_MIN <- 0.05''', '''# Usa cinco folds: 30 indivíduos em validação e 120 em treinamento por fold.
+N_FOLDS <- 5L
+# Fixa apenas a reprodutibilidade da alocação estratificada por família.
+SEED_CV <- 20260723L
+# Exclui alelos com frequência abaixo de 5% ou acima de 95%.
+ALLELE_FREQUENCY_MIN <- 0.05'''),
+          ('''CALL_RATE_MIN <- preprocessing$settings$call_rate_min''', '''# Recupera, para rastreabilidade, o limiar de taxa de chamada aplicado no Módulo 01.
+CALL_RATE_MIN <- preprocessing$settings$call_rate_min'''),
+          ('''    bins = 20,''', '''    # Usa 20 classes apenas para padronizar a resolução visual do histograma.
+    bins = 20,'''),
+          ],
+          Path('analysis/02_matrices_en.Rmd'): [
+          ('''The next step loads the input objects and organizes the structures required for the analysis.''', '''The next step loads the preprocessing object and fixes the parameters used to construct the matrices and cross-validation design.
+
+Five folds are used because, with 150 individuals, 5-fold partitioning gives 30 validation individuals and 120 training individuals per fold while preserving family stratification. Each individual appears exactly once in validation; this is one family-stratified five-fold partition, not repeated cross-validation. `SEED_CV = 20260723` only reproduces the same allocation of individuals and has no inferential interpretation.
+
+`ALLELE_FREQUENCY_MIN = 0.05` retains allele-dosage columns with frequencies between 0.05 and 0.95 provided that dosage variance is also positive. Thus, very rare or nearly fixed alleles do not enter `M`. The call-rate threshold is inherited from Module 01 to record the same quality-control rule; loci reach this module after that decision has already been applied.'''),
+          ('''N_FOLDS <- 5L
+# Fix the seed used to create family-stratified folds.
+SEED_CV <- 20260723L
+ALLELE_FREQUENCY_MIN <- 0.05''', '''# Use five folds: 30 validation and 120 training individuals per fold.
+N_FOLDS <- 5L
+# Fix only the reproducibility of the family-stratified allocation.
+SEED_CV <- 20260723L
+# Exclude alleles with frequency below 5% or above 95%.
+ALLELE_FREQUENCY_MIN <- 0.05'''),
+          ('''CALL_RATE_MIN <- preprocessing$settings$call_rate_min''', '''# Recover, for provenance, the call-rate threshold applied in Module 01.
+CALL_RATE_MIN <- preprocessing$settings$call_rate_min'''),
+          ('''    bins = 20,''', '''    # Use 20 bins only to standardize the visual resolution of the histogram.
+    bins = 20,'''),
+          ],
+          Path('analysis/03_models_pt.Rmd'): [
+          ('''Foram utilizadas 1.000.000 de iterações, descarte inicial de 200.000 iterações
+e thinning igual a 4, seguindo a configuração principal da análise de
+referência [@silva2021brrguava]. O parâmetro global de alocação de variância do
+BGLR foi definido como `R2 = 0.5`.''', '''Foram utilizadas 1.000.000 de iterações, descarte inicial de 200.000 iterações e thinning igual a 4, seguindo a configuração principal da análise de referência [@silva2021brrguava]. O parâmetro global de alocação de variância do BGLR foi definido como `R2 = 0.5`.
+
+`SEED_BASE = 202608050` não é um hiperparâmetro do modelo: ele apenas inicia uma sequência determinística de sementes, à qual o número de cada ajuste é somado para que as 350 combinações sejam reproduzíveis sem compartilhar a mesma semente. As quantidades de amostras salvas e mantidas são derivadas de iterações, burn-in e thinning e, portanto, não constituem escolhas adicionais.
+
+A parametrização BayesB2 fixa a probabilidade de efeito zero em `1e-5`, equivalente a `probIn = 0.99999`, com `counts = 1e6` para concentrar fortemente essa probabilidade de inclusão; a motivação é detalhada na Seção 6.4. Os limiares `ESS < 1000` e `|Geweke Z| > 2` são usados somente para sinalizar cadeias que merecem revisão, nunca como exclusão automática. Para o Lasso Bayesiano, `BL_LAMBDA_TYPE = "FIXED"` antecipa que o lambda calculado na Seção 6.6 permanecerá constante durante cada cadeia.'''),
+          ('''```{r mcmc-settings}
+N_ITER <- 1000000L
+BURN_IN <- 200000L
+THIN <- 4L
+R2_PRIOR <- 0.5
+SEED_BASE <- 202608050L
+
+RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
+BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
+RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
+
+BAYESB2_ZERO_PROBABILITY <- 1e-5
+BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
+BAYESB2_COUNTS <- 1e6
+
+ESS_REVIEW_THRESHOLD <- 1000
+GEWEKE_REVIEW_THRESHOLD <- 2
+
+BL_LAMBDA_TYPE <- "FIXED"''', '''```{r mcmc-settings}
+# Define o comprimento total da cadeia MCMC de cada ajuste.
+N_ITER <- 1000000L
+# Descarta as 200 mil iterações iniciais como burn-in.
+BURN_IN <- 200000L
+# Salva uma amostra a cada quatro iterações.
+THIN <- 4L
+# Usa R2 = 0,5 como parâmetro global de alocação de variância do BGLR.
+R2_PRIOR <- 0.5
+# Inicia a sequência determinística de sementes; cada ajuste recebe um incremento único.
+SEED_BASE <- 202608050L
+
+# Deriva o número de amostras salvas antes e depois do descarte do burn-in.
+RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
+BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
+RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
+
+# Parametriza a variante BayesB2 com probabilidade de efeito zero igual a 1e-5.
+BAYESB2_ZERO_PROBABILITY <- 1e-5
+BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
+# Concentra fortemente a priori de probIn em torno de 0,99999.
+BAYESB2_COUNTS <- 1e6
+
+# Sinaliza para revisão cadeias com ESS menor que 1.000.
+ESS_REVIEW_THRESHOLD <- 1000
+# Sinaliza para revisão cadeias com |Z de Geweke| maior que 2.
+GEWEKE_REVIEW_THRESHOLD <- 2
+
+# Mantém o lambda do Lasso Bayesiano fixo durante a cadeia.
+BL_LAMBDA_TYPE <- "FIXED"'''),
+          ('''```{r bl-lambda}
+BL_N_LINEAR_TERMS <- 2L
+BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS''', '''```{r bl-lambda}
+# Divide R2 entre os dois termos lineares do preditor: família e componente genômico BL.
+BL_N_LINEAR_TERMS <- 2L
+BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS'''),
+          ],
+          Path('analysis/03_models_en.Rmd'): [
+          ('''The analysis uses 1,000,000 iterations, a burn-in of 200,000 iterations, and a
+thinning interval of 4, following the main configuration of the reference
+analysis [@silva2021brrguava]. The global BGLR prior-allocation parameter is
+set to `R2 = 0.5`.''', '''The analysis uses 1,000,000 iterations, a burn-in of 200,000 iterations, and a thinning interval of 4, following the main configuration of the reference analysis [@silva2021brrguava]. The global BGLR prior-allocation parameter is set to `R2 = 0.5`.
+
+`SEED_BASE = 202608050` is not a model hyperparameter: it only starts a deterministic seed sequence, to which the run number is added so that all 350 combinations are reproducible without sharing the same seed. The numbers of saved and retained samples are derived from iterations, burn-in, and thinning and therefore are not additional choices.
+
+The BayesB2 parameterization fixes the zero-effect probability at `1e-5`, equivalent to `probIn = 0.99999`, with `counts = 1e6` to strongly concentrate that inclusion probability; the rationale is detailed in Section 6.4. Thresholds `ESS < 1000` and `|Geweke Z| > 2` only flag chains for review and never act as automatic exclusion rules. For the Bayesian Lasso, `BL_LAMBDA_TYPE = "FIXED"` anticipates that the lambda calculated in Section 6.6 remains constant during each chain.'''),
+          ('''```{r mcmc-settings}
+N_ITER <- 1000000L
+BURN_IN <- 200000L
+THIN <- 4L
+R2_PRIOR <- 0.5
+SEED_BASE <- 202608050L
+
+RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
+BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
+RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
+
+BAYESB2_ZERO_PROBABILITY <- 1e-5
+BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
+BAYESB2_COUNTS <- 1e6
+
+ESS_REVIEW_THRESHOLD <- 1000
+GEWEKE_REVIEW_THRESHOLD <- 2
+
+BL_LAMBDA_TYPE <- "FIXED"''', '''```{r mcmc-settings}
+# Set the total MCMC chain length for each fit.
+N_ITER <- 1000000L
+# Discard the first 200,000 iterations as burn-in.
+BURN_IN <- 200000L
+# Save one sample every four iterations.
+THIN <- 4L
+# Use R2 = 0.5 as BGLR's global prior-allocation parameter.
+R2_PRIOR <- 0.5
+# Start the deterministic seed sequence; each run receives a unique increment.
+SEED_BASE <- 202608050L
+
+# Derive the number of saved samples before and after burn-in removal.
+RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
+BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
+RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
+
+# Parameterize BayesB2 with a zero-effect probability of 1e-5.
+BAYESB2_ZERO_PROBABILITY <- 1e-5
+BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
+# Strongly concentrate the probIn prior around 0.99999.
+BAYESB2_COUNTS <- 1e6
+
+# Flag chains with ESS below 1,000 for review.
+ESS_REVIEW_THRESHOLD <- 1000
+# Flag chains with |Geweke Z| above 2 for review.
+GEWEKE_REVIEW_THRESHOLD <- 2
+
+# Keep the Bayesian Lasso lambda fixed during the chain.
+BL_LAMBDA_TYPE <- "FIXED"'''),
+          ('''```{r bl-lambda}
+BL_N_LINEAR_TERMS <- 2L
+BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS''', '''```{r bl-lambda}
+# Split R2 across the two linear predictor terms: family and the BL genomic component.
+BL_N_LINEAR_TERMS <- 2L
+BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS'''),
+          ],
+          Path('analysis/04_results_pt.Rmd'): [
+          ('''Primeiro são identificados, separadamente, o método com melhor desempenho
+preditivo OOF e o método com menor DIC médio em cada característica.''', '''Primeiro são identificados, separadamente, o método com melhor desempenho preditivo OOF e o método com menor DIC médio em cada característica.
+
+O limite `Delta_DIC <= 2` é a regra operacional adotada para considerar ajustes com DIC semelhante; ele não representa um teste formal. O número de folds não é redefinido neste módulo: `N_FOLDS` é recuperado do objeto do Módulo 02 e entra apenas no cálculo das tolerâncias descritivas de um erro-padrão.'''),
+          ('''# Define o limite de DIC e identifica, para cada característica, os vencedores preditivo e por DIC.
+DIC_COMPETITIVE_THRESHOLD <- 2
+N_FOLDS <- matrices_object$settings$n_folds''', '''# Usa Delta_DIC <= 2 como limite operacional de similaridade de ajuste.
+DIC_COMPETITIVE_THRESHOLD <- 2
+# Recupera os cinco folds do Módulo 02 para calcular as tolerâncias descritivas de um erro-padrão.
+N_FOLDS <- matrices_object$settings$n_folds'''),
+          ('''nominal é apresentada apenas para tornar explícitas correlações positivas
+fracas; ela não é usada como filtro de seleção.''', '''nominal é apresentada apenas para tornar explícitas correlações positivas fracas; ela não é usada como filtro de seleção. A fronteira `r > 0` separa apenas a direção preditiva positiva da não positiva; não constitui teste de significância nem limiar mínimo de utilidade preditiva.'''),
+          ('''    OOF_predictive_direction = if_else(
+      r > 0,''', '''    # Usa zero apenas como fronteira de direção; r > 0 não implica significância ou utilidade mínima.
+    OOF_predictive_direction = if_else(
+      r > 0,'''),
+          ('''    OOF_nominal_signal = case_when(''', '''    # Mantém p < 0,05 somente como classe nominal descritiva, sem filtrar os rankings.
+    OOF_nominal_signal = case_when('''),
+          ('''A recorrência é descritiva: entre as características com correlação OOF positiva,
+conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. Sinais OOF
+positivos fracos permanecem exploratórios. Não são usados pesos e não é
+construído índice de seleção multicaracterística.''', '''A recorrência é descritiva: entre as características com correlação OOF positiva, conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. Sinais OOF positivos fracos permanecem exploratórios. Não são usados pesos e não é construído índice de seleção multicaracterística.
+
+As classes de recorrência são convenções descritivas: alta para quatro ou mais características, intermediária para três, ampla para duas, específica para uma e nenhuma para zero. O objeto `multitrait_candidates` conserva indivíduos recorrentes em pelo menos duas características para não descartar informação potencialmente útil nos módulos seguintes. Esses pontos de corte organizam a apresentação e não são limiares de significância estatística.'''),
+          ('''    Recurrence_class = case_when(
+      N_traits >= 4L ~ "high_4plus",''', '''    # Classifica a recorrência por número de características; os cortes são descritivos.
+    Recurrence_class = case_when(
+      N_traits >= 4L ~ "high_4plus",'''),
+          ('''multitrait_candidates <- multitrait_recurrence |>
+  filter(N_traits >= 2L) |>
+''', '''multitrait_candidates <- multitrait_recurrence |>
+  # Mantém no objeto completo candidatos presentes em pelo menos duas características.
+  filter(N_traits >= 2L) |>
+'''),
+          ],
+          Path('analysis/04_results_en.Rmd'): [
+          ('''First, the method with the best OOF predictive performance and the method with
+the lowest mean DIC are identified separately for each trait.''', '''First, the method with the best OOF predictive performance and the method with the lowest mean DIC are identified separately for each trait.
+
+The `Delta_DIC <= 2` cutoff is the operational rule used to regard fits as having similar DIC; it is not a formal test. The number of folds is not redefined in this module: `N_FOLDS` is recovered from the Module 02 object and is used only to calculate the descriptive one-standard-error tolerances.'''),
+          ('''# Define the DIC threshold and identify the predictive and DIC winners for each trait.
+DIC_COMPETITIVE_THRESHOLD <- 2
+N_FOLDS <- matrices_object$settings$n_folds''', '''# Use Delta_DIC <= 2 as the operational cutoff for similar fit.
+DIC_COMPETITIVE_THRESHOLD <- 2
+# Recover the five Module 02 folds for the descriptive one-standard-error tolerances.
+N_FOLDS <- matrices_object$settings$n_folds'''),
+          ('''nominal class is shown only to make weak positive correlations explicit; it is
+not used as a selection filter.''', '''nominal class is shown only to make weak positive correlations explicit; it is not used as a selection filter. The `r > 0` boundary separates only positive from nonpositive predictive direction; it is neither a significance test nor a minimum predictive-utility threshold.'''),
+          ('''    OOF_predictive_direction = if_else(
+      r > 0,''', '''    # Use zero only as a direction boundary; r > 0 does not imply significance or minimum utility.
+    OOF_predictive_direction = if_else(
+      r > 0,'''),
+          ('''    OOF_nominal_signal = case_when(''', '''    # Keep p < 0.05 only as a descriptive nominal class, without filtering rankings.
+    OOF_nominal_signal = case_when('''),
+          ('''Recurrence is descriptive: among traits with positive OOF correlation, it counts
+how many times each individual appears among the most favorable 20%. Weak
+positive OOF signals remain exploratory. No weights are used and no multi-trait
+selection index is constructed.''', '''Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed.
+
+Recurrence classes are descriptive conventions: high for four or more traits, intermediate for three, broad for two, specific for one, and none for zero. The `multitrait_candidates` object retains individuals recurring in at least two traits so potentially useful information is not discarded before downstream presentation. These cutoffs organize the summary and are not statistical-significance thresholds.'''),
+          ('''    Recurrence_class = case_when(
+      N_traits >= 4L ~ "high_4plus",''', '''    # Classify recurrence by number of traits; these cutoffs are descriptive.
+    Recurrence_class = case_when(
+      N_traits >= 4L ~ "high_4plus",'''),
+          ('''multitrait_candidates <- multitrait_recurrence |>
+  filter(N_traits >= 2L) |>
+''', '''multitrait_candidates <- multitrait_recurrence |>
+  # Retain in the complete object candidates present in at least two traits.
+  filter(N_traits >= 2L) |>
+'''),
+          ],
+          Path('analysis/05_results_pt.Rmd'): [
+          ('''A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.''', '''A etapa seguinte carrega os objetos de entrada e define o padrão visual do módulo. Rótulos, cores, tamanho-base de fonte, dimensões das figuras e resolução de exportação são escolhas exclusivamente de apresentação: não entram em nenhum cálculo de desempenho, seleção ou inferência. A paleta é mantida fixa para que cada método tenha a mesma identificação visual em todas as figuras.'''),
+          ('''project_theme <- theme_bw(base_size = 12) +''', '''# Usa fonte-base 12 para legibilidade; essa escolha não altera qualquer resultado analítico.
+project_theme <- theme_bw(base_size = 12) +'''),
+          ('''## 9. Correlações entre valores genômicos OOF
+
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.''', '''## 9. Correlações entre valores genômicos OOF
+
+As correlações são usadas sem arredondamento nos cálculos e na escala de cores. Como os valores são impressos com duas casas decimais no mapa de calor, apenas o rótulo de correlações com `|r| < 0.005` é mostrado como zero para evitar a exibição de `-0.00`; o valor numérico original permanece inalterado.
+
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.'''),
+          ('''# Formata os rótulos das correlações exibidos nas células do mapa de calor.
+correlation_long <- correlation_long |>''', '''# Zera somente o rótulo de |r| < 0,005; a correlação original continua sendo usada na análise e na cor.
+correlation_long <- correlation_long |>'''),
+          ('''Os primeiros indivíduos de cada ranking mostram os candidatos priorizados pela
+regra exploratória.''', '''A tabela seguinte mostra somente os cinco primeiros indivíduos de cada ranking como prévia de leitura. O valor `n = 5` é uma escolha de apresentação; o ranking completo permanece disponível no objeto e nos arquivos derivados.'''),
+          ('''## 11. Recorrência entre características
+
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.''', '''## 11. Recorrência entre características
+
+As classes de recorrência apresentadas aqui são as mesmas definidas no Módulo 04. O objeto completo preserva candidatos presentes em pelo menos duas características; para manter a tabela principal compacta, este módulo exibe apenas recorrência intermediária ou alta, isto é, candidatos presentes em três ou mais características. O corte `N_traits >= 3` é exclusivamente de apresentação e não redefine o conjunto de candidatos armazenado.
+
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.'''),
+          ('''# Mantém os candidatos recorrentes em pelo menos três características para a tabela principal.
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>''', '''# Exibe na tabela principal apenas recorrência intermediária/alta (>=3); o objeto completo mantém >=2.
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>'''),
+          ],
+          Path('analysis/05_results_en.Rmd'): [
+          ('''The next step loads the input objects and organizes the structures required for the analysis.''', '''The next step loads the input objects and defines the visual standard for this module. Labels, colors, base font size, figure dimensions, and export resolution are presentation choices only: none enters performance, selection, or inferential calculations. The palette is held fixed so that each method keeps the same visual identity across figures.'''),
+          ('''project_theme <- theme_bw(base_size = 12) +''', '''# Use base font size 12 for readability; this choice does not alter any analytical result.
+project_theme <- theme_bw(base_size = 12) +'''),
+          ('''## 9. Correlations among OOF genomic values
+
+The next step builds the corresponding visualization to support interpretation of the diagnostic.''', '''## 9. Correlations among OOF genomic values
+
+Correlations are used without rounding in calculations and in the color scale. Because values are printed to two decimals in the heatmap, only the label of correlations with `|r| < 0.005` is displayed as zero to avoid showing `-0.00`; the original numeric value remains unchanged.
+
+The next step builds the corresponding visualization to support interpretation of the diagnostic.'''),
+          ('''# Format the correlation labels displayed inside heatmap cells.
+correlation_long <- correlation_long |>''', '''# Set only the label of |r| < 0.005 to zero; the original correlation still drives analysis and color.
+correlation_long <- correlation_long |>'''),
+          ('''The first individuals in each ranking show the candidates prioritized by the
+exploratory rule.''', '''The next table shows only the first five individuals from each ranking as a reading preview. The value `n = 5` is a presentation choice; the complete ranking remains available in the object and derived files.'''),
+          ('''## 11. Recurrence across traits
+
+The next step organizes a tabular summary of the objects and results needed to interpret this section.''', '''## 11. Recurrence across traits
+
+The recurrence classes shown here are the same ones defined in Module 04. The complete object retains candidates present in at least two traits; to keep the main table compact, this module displays only intermediate or high recurrence, that is, candidates present in three or more traits. The `N_traits >= 3` cutoff is a presentation choice only and does not redefine the stored candidate set.
+
+The next step organizes a tabular summary of the objects and results needed to interpret this section.'''),
+          ('''# Retain candidates recurring in at least three traits for the main table.
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>''', '''# Show only intermediate/high recurrence (>=3) in the main table; the complete object retains >=2.
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>'''),
+          ],
+          }
+
+          for path, reps in replacements.items():
+              text=path.read_text(encoding='utf-8')
+              for old,new in reps:
+                  count=text.count(old)
+                  if count != 1:
+                      raise RuntimeError(f'{path}: expected one occurrence, found {count}: {old[:80]!r}')
+                  text=text.replace(old,new,1)
+              path.write_text(text,encoding='utf-8')
+
+          # Scientific code must remain byte-for-byte identical after comments/prose are ignored.
+          for p in files:
+              after=executable_signature(p.read_text(encoding='utf-8'))
+              if after != before[p]:
+                  raise RuntimeError(f'Executable R code changed in {p}')
+          print('PASS: executable R code is unchanged in all 10 module files.')
+          PY
+
+      - name: Audit required parameter documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          checks={
+            'analysis/01_preprocessing_pt.Rmd':['CALL_RATE_MIN = 0.90','quatro desvios-padrão','90% de chamadas'],
+            'analysis/01_preprocessing_en.Rmd':['CALL_RATE_MIN = 0.90','four standard deviations','90% available calls'],
+            'analysis/02_matrices_pt.Rmd':['30 indivíduos de validação','120 de treinamento','não de validação cruzada repetida','ALELLE_PLACEHOLDER'],
+            'analysis/02_matrices_en.Rmd':['30 validation individuals','120 training individuals','not repeated cross-validation','ALLELE_FREQUENCY_MIN = 0.05'],
+            'analysis/03_models_pt.Rmd':['SEED_BASE = 202608050','ESS < 1000','|Geweke Z| > 2','counts = 1e6'],
+            'analysis/03_models_en.Rmd':['SEED_BASE = 202608050','ESS < 1000','|Geweke Z| > 2','counts = 1e6'],
+            'analysis/04_results_pt.Rmd':['Delta_DIC <= 2','r > 0','quatro ou mais características','pelo menos duas características'],
+            'analysis/04_results_en.Rmd':['Delta_DIC <= 2','r > 0','four or more traits','at least two traits'],
+            'analysis/05_results_pt.Rmd':['|r| < 0.005','N_traits >= 3','exclusivamente de apresentação','cinco primeiros indivíduos'],
+            'analysis/05_results_en.Rmd':['|r| < 0.005','N_traits >= 3','presentation choice only','first five individuals'],
+          }
+          # Correct one deliberately unique key without making the replacement script depend on audit wording.
+          checks['analysis/02_matrices_pt.Rmd'][-1]='ALLELE_FREQUENCY_MIN = 0.05'
+          failures=[]
+          for file,needles in checks.items():
+              text=Path(file).read_text(encoding='utf-8')
+              for needle in needles:
+                  if needle not in text:
+                      failures.append(f'{file}: missing {needle}')
+          if failures:
+              raise SystemExit('\n'.join(failures))
+          print('PASS: methodological and presentation parameters are explicitly documented in PT/EN.')
+          PY
+
+          git diff --check
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse every R chunk and commit source-only changes
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern='\\.Rmd$', full.names=TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn=FALSE, encoding='UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl=TRUE)
+            for (s in starts) {
+              if (s == length(x)) stop('Unclosed chunk in ', f, ' at line ', s)
+              tail_x <- x[(s+1L):length(x)]
+              e_rel <- which(grepl('^\\s*```\\s*$', tail_x, perl=TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e>s+1L) x[(s+1L):(e-1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text=code); n <- n+1L
+            }
+          }
+          stopifnot(n == 217L)
+          cat('Parsed R chunks:', n, '\n')
+          RS
+
+          rm -f .github/workflows/audit-parameter-documentation.yml
+          rm -f .github/workflows/apply-parameter-documentation.yml
+
+          python - <<'PY'
+          import subprocess
+          changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          allowed={f'analysis/{m}_{lang}.Rmd' for m in ['01_preprocessing','02_matrices','03_models','04_results','05_results'] for lang in ['pt','en']}
+          allowed.update({'.github/workflows/audit-parameter-documentation.yml','.github/workflows/apply-parameter-documentation.yml'})
+          bad=[p for p in changed if p not in allowed]
+          if bad: raise SystemExit('Unexpected files:\n'+'\n'.join(bad))
+          source=[p for p in changed if p.startswith('analysis/')]
+          if len(source)!=10: raise SystemExit(f'Expected 10 module source files, found {len(source)}')
+          print('Validated module source files:', len(source))
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Explain analytical parameters throughout tutorial"
+          git push origin HEAD:parameter-documentation-audit
