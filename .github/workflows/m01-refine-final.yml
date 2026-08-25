@@ -1,0 +1,97 @@
+name: Finalize Module 01 validation
+
+on:
+  push:
+    branches:
+      - didactic-m01-standard
+    paths:
+      - '.github/workflows/m01-refine-final.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.1'
+
+      - name: Apply validated refinement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          validator = Path('.github/workflows/m01-didactic-standard.yml').read_text(encoding='utf-8')
+          start_marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n"
+          start = validator.index(start_marker) + len(start_marker)
+          end = validator.index(end_marker, start)
+          script = textwrap.dedent(validator[start:end])
+
+          old = 'This threshold is used to draw the reader\'s attention to values far from the mean, not to declare errors or statistical outliers.'
+          new = 'This threshold is intended to draw the reader\'s attention to values far from the mean, not to declare errors or statistical outliers.'
+          if script.count(old) != 1:
+              raise SystemExit(f'Expected one source-target phrase, found {script.count(old)}')
+          script = script.replace(old, new, 1)
+          exec(compile(script, '<m01-refinement>', 'exec'), {'__name__': '__main__'})
+          PY
+
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' analysis/01_preprocessing_en.Rmd analysis/01_preprocessing_pt.Rmd | sort)"
+          test "$changed" = "$expected"
+
+      - name: Parse R chunks and inline expressions
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- c('analysis/01_preprocessing_pt.Rmd', 'analysis/01_preprocessing_en.Rmd')
+          total_chunks <- 0L
+          total_inline <- 0L
+          for (f in files) {
+            x <- readLines(f, warn = FALSE, encoding = 'UTF-8')
+            in_chunk <- FALSE
+            code <- character()
+            for (line in x) {
+              if (!in_chunk && grepl('^```\\{r', line)) {
+                in_chunk <- TRUE
+                code <- character()
+              } else if (in_chunk && grepl('^```\\s*$', line)) {
+                if (length(code)) parse(text = code)
+                total_chunks <- total_chunks + 1L
+                in_chunk <- FALSE
+              } else if (in_chunk) {
+                code <- c(code, line)
+              }
+            }
+            txt <- paste(x, collapse='\n')
+            hits <- gregexpr('`r ([^`]+)`', txt, perl=TRUE)[[1]]
+            if (hits[1] != -1) {
+              vals <- regmatches(txt, list(hits))[[1]]
+              for (v in vals) {
+                expr <- substr(v, 4L, nchar(v) - 1L)
+                parse(text = expr)
+              }
+              total_inline <- total_inline + length(vals)
+            }
+          }
+          cat('Parsed Module 01 R chunks:', total_chunks, '\n')
+          cat('Parsed Module 01 inline R expressions:', total_inline, '\n')
+          RS
+
+      - name: Commit validated Module 01 refinement
+        shell: bash
+        run: |
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/01_preprocessing_pt.Rmd analysis/01_preprocessing_en.Rmd
+          git commit -m "Apply clearer didactic standard to Module 01"
+          git push origin HEAD:didactic-m01-standard
