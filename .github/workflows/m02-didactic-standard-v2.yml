@@ -1,0 +1,93 @@
+name: Retry Module 02 didactic refinement
+
+on:
+  push:
+    branches:
+      - didactic-m02-standard
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.event.head_commit.message == 'Retry Module 02 didactic refinement'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: didactic-m02-standard
+          fetch-depth: 0
+
+      - name: Correct English source targets in temporary helper
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/m02_refine.py')
+          t = p.read_text(encoding='utf-8')
+          t = t.replace('The heatmap presents', 'The heatmap displays')
+          t = t.replace('## 9. Use of folds in model fitting', '## 9. Using the folds for model fitting')
+          t = t.replace('Example of individual fold assignment', 'Example of individual allocation to folds')
+          t = t.replace(
+              'text = text.replace("calculated in the previous chunk", "calculated previously")',
+              'text = text.replace("calculated in the previous chunk", "calculated previously")\n    text = text.replace("computed in the previous chunk", "computed previously")'
+          )
+          p.write_text(t, encoding='utf-8')
+          PY
+
+      - name: Apply didactic refinement
+        run: python .github/m02_refine.py
+
+      - name: Validate scope and editorial rules
+        shell: bash
+        run: |
+          git diff --check
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          pt = Path('analysis/02_matrices_pt.Rmd').read_text(encoding='utf-8')
+          en = Path('analysis/02_matrices_en.Rmd').read_text(encoding='utf-8')
+
+          for phrase in [
+              'O chunk oculto', 'o leitor', 'O primeiro chunk',
+              'suppressPackageStartupMessages', 'conjunto canônico',
+              'neste chunk', 'no chunk', 'contrato mínimo'
+          ]:
+              if phrase.lower() in pt.lower():
+                  raise SystemExit(f'PT forbidden phrase remains: {phrase}')
+
+          for phrase in [
+              'The hidden chunk', 'the reader', 'The first chunk',
+              'suppressPackageStartupMessages', 'canonical dataset',
+              'in this chunk', 'previous chunk', 'minimum phenotype-table contract'
+          ]:
+              if phrase.lower() in en.lower():
+                  raise SystemExit(f'EN forbidden phrase remains: {phrase}')
+
+          assert 'tabela_html <- function' in pt
+          assert 'format_table <- function' in en
+          assert not re.search(r'(?<!::)\bkable\(', pt)
+          assert not re.search(r'(?<!::)\bkable\(', en)
+          assert 'href="01_preprocessing_pt.html"' in pt
+          assert 'href="03_models_pt.html"' in pt
+          assert 'href="01_preprocessing_en.html"' in en
+          assert 'href="03_models_en.html"' in en
+          print('PASS: Module 02 didactic rules and responsive tables.')
+          PY
+
+      - name: Commit Module 02 sources only
+        shell: bash
+        run: |
+          git checkout -- .github/m02_refine.py
+          changed=$(git diff --name-only)
+          expected=$'analysis/02_matrices_en.Rmd\nanalysis/02_matrices_pt.Rmd'
+          if [ "$changed" != "$expected" ]; then
+            echo "Unexpected changed files:"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          git config user.name "Weverton Gomes da Costa"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd
+          git commit -m "Apply clearer didactic standard to Module 02"
+          git push origin HEAD:didactic-m02-standard
