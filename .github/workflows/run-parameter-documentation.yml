@@ -24,14 +24,24 @@ jobs:
           from pathlib import Path
           import subprocess
 
-          # Normalize one English sentence to the anchor used by the prepared transformation.
+          # Normalize English wording to the anchors used by the prepared transformation.
           p=Path('analysis/04_results_en.Rmd')
           text=p.read_text(encoding='utf-8')
-          actual='The method with the best OOF predictive performance and the method with the\nsmallest mean DIC are first identified separately for every trait.'
-          expected='First, the method with the best OOF predictive performance and the method with\nthe lowest mean DIC are identified separately for each trait.'
-          if text.count(actual) != 1:
-              raise RuntimeError('Expected English M04 winner sentence was not found exactly once')
-          p.write_text(text.replace(actual, expected, 1), encoding='utf-8')
+          normalizations=[
+            (
+              'The method with the best OOF predictive performance and the method with the\nsmallest mean DIC are first identified separately for every trait.',
+              'First, the method with the best OOF predictive performance and the method with\nthe lowest mean DIC are identified separately for each trait.'
+            ),
+            (
+              'nominal signal class are brought together for each trait. The nominal class is\nreported only to make weak positive correlations explicit; it is not used as a\nselection gate.',
+              'nominal signal class are brought together for each trait. The nominal class is\nshown only to make weak positive correlations explicit; it is\nnot used as a selection filter.'
+            )
+          ]
+          for actual, expected in normalizations:
+              if text.count(actual) != 1:
+                  raise RuntimeError(f'Expected English M04 sentence was not found exactly once: {actual[:70]}')
+              text=text.replace(actual, expected, 1)
+          p.write_text(text, encoding='utf-8')
 
           lines=Path('.github/workflows/apply-parameter-documentation.yml').read_text(encoding='utf-8').splitlines()
           collecting=False; body=[]
