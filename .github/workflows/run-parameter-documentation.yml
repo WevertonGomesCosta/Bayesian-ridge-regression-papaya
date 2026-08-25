@@ -1,0 +1,113 @@
+name: Run parameter documentation update
+
+on:
+  push:
+    branches:
+      - parameter-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Execute the prepared transformation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          lines=Path('.github/workflows/apply-parameter-documentation.yml').read_text(encoding='utf-8').splitlines()
+          collecting=False; body=[]
+          for line in lines:
+              if line.strip()=="python - <<'PY'" and not collecting:
+                  collecting=True
+                  continue
+              if collecting and line.strip()=='PY':
+                  break
+              if collecting:
+                  body.append(line[10:] if line.startswith('          ') else line)
+          if not body:
+              raise RuntimeError('Prepared transformation was not found')
+          subprocess.run(['python','-c','\n'.join(body)],check=True)
+          PY
+
+      - name: Audit parameter explanations
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          checks={
+            'analysis/01_preprocessing_pt.Rmd':['CALL_RATE_MIN = 0.90','quatro desvios-padrão','90% de chamadas'],
+            'analysis/01_preprocessing_en.Rmd':['CALL_RATE_MIN = 0.90','four standard deviations','90% available calls'],
+            'analysis/02_matrices_pt.Rmd':['30 indivíduos de validação','120 de treinamento','não de validação cruzada repetida','ALLELE_FREQUENCY_MIN = 0.05'],
+            'analysis/02_matrices_en.Rmd':['30 validation individuals','120 training individuals','not repeated cross-validation','ALLELE_FREQUENCY_MIN = 0.05'],
+            'analysis/03_models_pt.Rmd':['SEED_BASE = 202608050','ESS < 1000','|Geweke Z| > 2','counts = 1e6'],
+            'analysis/03_models_en.Rmd':['SEED_BASE = 202608050','ESS < 1000','|Geweke Z| > 2','counts = 1e6'],
+            'analysis/04_results_pt.Rmd':['Delta_DIC <= 2','r > 0','quatro ou mais características','pelo menos duas características'],
+            'analysis/04_results_en.Rmd':['Delta_DIC <= 2','r > 0','four or more traits','at least two traits'],
+            'analysis/05_results_pt.Rmd':['|r| < 0.005','N_traits >= 3','exclusivamente de apresentação','cinco primeiros indivíduos'],
+            'analysis/05_results_en.Rmd':['|r| < 0.005','N_traits >= 3','presentation choice only','first five individuals']}
+          missing=[]
+          for file, needles in checks.items():
+              text=Path(file).read_text(encoding='utf-8')
+              missing += [f'{file}: {n}' for n in needles if n not in text]
+          if missing:
+              raise SystemExit('Missing documentation:\n'+'\n'.join(missing))
+          print('PASS: parameter explanations are present in all five modules, PT and EN.')
+          PY
+          git diff --check
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse all chunks and commit only module sources
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern='\\.Rmd$', full.names=TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn=FALSE, encoding='UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl=TRUE)
+            for (s in starts) {
+              if (s == length(x)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e_rel <- which(grepl('^\\s*```\\s*$', x[(s+1L):length(x)], perl=TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e>s+1L) x[(s+1L):(e-1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text=code); n <- n+1L
+            }
+          }
+          stopifnot(n == 217L)
+          cat('Parsed R chunks:', n, '\n')
+          RS
+
+          rm -f .github/workflows/audit-parameter-documentation.yml
+          rm -f .github/workflows/apply-parameter-documentation.yml
+          rm -f .github/workflows/run-parameter-documentation.yml
+
+          python - <<'PY'
+          import subprocess
+          changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          allowed={f'analysis/{m}_{lang}.Rmd' for m in ['01_preprocessing','02_matrices','03_models','04_results','05_results'] for lang in ['pt','en']}
+          allowed.update({'.github/workflows/audit-parameter-documentation.yml','.github/workflows/apply-parameter-documentation.yml','.github/workflows/run-parameter-documentation.yml'})
+          bad=[p for p in changed if p not in allowed]
+          if bad: raise SystemExit('Unexpected files:\n'+'\n'.join(bad))
+          source=[p for p in changed if p.startswith('analysis/')]
+          if len(source)!=10: raise SystemExit(f'Expected 10 module source files, found {len(source)}')
+          print('Validated source files:', len(source))
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Explain analytical parameters throughout tutorial"
+          git push origin HEAD:parameter-documentation-audit
