@@ -61,7 +61,10 @@ suppressPackageStartupMessages({
 })
 ```
 
+A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.
+
 ```{r objeto-entrada}
+# Constrói o objeto PREPROCESSING FILE.
 PREPROCESSING_FILE <- here(
   "output",
   "preprocessing",
@@ -74,6 +77,7 @@ OUTPUT_DIR <- here(
 )
 
 N_FOLDS <- 5L
+# Constrói o objeto SEED CV.
 SEED_CV <- 20260723L
 ALLELE_FREQUENCY_MIN <- 0.05
 
@@ -87,6 +91,7 @@ phenotypes <- preprocessing$phenotypes
 ssr_raw <- preprocessing$ssr_raw
 locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
+# Constrói o objeto CALL RATE MIN.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
@@ -94,6 +99,7 @@ A estrutura recebida do pré-processamento é mostrada antes da codificação do
 marcadores.
 
 ```{r resumo-entrada}
+# Continua a transformação desta etapa.
 data.frame(
   Item = c(
     "Indivíduos",
@@ -104,6 +110,7 @@ data.frame(
   ),
   Valor = c(
     length(ids),
+    # Continua a transformação desta etapa.
     ncol(phenotypes),
     ncol(ssr_raw),
     sum(locus_audit_full$Keep_locus),
@@ -121,6 +128,7 @@ representa duas cópias do alelo 2. Uma coluna de dosagem é criada para cada
 alelo observado em cada loco mantido.
 
 ```{r codificacao-dosagens}
+# Constrói o objeto retained loci full.
 retained_loci_full <- locus_audit_full$Locus[
   locus_audit_full$Keep_locus
 ]
@@ -133,6 +141,7 @@ ssr_full <- ssr_raw[
 
 dosage_parts_full <- list()
 allele_map_parts_full <- list()
+# Constrói o objeto marker counter full.
 marker_counter_full <- 0L
 
 for (j in seq_len(ncol(ssr_full))) {
@@ -167,6 +176,7 @@ for (j in seq_len(ncol(ssr_full))) {
     )
 
     dosage_parts_full[[marker_counter_full]] <- dosage
+    # Continua a transformação desta etapa.
     allele_map_parts_full[[marker_counter_full]] <- data.frame(
       Locus = colnames(ssr_full)[j],
       Allele = allele,
@@ -179,6 +189,7 @@ dosage_full_raw <- do.call(cbind, dosage_parts_full)
 allele_audit_full <- bind_rows(allele_map_parts_full)
 
 rownames(dosage_full_raw) <- ids
+# Continua a transformação desta etapa.
 colnames(dosage_full_raw) <- allele_audit_full$Marker
 rownames(allele_audit_full) <- NULL
 
@@ -193,6 +204,7 @@ São mantidos os alelos com frequência entre 0,05 e 0,95 e com variação de
 dosagem maior que zero.
 
 ```{r controle-frequencias-alelicas}
+# Continua a transformação desta etapa.
 allele_audit_full$Allele_frequency <-
   colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
@@ -207,6 +219,7 @@ for (j in seq_len(ncol(dosage_full_raw))) {
 
 allele_audit_full$Dosage_sd <- dosage_sd_full
 
+# Continua a transformação desta etapa.
 allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Allele_frequency) &
   allele_audit_full$Allele_frequency >= ALLELE_FREQUENCY_MIN &
@@ -219,6 +232,7 @@ retained_markers_full <- allele_audit_full$Marker[
 ]
 
 dosage_full <- dosage_full_raw[
+  # Continua a transformação desta etapa.
   ,
   retained_markers_full,
   drop = FALSE
@@ -230,6 +244,7 @@ allele_summary_full <- allele_audit_full |>
     Alelos_observados = n(),
     Alelos_mantidos = sum(Keep_allele),
     .groups = "drop"
+  # Continua a transformação desta etapa.
   )
 
 kable(
@@ -238,7 +253,10 @@ kable(
 )
 ```
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r grafico-frequencias-alelicas, fig.height=5}
+# Constrói a visualização.
 ggplot(
   allele_audit_full,
   aes(
@@ -249,6 +267,7 @@ ggplot(
   geom_histogram(
     bins = 20,
     position = "identity",
+    # Continua a transformação desta etapa.
     alpha = 0.7
   ) +
   geom_vline(
@@ -259,6 +278,7 @@ ggplot(
     linetype = 2
   ) +
   labs(
+    # Continua a transformação desta etapa.
     x = "Frequência alélica",
     y = "Colunas de dosagem alélica",
     fill = "Mantido",
@@ -274,6 +294,7 @@ seguida, cada coluna é centralizada subtraindo sua média. A matriz resultante
 é denotada por \(\mathbf M\).
 
 ```{r matriz-marcadores}
+# Constrói o objeto marker means full.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -352,7 +373,10 @@ eigenvalues_G_full <- eigen(
 )$values
 ```
 
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
+
 ```{r resumo-matriz-g}
+# Continua a transformação desta etapa.
 data.frame(
   Quantidade = c(
     "Denominador sum 2p(1-p)",
@@ -363,6 +387,7 @@ data.frame(
   Valor = c(
     denominator_full,
     mean(diag(G_full)),
+    # Continua a transformação desta etapa.
     max(abs(G_full - t(G_full))),
     min(eigenvalues_G_full)
   )
@@ -408,6 +433,7 @@ cada família são distribuídos de forma uniforme entre os folds e a semente fi
 preserva a mesma alocação entre execuções.
 
 ```{r folds-validacao-cruzada}
+# Continua a transformação desta etapa.
 set.seed(SEED_CV)
 
 family <- droplevels(metadata$FAM)
@@ -442,6 +468,7 @@ for (family_level in levels(family)) {
   )
 }
 
+# Constrói o objeto fold sizes.
 fold_sizes <- tabulate(folds, nbins = N_FOLDS)
 
 family_fold_table <- table(
@@ -455,6 +482,7 @@ family_balance <- apply(family_fold_table, 1, max) -
 cv_folds <- data.frame(
   IND = ids,
   FAM = as.character(metadata$FAM),
+  # Continua a transformação desta etapa.
   Fold = folds
 )
 
@@ -467,6 +495,7 @@ fold_summary <- data.frame(
 kable(
   fold_summary,
   col.names = c("Fold", "N treinamento", "N validação"),
+  # Continua a transformação desta etapa.
   caption = "Tamanhos amostrais da validação cruzada"
 )
 ```
@@ -480,7 +509,10 @@ kable(
 )
 ```
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r grafico-familias-folds, fig.height=7}
+# Constrói o objeto family fold long.
 family_fold_long <- as.data.frame(family_fold_table)
 
 ggplot(
@@ -492,6 +524,7 @@ ggplot(
   )
 ) +
   geom_tile() +
+  # Continua a transformação desta etapa.
   geom_text(aes(label = Freq)) +
   labs(
     x = "Fold",
@@ -518,7 +551,10 @@ cv_folds |>
 
 ## 10. Mapa de calor do relacionamento genômico
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r grafico-relacionamento-genomico, fig.height=8}
+# Constrói o objeto G long.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individuo_1", "Individuo_2", "Relacionamento")
 
@@ -530,6 +566,7 @@ ggplot(
     fill = Relacionamento
   )
 ) +
+  # Continua a transformação desta etapa.
   geom_raster() +
   scale_x_discrete(breaks = NULL) +
   scale_y_discrete(breaks = NULL) +
@@ -555,6 +592,7 @@ colunas de dosagem não representem 72 dimensões independentes. O resumo abaixo
 mostra dimensões, postos e propriedades numéricas das matrizes obtidas.
 
 ```{r diagnostico-matrizes}
+# Constrói o objeto theoretical rank M.
 theoretical_rank_M <- sum(
   table(
     allele_audit_full$Locus[
@@ -567,6 +605,7 @@ maximum_M_column_mean <- max(abs(colMeans(M_full)))
 
 G_reconstructed <- tcrossprod(M_full) / denominator_full
 maximum_G_reconstruction_difference <- max(
+  # Continua a transformação desta etapa.
   abs(G_full - G_reconstructed)
 )
 
@@ -596,6 +635,7 @@ for (j in seq_along(locus_names)) {
         ]
       ) - 2
     )
+  # Continua a transformação desta etapa.
   )
 }
 
@@ -608,6 +648,7 @@ matrix_inventory <- data.frame(
     "Colunas de X",
     "Posto de X",
     "Linhas de M",
+    # Continua a transformação desta etapa.
     "Colunas de M",
     "Posto de M",
     "Posto teórico de M",
@@ -618,6 +659,7 @@ matrix_inventory <- data.frame(
     "Colunas de G",
     "Posto de G",
     "Folds",
+    # Continua a transformação desta etapa.
     "Indivíduos de treinamento por fold",
     "Indivíduos de validação por fold",
     "Diferença máxima de simetria de G",
@@ -628,6 +670,7 @@ matrix_inventory <- data.frame(
     length(ids),
     nrow(X),
     ncol(X),
+    # Avalia a estrutura da matriz.
     qr(X)$rank,
     nrow(M_full),
     ncol(M_full),
@@ -638,6 +681,7 @@ matrix_inventory <- data.frame(
     maximum_G_reconstruction_difference,
     nrow(G_full),
     ncol(G_full),
+    # Avalia a estrutura da matriz.
     qr(G_full)$rank,
     N_FOLDS,
     length(ids) - unique(fold_sizes),
@@ -649,6 +693,7 @@ matrix_inventory <- data.frame(
 )
 
 kable(
+  # Continua a transformação desta etapa.
   matrix_inventory,
   digits = 8,
   col.names = c("Item", "Valor"),
@@ -658,7 +703,10 @@ kable(
 
 ## 12. Gravação das matrizes e dos folds
 
+A etapa seguinte organiza e salva as saídas produzidas para uso nos módulos posteriores.
+
 ```{r salvamento-objetos-matriciais}
+# Constrói o objeto matrices object.
 matrices_object <- list(
   ids = ids,
   metadata = metadata,
@@ -669,6 +717,7 @@ matrices_object <- list(
   G = G_full,
   cv_folds = cv_folds,
   fold_summary = fold_summary,
+  # Continua a transformação desta etapa.
   locus_audit = locus_audit_full,
   allele_audit = allele_audit_full,
   marker_means = marker_means_full,
@@ -679,6 +728,7 @@ matrices_object <- list(
     seed_cv = SEED_CV,
     call_rate_min = CALL_RATE_MIN,
     allele_frequency_min = ALLELE_FREQUENCY_MIN,
+    # Continua a transformação desta etapa.
     fixed_effects = "FAM"
   )
 )
@@ -691,6 +741,7 @@ saveRDS(
 write.csv(cv_folds, file.path(OUTPUT_DIR, "cv_folds.csv"), row.names = FALSE)
 write.csv(fold_summary, file.path(OUTPUT_DIR, "fold_summary.csv"), row.names = FALSE)
 write.csv(
+  # Continua a transformação desta etapa.
   allele_audit_full,
   file.path(OUTPUT_DIR, "allele_audit_full.csv"),
   row.names = FALSE
