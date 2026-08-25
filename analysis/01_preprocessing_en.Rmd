@@ -153,7 +153,13 @@ The dimensions table confirms `r nrow(genes)` individuals in the `Genes` sheet a
 
 The first column of `Genes` contains a sequential population-group index and does not represent the phenotype variable `FAM`; it is therefore excluded from the marker matrix. The remaining 35 columns correspond to the original SSR loci.
 
-In `Genealex`, individual identifiers begin on row 4 of column 2, whereas locus names occur on row 3 in alternating columns beginning with column 3. The expressions `4:(3 + n_individuals)` and `seq(3, 2 + 2 * n_loci, by = 2)` translate this source-file layout directly. Identifiers are kept as text — which preserves alphanumeric codes — and surrounding spaces are removed with `trimws()`. Finally, missing SSR calls coded as `-9` are converted to `NA` so that R functions recognize them as missing data.
+In `Genealex`, each piece of information is located explicitly:
+
+1. **Individual rows.** Identifiers begin on row 4 of column 2. Because there are `n_individuals` individuals, their rows are defined by `individual_rows <- 4:(3 + n_individuals)`. The interval starts at 4 and ends at `3 + n_individuals`, including exactly one row per individual.
+2. **Locus columns.** Locus names are stored on row 3 in alternating columns beginning with column 3. These positions are obtained with `locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)`. The `seq()` function starts at column 3 and advances by two columns until all `n_loci` names are included.
+3. **Individual identifiers.** The expression `genealex[[2]][individual_rows]` selects column 2 only at the rows defined above. Then `as.character()` preserves alphanumeric identifiers and `trimws()` removes spaces before or after the code: `ids <- trimws(as.character(genealex[[2]][individual_rows]))`.
+4. **Locus names.** The expression `genealex[3, locus_columns]` selects row 3 only at the locus columns. `unlist(..., use.names = FALSE)` converts this selection to a vector, and `trimws(as.character(...))` ensures text names without surrounding spaces.
+5. **Missing calls.** After the numerical SSR matrix is formed, `ssr_raw[ssr_raw == -9] <- NA_real_` replaces `-9`, the missing-value code in the source file, with R's standard missing value (`NA`).
 
 ```{r organize-ssr}
 # Obtain panel dimensions from `Genes`; its first column is not an SSR locus.
@@ -196,7 +202,7 @@ SSR codes represent the two alleles observed in each individual. For example, `1
 
 Ten traits are used. Before the final objects are built, the module checks whether required columns are present, searches for missing or duplicated identifiers, and compares the sets of genotyped and phenotyped individuals. For the analyzed dataset, these checks should indicate complete correspondence between the two sources.
 
-The phenotype table is then reordered with `match()` according to the SSR identifiers so that every phenotype row corresponds to the same plant in the genotype matrix. `FAM` is converted to a factor to represent the categorical variable used in Module 02, while the ten traits are collected in a numeric matrix.
+Phenotypes are then aligned with `match(ids, pheno_raw$IND)`. For every identifier in `ids`, `match()` returns its corresponding position in `pheno_raw$IND`. Those positions are used directly in `pheno_raw[match(ids, pheno_raw$IND), required_columns]`, which reorders phenotype rows to the same sequence as the SSR matrix. Thus, phenotype row *i* and genotype row *i* represent the same individual. After alignment, `FAM` is converted to a factor to represent the categorical variable used in Module 02, and the ten traits are collected in a numeric matrix.
 
 ```{r organize-phenotypes}
 # Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.
@@ -301,7 +307,9 @@ The checks confirm `r length(ids)` individuals in both sources, with no individu
 
 ## 6. Marker quality control
 
-For each locus, the call rate — the proportion of the 150 individuals with an observed genotype — and the number of distinct genotype classes are calculated. A locus is retained when its call rate is at least 0.90 (at least 135 observed calls) and at least two genotype classes are present. The second criterion removes loci with no observable variation in the panel even when their call rate is high.
+For each locus, call rate is calculated with `colMeans(!is.na(ssr_raw))`. First, `is.na(ssr_raw)` identifies missing cells; the `!` operator reverses the result, leaving `TRUE` for observed genotypes and `FALSE` for missing calls. Because R treats `TRUE` as 1 and `FALSE` as 0 when computing a mean, `colMeans()` directly returns the proportion of individuals with an observed genotype at each locus.
+
+The number of genotype classes is calculated for each column `j` with `length(unique(na.omit(ssr_raw[, j])))`: `na.omit()` removes missing values, `unique()` retains distinct genotype codes, and `length()` counts the observed classes. A locus is retained when call rate is at least 0.90 — at least 135 of 150 individuals — and at least two genotype classes are present. The second criterion removes loci with no observable variation even when their call rate is high.
 
 The table makes it possible to identify which criterion determined retention or removal for each locus. The `ssr` matrix created at the end contains only loci passed to allele-dosage coding in Module 02; `ssr_raw` is retained for diagnostics of the original source.
 
@@ -377,7 +385,7 @@ The figure shows that retention does not depend only on position relative to the
 
 ## 7. Summary of genotype information
 
-The amount of available SSR information is summarized for every individual using the 35 original loci (`ssr_raw`). This diagnostic describes completeness of the received panel before locus filtering. No individual-exclusion threshold based on completeness is applied; all 150 aligned individuals are preserved for subsequent stages.
+Genotype completeness is also calculated for each individual using the 35 original loci (`ssr_raw`). The expression `rowSums(!is.na(ssr_raw))` counts how many loci have an observed genotype for each individual, whereas `rowMeans(!is.na(ssr_raw))` implicitly divides that count by the number of loci and returns the proportion of available calls. No individual-exclusion threshold based on completeness is applied; all 150 aligned individuals are preserved for subsequent stages.
 
 ```{r individual-summary}
 # Compute, across the original loci, the number and proportion of available calls per individual.

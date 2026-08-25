@@ -153,7 +153,13 @@ A tabela de dimensões confirma que a aba `Genes` contém `r nrow(genes)` indiv�
 
 A primeira coluna da aba `Genes` contém um índice sequencial de grupos populacionais e não representa a variável fenotípica `FAM`; por isso ela é excluída da matriz de marcadores. As 35 colunas restantes correspondem aos locos SSR originais.
 
-Na aba `Genealex`, os identificadores dos indivíduos começam na quarta linha da segunda coluna e os nomes dos locos aparecem na terceira linha, em colunas alternadas a partir da terceira coluna. As expressões `4:(3 + n_individuals)` e `seq(3, 2 + 2 * n_loci, by = 2)` traduzem exatamente essa estrutura do arquivo de origem. Os identificadores são mantidos como texto — importante para valores alfanuméricos — e espaços externos são removidos com `trimws()`. Por fim, chamadas SSR ausentes codificadas como `-9` são convertidas em `NA` para que as funções de R as reconheçam como dados ausentes.
+Na aba `Genealex`, a posição de cada informação é definida explicitamente:
+
+1. **Linhas dos indivíduos.** Os identificadores começam na linha 4 da segunda coluna. Como existem `n_individuals` indivíduos, as linhas são definidas por `individual_rows <- 4:(3 + n_individuals)`. O intervalo começa em 4 e termina em `3 + n_individuals`, incluindo exatamente uma linha para cada indivíduo.
+2. **Colunas dos locos.** Os nomes dos locos estão na linha 3 e aparecem em colunas alternadas a partir da coluna 3. Essas posições são obtidas com `locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)`. A função `seq()` começa em 3 e avança de duas em duas colunas até reunir os `n_loci` nomes.
+3. **Identificadores dos indivíduos.** A expressão `genealex[[2]][individual_rows]` seleciona a segunda coluna apenas nas linhas definidas acima. Em seguida, `as.character()` preserva identificadores alfanuméricos e `trimws()` remove espaços antes ou depois do código: `ids <- trimws(as.character(genealex[[2]][individual_rows]))`.
+4. **Nomes dos locos.** A expressão `genealex[3, locus_columns]` seleciona a terceira linha somente nas colunas dos locos. `unlist(..., use.names = FALSE)` transforma essa seleção em um vetor, e `trimws(as.character(...))` garante nomes em formato de texto sem espaços externos.
+5. **Chamadas ausentes.** Depois de formar a matriz numérica de SSR, o código `ssr_raw[ssr_raw == -9] <- NA_real_` substitui o valor `-9`, usado no arquivo de origem para indicar ausência, pelo valor ausente padrão do R (`NA`).
 
 ```{r organizacao-ssr}
 # Obtém as dimensões do painel a partir da aba `Genes`; a primeira coluna não é um loco SSR.
@@ -196,7 +202,7 @@ Os códigos SSR representam os dois alelos observados em cada indivíduo. Por ex
 
 Dez características são utilizadas. Antes de construir os objetos finais, o módulo verifica se as colunas obrigatórias existem, procura identificadores ausentes ou duplicados e compara os conjuntos de indivíduos genotipados e fenotipados. Para o conjunto de dados analisado, essas verificações devem indicar correspondência completa entre as duas fontes.
 
-Em seguida, a tabela fenotípica é reordenada com `match()` de acordo com os identificadores da matriz SSR, de modo que cada linha fenotípica corresponda à mesma planta da linha genotípica. `FAM` é convertida em fator para representar a variável categórica que será usada no Módulo 02, enquanto as dez características são reunidas em uma matriz numérica.
+Em seguida, o alinhamento é feito com `match(ids, pheno_raw$IND)`. Para cada identificador presente em `ids`, `match()` retorna a posição correspondente em `pheno_raw$IND`. Essas posições são usadas diretamente em `pheno_raw[match(ids, pheno_raw$IND), required_columns]`, que reordena as linhas fenotípicas na mesma sequência da matriz SSR. Assim, a linha *i* dos fenótipos e a linha *i* dos genótipos passam a representar o mesmo indivíduo. Depois do alinhamento, `FAM` é convertida em fator para representar a variável categórica usada no Módulo 02, e as dez características são reunidas em uma matriz numérica.
 
 ```{r organizacao-fenotipos}
 # Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.
@@ -301,7 +307,9 @@ As verificações confirmam `r length(ids)` indivíduos nas duas fontes, sem ind
 
 ## 6. Controle de qualidade dos marcadores
 
-Para cada loco são calculados a taxa de chamada — proporção dos 150 indivíduos com genótipo observado — e o número de classes genotípicas distintas. Um loco é mantido quando apresenta taxa de chamada igual ou superior a 0,90 (pelo menos 135 chamadas observadas) e pelo menos duas classes genotípicas. O segundo critério remove locos sem variação observável no painel, mesmo que sua taxa de chamada seja alta.
+Para cada loco, a taxa de chamada é calculada por `colMeans(!is.na(ssr_raw))`. Primeiro, `is.na(ssr_raw)` identifica as células ausentes; o operador `!` inverte o resultado, deixando `TRUE` para genótipos observados e `FALSE` para ausências. Como R trata `TRUE` como 1 e `FALSE` como 0 no cálculo da média, `colMeans()` fornece diretamente a proporção de indivíduos com genótipo observado em cada loco.
+
+O número de classes genotípicas é calculado, para cada coluna `j`, por `length(unique(na.omit(ssr_raw[, j])))`: `na.omit()` remove as ausências, `unique()` mantém apenas os códigos genotípicos distintos e `length()` conta quantas classes foram observadas. Um loco é mantido quando a taxa de chamada é igual ou superior a 0,90 — pelo menos 135 dos 150 indivíduos — e quando existem pelo menos duas classes genotípicas. Esse segundo critério remove locos sem variação observável mesmo quando a taxa de chamada é alta.
 
 A tabela permite identificar separadamente qual critério determinou a retenção ou remoção de cada loco. A matriz `ssr` criada ao final contém apenas os locos que seguem para a codificação alélica do Módulo 02; `ssr_raw` é preservada para os diagnósticos da fonte original.
 
@@ -377,7 +385,7 @@ A figura mostra que a decisão de retenção não depende apenas da posição em
 
 ## 7. Resumo da informação genotípica
 
-A quantidade de chamadas SSR disponíveis é resumida para cada indivíduo usando os 35 locos originais (`ssr_raw`). Esse diagnóstico descreve a completude do painel recebido antes do filtro por loco. Nenhum limiar de exclusão por completude é aplicado aos indivíduos; todos os 150 indivíduos alinhados são preservados para as etapas seguintes.
+A completude genotípica também é calculada por indivíduo usando os 35 locos originais (`ssr_raw`). A expressão `rowSums(!is.na(ssr_raw))` conta quantos locos possuem genótipo observado em cada indivíduo, enquanto `rowMeans(!is.na(ssr_raw))` divide implicitamente essa contagem pelo número de locos e fornece a proporção de chamadas disponíveis. Nenhum limiar de exclusão por completude é aplicado aos indivíduos; todos os 150 indivíduos alinhados são preservados para as etapas seguintes.
 
 ```{r resumo-individuos}
 # Calcula, nos locos originais, a quantidade e a proporção de chamadas disponíveis por indivíduo.
