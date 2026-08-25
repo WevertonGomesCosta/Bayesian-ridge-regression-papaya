@@ -60,7 +60,10 @@ suppressPackageStartupMessages({
 })
 ```
 
+The next step loads the input objects and organizes the structures required for the analysis.
+
 ```{r input-object}
+# Define paths and load the preprocessing object used to construct the genomic matrices.
 PREPROCESSING_FILE <- here(
   "output",
   "preprocessing",
@@ -73,6 +76,7 @@ OUTPUT_DIR <- here(
 )
 
 N_FOLDS <- 5L
+# Fix the seed used to create family-stratified folds.
 SEED_CV <- 20260723L
 ALLELE_FREQUENCY_MIN <- 0.05
 
@@ -92,6 +96,7 @@ CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 The structure received from preprocessing is shown before marker coding.
 
 ```{r input-summary}
+# Summarize the dimensions and categories of the preprocessing object received by the module.
 data.frame(
   Item = c(
     "Individuals",
@@ -100,6 +105,7 @@ data.frame(
     "Retained SSR loci",
     "Families"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     ncol(phenotypes),
@@ -119,6 +125,7 @@ allele 2. One dosage column is created for every observed allele at each
 retained locus.
 
 ```{r allele-dosage-coding}
+# Organize marker information and compute the diagnostics required at this stage.
 retained_loci_full <- locus_audit_full$Locus[
   locus_audit_full$Keep_locus
 ]
@@ -158,6 +165,7 @@ for (j in seq_len(ncol(ssr_full))) {
       as.numeric(allele_2 == allele)
     dosage[is.na(codes)] <- NA_real_
 
+    # Create a unique identifier for each locus-allele combination.
     marker_name <- paste0(
       colnames(ssr_full)[j],
       "__A",
@@ -191,6 +199,7 @@ with frequencies between 0.05 and 0.95 and nonzero dosage variation are
 retained.
 
 ```{r allele-frequency-control}
+# Compute dosage frequency and variability to retain informative allele columns.
 allele_audit_full$Allele_frequency <-
   colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
@@ -212,6 +221,7 @@ allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Dosage_sd) &
   allele_audit_full$Dosage_sd > 0
 
+# Select allele columns that pass the frequency and dosage-variation filters.
 retained_markers_full <- allele_audit_full$Marker[
   allele_audit_full$Keep_allele
 ]
@@ -222,6 +232,7 @@ dosage_full <- dosage_full_raw[
   drop = FALSE
 ]
 
+# Summarize the results in `allele_summary_full`.
 allele_summary_full <- allele_audit_full |>
   group_by(Locus) |>
   summarise(
@@ -236,7 +247,10 @@ kable(
 )
 ```
 
+The next step builds the corresponding visualization to support interpretation of the diagnostic.
+
 ```{r allele-frequency-plot, fig.height=5}
+# Display the allele-frequency distribution and the thresholds used by the filter.
 ggplot(
   allele_audit_full,
   aes(
@@ -250,6 +264,7 @@ ggplot(
     alpha = 0.7
   ) +
   geom_vline(
+    # Mark the lower and upper allele-frequency thresholds in the figure.
     xintercept = c(
       ALLELE_FREQUENCY_MIN,
       1 - ALLELE_FREQUENCY_MIN
@@ -272,6 +287,7 @@ column is then centered by subtracting its mean. The resulting matrix is
 denoted by \(\mathbf M\).
 
 ```{r marker-matrix}
+# Impute missing dosages by column means, center the columns, and construct marker matrix M.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -349,7 +365,10 @@ eigenvalues_G_full <- eigen(
 )$values
 ```
 
+The next step organizes a tabular summary of the objects and results needed to interpret this section.
+
 ```{r genomic-relationship-summary}
+# Build or check the matrices used for genomic prediction.
 data.frame(
   Quantity = c(
     "Denominator sum 2p(1-p)",
@@ -357,6 +376,7 @@ data.frame(
     "Maximum symmetry difference",
     "Smallest eigenvalue"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     denominator_full,
     mean(diag(G_full)),
@@ -404,6 +424,7 @@ each family are distributed evenly across folds, and a fixed seed preserves the
 same allocation across executions.
 
 ```{r cross-validation-folds}
+# Build or summarize the cross-validation fold structure.
 set.seed(SEED_CV)
 
 family <- droplevels(metadata$FAM)
@@ -445,6 +466,7 @@ family_fold_table <- table(
   Fold = folds
 )
 
+# Quantify, within each family, the largest difference in individual counts across folds.
 family_balance <- apply(family_fold_table, 1, max) -
   apply(family_fold_table, 1, min)
 
@@ -476,9 +498,13 @@ kable(
 )
 ```
 
+The next step builds the corresponding visualization to support interpretation of the diagnostic.
+
 ```{r family-fold-plot, fig.height=7}
+# Reshape the family-by-fold table and build the individual-distribution figure.
 family_fold_long <- as.data.frame(family_fold_table)
 
+# Build the figure used for interpretation.
 ggplot(
   family_fold_long,
   aes(
@@ -514,10 +540,14 @@ cv_folds |>
 
 ## 10. Genomic relationship heatmap
 
+The next step builds the corresponding visualization to support interpretation of the diagnostic.
+
 ```{r genomic-relationship-plot, fig.height=8}
+# Reshape G to long format and build the genomic-relationship heatmap.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individual_1", "Individual_2", "Relationship")
 
+# Build the figure used for interpretation.
 ggplot(
   G_long,
   aes(
@@ -550,6 +580,7 @@ columns do not represent 72 independent dimensions. The summary below shows
 dimensions, ranks, and numerical properties of the matrices obtained.
 
 ```{r matrix-diagnostics}
+# Check dimensions, ranks, linear dependencies, and numerical properties of X, M, and G.
 theoretical_rank_M <- sum(
   table(
     allele_audit_full$Locus[
@@ -597,6 +628,7 @@ for (j in seq_along(locus_names)) {
 maximum_dosage_sum_error <- max(dosage_sum_error)
 
 matrix_inventory <- data.frame(
+  # List the items checked in the matrix inventory.
   Item = c(
     "Individuals",
     "Rows of X",
@@ -619,6 +651,7 @@ matrix_inventory <- data.frame(
     "Mean diagonal of G",
     "Smallest eigenvalue of G"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     nrow(X),
@@ -643,6 +676,7 @@ matrix_inventory <- data.frame(
   )
 )
 
+# Format the table for display in the tutorial.
 kable(
   matrix_inventory,
   digits = 8,
@@ -653,7 +687,10 @@ kable(
 
 ## 12. Saving matrices and folds
 
+The next step organizes and saves the generated outputs for use in the downstream modules.
+
 ```{r save-matrix-objects}
+# Collect matrices, metadata, frequencies, and folds in the object persisted by the module.
 matrices_object <- list(
   ids = ids,
   metadata = metadata,
@@ -669,6 +706,7 @@ matrices_object <- list(
   marker_means = marker_means_full,
   allele_frequencies = allele_frequencies_full,
   denominator = denominator_full,
+  # Record parameters and thresholds required to reproduce this stage.
   settings = list(
     n_folds = N_FOLDS,
     seed_cv = SEED_CV,
@@ -683,6 +721,7 @@ saveRDS(
   file.path(OUTPUT_DIR, "matrices_object.rds")
 )
 
+# Save the consolidated output for downstream use.
 write.csv(cv_folds, file.path(OUTPUT_DIR, "cv_folds.csv"), row.names = FALSE)
 write.csv(fold_summary, file.path(OUTPUT_DIR, "fold_summary.csv"), row.names = FALSE)
 write.csv(

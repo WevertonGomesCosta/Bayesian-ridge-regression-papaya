@@ -48,7 +48,10 @@ suppressPackageStartupMessages({
 })
 ```
 
+A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.
+
 ```{r inputs-and-style}
+# Define os caminhos de saída e carrega os objetos necessários para este módulo.
 MODELS_FILE <- here("output", "models", "models_object.rds")
 M04_FILE <- here("output", "results", "m04", "module04_results.rds")
 RESULTS_DIR <- here("output", "results", "m05")
@@ -65,6 +68,7 @@ model_comparison <- m04$model_comparison
 model_selection <- m04$model_selection
 selected_fold_diagnostics <- m04$selected_fold_diagnostics
 runtime_summary <- m04$runtime
+# Recupera o resumo de herdabilidade derivado no M04.
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
 selection_objectives <- m04$selection_objectives
 selection_proportion <- m04$selection_proportion
@@ -76,6 +80,7 @@ recurrence_distribution <- m04$recurrence_distribution
 multitrait_candidates <- m04$multitrait_candidates
 selected_oof_correlations <- m04$selected_oof_correlations
 
+# Define os rótulos legíveis dos métodos usados nas tabelas e figuras.
 method_labels <- c(
   RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
@@ -91,6 +96,7 @@ selection_objective_labels <- c(
   decrease = "Diminuir"
 )
 
+# Define a paleta fixa usada para distinguir os métodos nas figuras.
 method_colors <- c(
   RRBLUP = "#3366CC",
   BayesA = "#DC3912",
@@ -109,7 +115,10 @@ project_theme <- theme_bw(base_size = 12) +
   )
 ```
 
+A etapa seguinte resume a cobertura dos objetos de resultados recebidos antes de apresentar as tabelas e figuras finais.
+
 ```{r input-summary}
+# Monta a tabela-resumo apresentada nesta seção.
 data.frame(
   Item = c(
     "Características",
@@ -118,6 +127,7 @@ data.frame(
     "Características com método selecionado",
     "Características com correlação OOF positiva"
   ),
+  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
     length(traits),
     length(methods),
@@ -135,6 +145,7 @@ A tabela reúne DIC, diferença para o menor DIC, `Wprob`, `ER`, correlação OO
 e p-valor nominal para cada combinação característica × método.
 
 ```{r model-comparison-table}
+# Monta a tabela-resumo apresentada nesta seção.
 model_comparison_display <- model_comparison |>
   mutate(Method_label = unname(method_labels[Method])) |>
   transmute(
@@ -150,6 +161,7 @@ model_comparison_display <- model_comparison |>
   ) |>
   arrange(match(Trait, traits), match(Method, methods))
 
+# Formata a tabela para exibição no tutorial.
 kable(
   model_comparison_display |>
     select(Trait, Method_label, DIC, Delta_DIC, Wprob, ER, r, p_value),
@@ -158,9 +170,13 @@ kable(
 )
 ```
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r predictive-correlation-figure, fig.width=13, fig.height=10}
+# Ordena os métodos e constrói o gráfico de correlação OOF por característica.
 predictive_plot <- model_comparison |>
   mutate(Method = factor(Method, levels = methods)) |>
+  # Constrói o gráfico usado na interpretação.
   ggplot(aes(x = Method, y = r, fill = Method)) +
   geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
   geom_col(width = 0.75) +
@@ -182,6 +198,7 @@ predictive_plot <- model_comparison |>
 
 predictive_plot
 
+# Salva a saída consolidada para uso posterior.
 ggsave(
   file.path(FIGURE_DIR, "predictive_correlation_by_method_pt.png"),
   predictive_plot,
@@ -193,7 +210,10 @@ ggsave(
 
 ## 4. Métodos selecionados por característica
 
+A etapa seguinte organiza, para cada característica, o método selecionado, os vencedores de referência e os indicadores que sustentam a decisão.
+
 ```{r selected-methods-table}
+# Monta a tabela-resumo apresentada nesta seção.
 final_results_summary <- model_selection |>
   mutate(
     Method_label = unname(method_labels[Selected_method]),
@@ -211,6 +231,7 @@ final_results_summary <- model_selection |>
       TRUE ~ Decision_code
     ),
     Selection_status_label = case_when(
+      # Traduz o status interno de seleção para o rótulo apresentado ao leitor.
       Selection_status == "rule_based_selected" ~
         "Seleção baseada na regra",
       Selection_status == "provisional_review_required" ~
@@ -225,6 +246,7 @@ final_results_summary <- model_selection |>
     Selection_status_label,
     RRBLUP_preference_applied,
     Predictive_winner = Predictive_winner_label,
+    # Mantém o vencedor por DIC com o rótulo legível do método.
     DIC_winner = DIC_winner_label,
     Predictive_loss,
     r,
@@ -240,6 +262,7 @@ final_results_summary <- model_selection |>
   ) |>
   arrange(match(Trait, traits))
 
+# Formata a tabela para exibição no tutorial.
 kable(
   final_results_summary,
   digits = 5,
@@ -253,6 +276,7 @@ Para cada característica são mostradas a cadeia posterior de \(\mu\), sua méd
 acumulada e a densidade posterior no primeiro fold do método selecionado.
 
 ```{r selected-mu-data}
+# Converte o burn-in para a escala das amostras salvas e prepara os traces e densidades posteriores de mu.
 burn_in_saved <-
   models_object$settings$burn_in /
   models_object$settings$thin
@@ -305,6 +329,7 @@ for (trait_index in seq_along(traits)) {
     Running_mean = running_mean[keep_index]
   )
 
+  # Estima a densidade posterior de mu para o método selecionado nesta característica.
   density_object <- density(posterior_mu, n = 512)
 
   density_parts[[trait_index]] <- data.frame(
@@ -320,7 +345,10 @@ selected_mu_trace <- bind_rows(trace_parts)
 selected_mu_density <- bind_rows(density_parts)
 ```
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r selected-mu-trace-figure, fig.width=13, fig.height=14}
+# Constrói a visualização usada para interpretar os resultados desta seção.
 mu_trace_plot <- ggplot(
   selected_mu_trace,
   aes(x = Iteration, y = Posterior_mu)
@@ -346,6 +374,7 @@ mu_trace_plot <- ggplot(
 
 mu_trace_plot
 
+# Salva a saída consolidada para uso posterior.
 ggsave(
   file.path(FIGURE_DIR, "selected_model_mu_trace_pt.png"),
   mu_trace_plot,
@@ -355,7 +384,10 @@ ggsave(
 )
 ```
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r selected-mu-density-figure, fig.width=13, fig.height=14}
+# Constrói a visualização usada para interpretar os resultados desta seção.
 mu_density_plot <- ggplot(
   selected_mu_density,
   aes(x = x, y = y, color = Method)
@@ -377,6 +409,7 @@ mu_density_plot <- ggplot(
 
 mu_density_plot
 
+# Salva a saída consolidada para uso posterior.
 ggsave(
   file.path(FIGURE_DIR, "selected_model_mu_density_pt.png"),
   mu_density_plot,
@@ -388,13 +421,17 @@ ggsave(
 
 ## 6. Estabilidade entre folds
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r selected-fold-figure, fig.width=12, fig.height=10}
+# Acrescenta rótulos aos resultados por fold e constrói a figura de estabilidade do método selecionado.
 fold_stability_display <- selected_fold_diagnostics |>
   mutate(
     Method_label = unname(method_labels[Method]),
     Facet = paste0(Trait, " — ", Method_label)
   )
 
+# Constrói o gráfico da correlação preditiva observada em cada fold para o método selecionado.
 fold_stability_plot <- ggplot(
   fold_stability_display,
   aes(x = Fold, y = Correlation, group = Trait)
@@ -414,6 +451,7 @@ fold_stability_plot <- ggplot(
 
 fold_stability_plot
 
+# Salva a saída consolidada para uso posterior.
 ggsave(
   file.path(FIGURE_DIR, "selected_method_fold_stability_pt.png"),
   fold_stability_plot,
@@ -425,9 +463,13 @@ ggsave(
 
 ## 7. Tempo computacional
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r runtime-figure, fig.width=11, fig.height=7}
+# Resume o custo computacional dos métodos avaliados.
 runtime_plot <- runtime_summary |>
   mutate(Method = factor(Method, levels = methods)) |>
+  # Constrói o gráfico usado na interpretação.
   ggplot(aes(x = Method, y = Mean_seconds, fill = Method)) +
   geom_col(width = 0.7) +
   geom_errorbar(
@@ -454,6 +496,7 @@ runtime_plot <- runtime_summary |>
 
 runtime_plot
 
+# Salva a saída consolidada para uso posterior.
 ggsave(
   file.path(FIGURE_DIR, "runtime_by_method_pt.png"),
   runtime_plot,
@@ -464,6 +507,8 @@ ggsave(
 ```
 
 ## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR
+
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r rrblup-heritability-table}
 rrblup_table <- rrblup_heritability_summary |>
@@ -484,7 +529,10 @@ kable(
 
 ## 9. Correlações entre valores genômicos OOF
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
+# Reorganiza a matriz de correlações OOF e constrói o mapa de calor entre características.
 correlation_long <- as.data.frame(
   as.table(selected_oof_correlations)
 )
@@ -494,6 +542,7 @@ names(correlation_long) <- c(
   "Correlation"
 )
 
+# Formata os rótulos das correlações exibidos nas células do mapa de calor.
 correlation_long <- correlation_long |>
   mutate(
     Correlation_label = replace(
@@ -503,6 +552,7 @@ correlation_long <- correlation_long |>
     )
   )
 
+# Constrói o mapa de calor das correlações entre valores genômicos OOF.
 correlation_plot <- ggplot(
   correlation_long,
   aes(x = Trait_1, y = Trait_2, fill = Correlation)
@@ -517,6 +567,7 @@ correlation_plot <- ggplot(
     mid = "white",
     high = "#3366CC",
     midpoint = 0,
+    # Mantém a escala de cores fixa no intervalo teórico de correlação [-1, 1].
     limits = c(-1, 1)
   ) +
   labs(
@@ -531,6 +582,7 @@ correlation_plot <- ggplot(
 
 correlation_plot
 
+# Salva a saída consolidada para uso posterior.
 ggsave(
   file.path(FIGURE_DIR, "selected_oof_correlations_pt.png"),
   correlation_plot,
@@ -554,6 +606,7 @@ cross-fitted, e não valores genéticos finais de um modelo reajustado com todos
 os fenótipos.
 
 ```{r proportional-selection-table}
+# Integra objetivo de seleção, evidência OOF e tamanho do ranking exploratório de cada característica.
 selection_sizes_display <- selection_sizes |>
   left_join(
     selection_objectives |>
@@ -570,6 +623,7 @@ selection_sizes_display <- selection_sizes |>
       selection_objective_labels[Selection_objective]
     )
   ) |>
+  # Mantém e organiza as variáveis usadas no resultado.
   select(
     Trait,
     Objetivo,
@@ -581,6 +635,7 @@ selection_sizes_display <- selection_sizes |>
     N_selected
   )
 
+# Formata a tabela para exibição no tutorial.
 kable(
   selection_sizes_display,
   digits = 2,
@@ -609,7 +664,10 @@ selected_individuals_by_trait |>
 
 ## 11. Recorrência entre características
 
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
+
 ```{r recurrence-distribution-table}
+# Traduz as classes de recorrência e prepara sua distribuição para apresentação.
 recurrence_class_labels <- c(
   high_4plus = "Alta (>=4)",
   intermediate_3 = "Intermediária (3)",
@@ -618,6 +676,7 @@ recurrence_class_labels <- c(
   none_0 = "Nenhuma (0)"
 )
 
+# Traduz as classes de recorrência e calcula a distribuição apresentada na tabela.
 recurrence_distribution_display <- recurrence_distribution |>
   mutate(
     Classe = unname(
@@ -638,7 +697,10 @@ kable(
 )
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r recurrent-candidates-table}
+# Mantém os candidatos recorrentes em pelo menos três características para a tabela principal.
 main_multitrait_candidates <- multitrait_candidates |>
   filter(N_traits >= 3L) |>
   mutate(
@@ -658,6 +720,7 @@ main_multitrait_candidates <- multitrait_candidates |>
     ends_with("_rank")
   )
 
+# Formata a tabela para exibição no tutorial.
 kable(
   main_multitrait_candidates,
   digits = 4,

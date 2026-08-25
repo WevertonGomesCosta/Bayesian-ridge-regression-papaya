@@ -56,6 +56,8 @@ suppressPackageStartupMessages({
 })
 ```
 
+A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.
+
 ```{r inputs}
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
 MODELS_FILE <- here("output", "models", "models_object.rds")
@@ -78,6 +80,7 @@ As dimensões das três tabelas recebidas mostram a cobertura da análise antes
 das derivações seguintes.
 
 ```{r input-summary}
+# Monta a tabela-resumo apresentada nesta seção.
 data.frame(
   Saida = c(
     "Métricas característica × fold × método",
@@ -89,6 +92,7 @@ data.frame(
     nrow(predictions),
     nrow(convergence)
   ),
+  # Conta quantas características estão representadas em cada tabela de entrada.
   Caracteristicas = c(
     n_distinct(metrics$Trait),
     n_distinct(predictions$Trait),
@@ -114,6 +118,7 @@ de cada combinação característica × método. Cada indivíduo contribui uma �
 predição OOF para cada método.
 
 ```{r pooled-oof-metrics}
+# Combina as predições OOF e calcula as métricas preditivas agregadas por característica e método.
 pooled_metrics <- predictions |>
   group_by(Trait, Method) |>
   summarise(
@@ -131,6 +136,7 @@ pooled_metrics <- predictions |>
   ) |>
   select(-t_value)
 
+# Resume os resultados no objeto `fold_summary`.
 fold_summary <- metrics |>
   group_by(Trait, Method) |>
   summarise(
@@ -181,6 +187,7 @@ ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 Ele não é interpretado como uma probabilidade posterior calibrada de um modelo.
 
 ```{r model-comparison}
+# Integra desempenho por fold e DIC para construir as medidas usadas na comparação dos métodos.
 model_comparison <- pooled_metrics |>
   left_join(fold_summary, by = c("Trait", "Method")) |>
   group_by(Trait) |>
@@ -189,6 +196,7 @@ model_comparison <- pooled_metrics |>
     log_weight = -0.5 * Delta_DIC,
     stable_weight = exp(log_weight - max(log_weight)),
     Wprob = stable_weight / sum(stable_weight),
+    # Calcula a razão de evidência relativa ao método de maior Wprob em cada característica.
     ER = max(Wprob) / Wprob
   ) |>
   ungroup() |>
@@ -200,6 +208,8 @@ model_comparison <- pooled_metrics |>
   ) |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
+
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r model-comparison-preview}
 model_comparison |>
@@ -238,6 +248,7 @@ Primeiro são identificados, separadamente, o método com melhor desempenho
 preditivo OOF e o método com menor DIC médio em cada característica.
 
 ```{r selection-winners}
+# Define o limite de DIC e identifica, para cada característica, os vencedores preditivo e por DIC.
 DIC_COMPETITIVE_THRESHOLD <- 2
 N_FOLDS <- matrices_object$settings$n_folds
 
@@ -269,6 +280,8 @@ dic_winners <- model_comparison |>
     DIC_winner_Wprob = Wprob
   )
 ```
+
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
 
 ```{r selection-winners-table}
 predictive_winners |>
@@ -303,6 +316,8 @@ convergence_by_trait_method <- convergence |>
   )
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r selection-convergence-table}
 convergence_by_trait_method |>
   arrange(match(Trait, traits), match(Method, methods)) |>
@@ -322,6 +337,7 @@ entre folds, esses erros-padrão são tolerâncias descritivas e não são
 interpretados como erros-padrão inferenciais de amostras independentes.
 
 ```{r selection-competitive-set}
+# Combina desempenho, DIC e diagnósticos MCMC para definir o conjunto competitivo de cada característica.
 model_selection_support <- model_comparison |>
   left_join(
     convergence_by_trait_method,
@@ -388,6 +404,8 @@ model_selection_support <- model_comparison |>
   )
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r selection-competitive-table}
 model_selection_support |>
   select(
@@ -428,6 +446,7 @@ automatic_selections <- model_selection_support |>
   )
 
 # Escolha final antes de anexar as métricas do método selecionado.
+# Aplica a prioridade do RR-BLUP dentro do conjunto automático e define o método selecionado.
 selection_spec <- predictive_winners |>
   select(Trait, Predictive_winner) |>
   left_join(automatic_selections, by = "Trait") |>
@@ -440,6 +459,7 @@ selection_spec <- predictive_winners |>
   select(Trait, Selected_method, Predictive_winner) |>
   left_join(
     model_selection_support |>
+      # Mantém e organiza as variáveis usadas no resultado.
       select(
         Trait,
         Method,
@@ -450,6 +470,7 @@ selection_spec <- predictive_winners |>
         RRBLUP_automatic_candidate,
         Convergence_review
       ),
+    # Associa o método selecionado à tabela de suporte para anexar os indicadores usados na decisão.
     by = c("Trait", "Selected_method" = "Method")
   ) |>
   mutate(
@@ -481,6 +502,8 @@ selection_spec <- predictive_winners |>
   arrange(match(Trait, traits))
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r selection-choice-table}
 selection_spec |>
   select(
@@ -497,13 +520,16 @@ As métricas e os diagnósticos do método efetivamente selecionado são então
 extraídos da tabela de suporte.
 
 ```{r selected-performance}
+# Extrai métricas preditivas, DIC e diagnósticos do método selecionado em cada característica.
 selected_performance <- model_selection_support |>
   inner_join(
     selection_spec |>
       select(Trait, Selected_method),
     by = "Trait"
   ) |>
+  # Restringe os dados às observações relevantes nesta etapa.
   filter(Method == Selected_method) |>
+  # Constrói as colunas que formarão a saída deste bloco.
   transmute(
     Trait,
     Selected_method,
@@ -539,6 +565,8 @@ selected_performance <- model_selection_support |>
   )
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r selected-performance-table}
 selected_performance |>
   select(
@@ -559,9 +587,11 @@ nominal é apresentada apenas para tornar explícitas correlações positivas
 fracas; ela não é usada como filtro de seleção.
 
 ```{r final-model-selection}
+# Reúne método selecionado, vencedores preditivo e por DIC e evidência OOF em uma tabela final por característica.
 model_selection <- selection_spec |>
   left_join(
     selected_performance,
+    # Junta o desempenho do método escolhido usando característica e método como chaves.
     by = c("Trait", "Selected_method")
   ) |>
   left_join(predictive_winners, by = "Trait") |>
@@ -585,10 +615,13 @@ model_selection <- selection_spec |>
   ) |>
   arrange(match(Trait, traits))
 
+# Conta quantas características apresentam correlação OOF positiva ou não positiva.
 oof_direction_summary <- model_selection |>
   count(OOF_predictive_direction, name = "Traits") |>
   arrange(OOF_predictive_direction)
 ```
+
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
 
 ```{r model-selection-table}
 model_selection |>
@@ -604,6 +637,8 @@ model_selection |>
   )
 ```
 
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
+
 ```{r oof-direction-table}
 kable(
   oof_direction_summary,
@@ -612,6 +647,8 @@ kable(
 ```
 
 ## 6. Estabilidade entre folds dos métodos selecionados
+
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
@@ -632,7 +669,10 @@ selected_fold_diagnostics |>
 
 ## 7. Tempo computacional
 
+A etapa seguinte resume os tempos de execução para comparar o custo computacional dos métodos.
+
 ```{r runtime}
+# Resume o custo computacional dos métodos avaliados.
 runtime_summary <- metrics |>
   group_by(Method) |>
   summarise(
@@ -647,6 +687,7 @@ runtime_summary <- metrics |>
   ) |>
   arrange(match(Method, methods))
 
+# Formata a tabela para exibição no tutorial.
 kable(
   runtime_summary,
   digits = 3,
@@ -664,6 +705,7 @@ herdabilidade baseado no modelo, e não como uma estimativa clássica independen
 de herdabilidade no sentido restrito.
 
 ```{r rrblup-heritability}
+# Calcula e organiza o resumo de herdabilidade baseado no modelo RR-BLUP/BRR.
 rrblup_variance_components <- convergence |>
   filter(
     Method == "RRBLUP",
@@ -676,6 +718,7 @@ rrblup_fold_correlations <- metrics |>
   filter(Method == "RRBLUP") |>
   select(Trait, Fold, Correlation)
 
+# Organiza a estrutura da validação cruzada e dos ajustes.
 rrblup_heritability_by_fold <- rrblup_variance_components |>
   left_join(rrblup_fold_correlations, by = c("Trait", "Fold")) |>
   mutate(
@@ -686,6 +729,7 @@ rrblup_heritability_by_fold <- rrblup_variance_components |>
   ) |>
   arrange(match(Trait, traits), Fold)
 
+# Resume entre folds o análogo de herdabilidade e a acurácia ajustada do RR-BLUP/BRR.
 rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   group_by(Trait) |>
   summarise(
@@ -718,6 +762,7 @@ A direção de seleção é aplicada ao valor genômico somente no momento de
 construir o ranking. O valor genômico original permanece inalterado.
 
 ```{r selected-oof-genomic-values}
+# Define a direção desejada de seleção e associa os valores genômicos OOF ao método escolhido em cada característica.
 selection_objective_map <- c(
   MMCOM = "increase",
   PRODCOM = "increase",
@@ -731,6 +776,7 @@ selection_objective_map <- c(
   SS = "increase"
 )
 
+# Organiza, para cada característica, o sentido desejado de seleção e a regra de ordenação.
 selection_objectives <- data.frame(
   Trait = traits,
   Selection_objective = unname(selection_objective_map[traits]),
@@ -744,6 +790,7 @@ selection_objectives <- data.frame(
     )
   )
 
+# Organiza o componente genômico estimado para cada indivíduo.
 selected_oof_genomic_values <- predictions |>
   inner_join(
     model_selection |>
@@ -763,6 +810,7 @@ selected_oof_genomic_values <- predictions |>
   ) |>
   arrange(match(Trait, traits), IND)
 
+# Formata a tabela para exibição no tutorial.
 kable(
   selection_objectives,
   caption = "Direção de seleção definida para cada característica"
@@ -782,6 +830,7 @@ uma intensidade ótima estimada. Para características cujo objetivo é diminuir
 o escore é o negativo do valor genômico.
 
 ```{r genomic-ranking}
+# Orienta os valores genômicos pelo objetivo de seleção e ranqueia os indivíduos dentro de cada característica.
 genomic_ranking <- selected_oof_genomic_values |>
   mutate(
     Selection_score = case_when(
@@ -796,12 +845,14 @@ genomic_ranking <- selected_oof_genomic_values |>
   ungroup() |>
   arrange(match(Trait, traits), Rank)
 
+# Define a proporção de candidatos exibida em cada ranking exploratório.
 SELECTION_PROPORTION <- 0.20
 
 positive_oof_traits <- model_selection |>
   filter(OOF_predictive_direction == "positive") |>
   pull(Trait)
 
+# Calcula quantos indivíduos compõem a proporção priorizada em cada característica com OOF positivo.
 selection_sizes <- genomic_ranking |>
   filter(Trait %in% positive_oof_traits) |>
   count(Trait, name = "N_available") |>
@@ -814,6 +865,7 @@ selection_sizes <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits))
 
+# Registra o escore de corte e o intervalo de valores genômicos correspondente a cada ranking.
 selection_cutoff_summary <- genomic_ranking |>
   filter(Trait %in% positive_oof_traits) |>
   inner_join(
@@ -836,6 +888,7 @@ selection_cutoff_summary <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits))
 
+# Mantém, em cada característica com OOF positivo, os candidatos incluídos na proporção definida para o ranking.
 selected_individuals_by_trait <- genomic_ranking |>
   inner_join(selection_sizes, by = "Trait") |>
   filter(Rank <= N_selected) |>
@@ -854,6 +907,8 @@ selected_individuals_by_trait <- genomic_ranking |>
   arrange(match(Trait, traits), Rank)
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r selection-size-table}
 kable(
   selection_sizes,
@@ -862,6 +917,8 @@ kable(
 )
 ```
 
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
+
 ```{r selection-cutoff-table}
 kable(
   selection_cutoff_summary,
@@ -869,6 +926,8 @@ kable(
   caption = "Escores no limite da seleção proporcional"
 )
 ```
+
+A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
 
 ```{r selected-individuals-preview}
 selected_individuals_by_trait |>
@@ -889,6 +948,7 @@ positivos fracos permanecem exploratórios. Não são usados pesos e não é
 construído índice de seleção multicaracterística.
 
 ```{r multitrait-recurrence}
+# Conta a recorrência dos indivíduos entre os rankings exploratórios das características com OOF positivo.
 recurrence_counts <- selected_individuals_by_trait |>
   arrange(match(Trait, traits), Rank) |>
   group_by(IND, FAM) |>
@@ -900,6 +960,7 @@ recurrence_counts <- selected_individuals_by_trait |>
     .groups = "drop"
   )
 
+# Integra a contagem de recorrência aos metadados e calcula frequência e classe de recorrência.
 multitrait_recurrence <- matrices_object$metadata |>
   select(IND, FAM) |>
   left_join(recurrence_counts, by = c("IND", "FAM")) |>
@@ -925,6 +986,7 @@ multitrait_recurrence <- matrices_object$metadata |>
   ) |>
   arrange(desc(N_traits), FAM, IND)
 
+# Resume quantos indivíduos pertencem a cada classe de recorrência.
 recurrence_distribution <- multitrait_recurrence |>
   count(N_traits, Recurrence_class, name = "N_individuals") |>
   mutate(
@@ -933,6 +995,7 @@ recurrence_distribution <- multitrait_recurrence |>
   ) |>
   arrange(desc(N_traits))
 
+# Reorganiza os ranks por característica para uma linha por candidato recorrente.
 candidate_rank_wide <- selected_individuals_by_trait |>
   semi_join(
     multitrait_recurrence |>
@@ -946,6 +1009,7 @@ candidate_rank_wide <- selected_individuals_by_trait |>
     names_glue = "{Trait}_rank"
   )
 
+# Mantém candidatos recorrentes em pelo menos duas características e anexa seus ranks específicos.
 multitrait_candidates <- multitrait_recurrence |>
   filter(N_traits >= 2L) |>
   left_join(candidate_rank_wide, by = c("IND", "FAM")) |>
@@ -980,7 +1044,10 @@ kable(
 
 ## 13. Gravação dos resultados
 
+A etapa seguinte organiza e salva as saídas produzidas para uso nos módulos posteriores.
+
 ```{r save-results}
+# Grava as tabelas derivadas pelo módulo antes de montar o objeto RDS consolidado.
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
 write.csv(model_selection_support, file.path(RESULTS_DIR, "model_selection_support.csv"), row.names = FALSE)
 write.csv(model_selection, file.path(RESULTS_DIR, "model_selection.csv"), row.names = FALSE)
@@ -993,6 +1060,7 @@ write.csv(rrblup_heritability_by_fold, file.path(RESULTS_DIR, "rrblup_heritabili
 write.csv(rrblup_heritability_summary, file.path(RESULTS_DIR, "rrblup_heritability_summary.csv"), row.names = FALSE)
 write.csv(selection_objectives, file.path(RESULTS_DIR, "selection_objectives.csv"), row.names = FALSE)
 write.csv(selected_oof_genomic_values, file.path(RESULTS_DIR, "selected_oof_genomic_values.csv"), row.names = FALSE)
+# Salva a saída consolidada para uso posterior.
 write.csv(genomic_ranking, file.path(RESULTS_DIR, "genomic_ranking.csv"), row.names = FALSE)
 write.csv(selection_sizes, file.path(RESULTS_DIR, "selection_sizes.csv"), row.names = FALSE)
 write.csv(selection_cutoff_summary, file.path(RESULTS_DIR, "selection_cutoff_summary.csv"), row.names = FALSE)
@@ -1000,8 +1068,10 @@ write.csv(selected_individuals_by_trait, file.path(RESULTS_DIR, "selected_indivi
 write.csv(multitrait_recurrence, file.path(RESULTS_DIR, "multitrait_recurrence.csv"), row.names = FALSE)
 write.csv(recurrence_distribution, file.path(RESULTS_DIR, "recurrence_distribution.csv"), row.names = FALSE)
 write.csv(multitrait_candidates, file.path(RESULTS_DIR, "multitrait_candidates.csv"), row.names = FALSE)
+# Salva a saída consolidada para uso posterior.
 write.csv(as.data.frame(selected_oof_correlations), file.path(RESULTS_DIR, "selected_oof_correlations.csv"), row.names = TRUE)
 
+# Salva a saída consolidada para uso posterior.
 saveRDS(
   list(
     traits = traits,

@@ -73,6 +73,7 @@ module are written to `output/models/`, while the native BGLR chains are
 organized under `output/models/bglr/`.
 
 ```{r inputs}
+# Define output paths and load the objects required by this module.
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
 OUTPUT_DIR <- here("output", "models")
 BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
@@ -84,6 +85,7 @@ matrices_object <- readRDS(MATRICES_FILE)
 
 ids <- matrices_object$ids
 metadata <- matrices_object$metadata
+# Organize the phenotypes used in the analysis.
 phenotypes <- matrices_object$phenotypes
 trait_dictionary <- matrices_object$trait_dictionary
 X <- matrices_object$X
@@ -219,7 +221,10 @@ GEWEKE_REVIEW_THRESHOLD <- 2
 BL_LAMBDA_TYPE <- "FIXED"
 ```
 
+The next step organizes a tabular summary of the objects and results needed to interpret this section.
+
 ```{r mcmc-settings-table}
+# Collect the MCMC settings in a reference table.
 data.frame(
   Setting = c(
     "Iterations",
@@ -229,6 +234,7 @@ data.frame(
     "R2",
     "BayesB2 zero-effect probability"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     N_ITER,
     BURN_IN,
@@ -243,7 +249,10 @@ data.frame(
 
 ## 6. Genomic prediction methods
 
+The next step organizes a tabular summary of the objects and results needed to interpret this section.
+
 ```{r model-catalogue}
+# Define the compared methods, display labels, and genomic structure used by each fit.
 method_names <- c(
   "RRBLUP", "BayesA", "BayesB", "BayesB2",
   "BayesC", "BL", "GBLUP"
@@ -259,6 +268,7 @@ method_labels <- c(
   GBLUP = "GBLUP"
 )
 
+# Assemble the table presented in this section.
 data.frame(
   Method = unname(method_labels[method_names]),
   BGLR_component = c(
@@ -266,6 +276,7 @@ data.frame(
     "BayesC", "BL", "RKHS"
   ),
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
+  # Describe the effect structure adopted by each method.
   Structure = c(
     "Common Gaussian variance for all marker effects",
     "Marker-specific variances",
@@ -370,6 +381,8 @@ BL_LAMBDA_SQUARED <-
 BL_LAMBDA <- sqrt(BL_LAMBDA_SQUARED)
 ```
 
+The next step organizes a tabular summary of the objects and results needed to interpret this section.
+
 ```{r bl-lambda-table}
 data.frame(
   Quantity = c("MSx", "Global R2", "BL R2", "Fixed lambda0"),
@@ -399,6 +412,7 @@ The family term is common to all seven methods. Each model then receives its
 corresponding genomic component.
 
 ```{r eta-specifications}
+# Define the fixed family effect and the method-specific genomic component.
 family_term <- list(
   X = X_fixed,
   model = "FIXED"
@@ -415,6 +429,7 @@ ETA_models <- list(
   ),
   BayesB = list(
     fixed = family_term,
+    # Define the genomic component of this model specification.
     genomic = list(X = M, model = "BayesB")
   ),
   BayesB2 = list(
@@ -428,6 +443,7 @@ ETA_models <- list(
   ),
   BayesC = list(
     fixed = family_term,
+    # Define the genomic component of this model specification.
     genomic = list(X = M, model = "BayesC")
   ),
   BL = list(
@@ -452,6 +468,7 @@ The same seven specifications are applied to all ten traits and five folds. A
 deterministic seed is assigned to each combination.
 
 ```{r run-design}
+# Combine traits, folds, and methods and assign a reproducible seed to each fit.
 run_design <- expand.grid(
   Trait = traits,
   Fold = seq_len(matrices_object$settings$n_folds),
@@ -459,6 +476,7 @@ run_design <- expand.grid(
   stringsAsFactors = FALSE
 )
 
+# Organize the cross-validation and fitting structure.
 run_design <- run_design[
   order(
     match(run_design$Trait, traits),
@@ -491,6 +509,7 @@ Before the loop, the native files containing the scalar chains used in the
 MCMC diagnostics are identified.
 
 ```{r trace-specifications}
+# Map the chain files and parameters used in the MCMC diagnostics.
 genomic_trace_suffix <- c(
   RRBLUP = "ETA_genomic_varB.dat",
   BayesA = "ETA_genomic_ScaleBayesA.dat",
@@ -501,6 +520,7 @@ genomic_trace_suffix <- c(
   GBLUP = "ETA_genomic_varU.dat"
 )
 
+# Prepare the information used in the MCMC chain diagnostics.
 genomic_trace_header <- c(
   RRBLUP = FALSE,
   BayesA = FALSE,
@@ -521,6 +541,7 @@ genomic_trace_column <- c(
   GBLUP = 1L
 )
 
+# Prepare the information used in the MCMC chain diagnostics.
 genomic_trace_parameter <- c(
   RRBLUP = "Marker_variance",
   BayesA = "Scale",
@@ -531,6 +552,8 @@ genomic_trace_parameter <- c(
   GBLUP = "Genomic_variance"
 )
 ```
+
+The next step executes the fitting procedure defined for the methods, traits, and folds in the analytical design.
 
 ```{r fit-models, eval=FALSE}
 # Lists that collect the outputs from each fit.
@@ -581,6 +604,7 @@ for (run_index in seq_len(nrow(run_design))) {
   run_warning_messages <- character(0)
   fit_start <- proc.time()[["elapsed"]]
 
+  # Fit the configured BGLR model and capture warnings emitted during fitting.
   fit <- withCallingHandlers(
     BGLR::BGLR(
       y = y_model,
@@ -666,6 +690,7 @@ for (run_index in seq_len(nrow(run_design))) {
     Effective_parameters = fit$fit$pD,
     Log_likelihood_at_posterior_mean = fit$fit$logLikAtPostMean,
     Posterior_mean = fit$mu,
+    # Record the available standard deviation for the posterior intercept mean.
     Posterior_mean_SD = c(fit$SD.mu, NA_real_)[1],
     Residual_variance = fit$varE,
     Residual_variance_SD = c(fit$SD.varE, NA_real_)[1],
@@ -757,6 +782,7 @@ used by the diagnostics and downstream modules. The block below is the direct
 continuation of `fit-models`.
 
 ```{r assemble-fit-results, eval=FALSE}
+# Consolidate fitting lists into metric, prediction, genomic-value, and diagnostic tables.
 cv_metrics_by_fold <- bind_rows(metric_parts)
 cv_predictions <- bind_rows(prediction_parts)
 genomic_values_by_fold <- bind_rows(genomic_value_parts)
@@ -774,6 +800,7 @@ write.csv(
   row.names = FALSE
 )
 
+# Save the consolidated output for downstream use.
 write.csv(
   genomic_values_by_fold,
   file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
@@ -799,6 +826,7 @@ The tables produced by model fitting are read from `output/models/` for the
 diagnostics and summaries presented below.
 
 ```{r combine-results}
+# Load the consolidated fitting tables used by the downstream diagnostics.
 cv_metrics_by_fold <- read.csv(
   file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
   check.names = FALSE
@@ -809,6 +837,7 @@ cv_predictions <- read.csv(
   check.names = FALSE
 )
 
+# Organize the estimated genomic component for each individual.
 genomic_values_by_fold <- read.csv(
   file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
   check.names = FALSE
@@ -868,6 +897,7 @@ cv_metrics_by_fold |>
 The number of results produced can also be inspected directly.
 
 ```{r output-size-summary}
+# Assemble the summary table presented in this section.
 data.frame(
   Output = c(
     "Fits",
@@ -875,6 +905,7 @@ data.frame(
     "Fold-level genomic values",
     "Scalar chains reviewed"
   ),
+  # Count the number of records produced in each module output.
   Rows = c(
     nrow(cv_metrics_by_fold),
     nrow(cv_predictions),
@@ -896,6 +927,7 @@ inspection indicators. ESS values below 1,000 or \(|Z_{Geweke}|>2\) are
 highlighted for review but are not automatic model-exclusion rules.
 
 ```{r convergence-summary}
+# Apply the review criteria and summarize convergence diagnostics by method.
 convergence_diagnostics <- convergence_diagnostics |>
   mutate(
     Review_flag =
@@ -903,6 +935,7 @@ convergence_diagnostics <- convergence_diagnostics |>
       abs(Geweke_Z) > GEWEKE_REVIEW_THRESHOLD
   )
 
+# Prepare the information used in the MCMC chain diagnostics.
 convergence_summary <- convergence_diagnostics |>
   group_by(Method) |>
   summarise(
@@ -925,6 +958,7 @@ convergence_summary |>
     Parameters_flagged, Runs_with_flags,
     Minimum_ESS, Median_ESS, Maximum_absolute_Geweke
   ) |>
+  # Format the table for display in the tutorial.
   kable(
     digits = 3,
     caption = "Summary of MCMC diagnostics by method"
@@ -954,6 +988,7 @@ indicators, the method-level summary is written, and the final object is
 assembled for use by the following modules.
 
 ```{r save-results, eval=FALSE}
+# Collect settings, results, and diagnostics in the final module object.
 analysis_settings <- list(
   n_iter = N_ITER,
   burn_in = BURN_IN,
@@ -974,6 +1009,7 @@ analysis_settings <- list(
   methods = method_names
 )
 
+# Record the methods, BGLR components, and genomic inputs used by the specifications.
 model_catalogue <- data.frame(
   Method = method_names,
   Label = c(
@@ -984,6 +1020,7 @@ model_catalogue <- data.frame(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
+  # Record whether each method uses dosage matrix M or genomic matrix G.
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
   stringsAsFactors = FALSE
 )
@@ -1000,6 +1037,7 @@ write.csv(
   row.names = FALSE
 )
 
+# Save the consolidated output for downstream use.
 saveRDS(
   list(
     settings = analysis_settings,

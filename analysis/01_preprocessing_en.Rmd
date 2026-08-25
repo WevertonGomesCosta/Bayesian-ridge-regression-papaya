@@ -52,6 +52,8 @@ suppressPackageStartupMessages({
 })
 ```
 
+The next step defines the file paths used as inputs and outputs in this module.
+
 ```{r paths}
 GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
 PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
@@ -70,6 +72,7 @@ The genotype workbook uses the `Genes` sheet for numerical SSR codes and the
 the `Médias_IND_artigo` sheet.
 
 ```{r read-data}
+# Load the genotype and phenotype workbooks used by the preprocessing module.
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -112,6 +115,7 @@ columns contain the 35 SSR loci. Individual and locus identifiers are obtained
 from `Genealex`. Missing SSR calls coded as `-9` are converted to `NA`.
 
 ```{r organize-ssr}
+# Organize marker information and compute the diagnostics required at this stage.
 n_individuals <- nrow(genes)
 n_loci <- ncol(genes) - 1
 
@@ -149,6 +153,7 @@ identifiers so that every phenotype row corresponds to the same plant in the
 genotype matrix.
 
 ```{r organize-phenotypes}
+# Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.
 TRAITS <- c(
   "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
   "DCI", "EP", "FFC", "FFP", "SS"
@@ -169,6 +174,7 @@ alignment <- data.frame(
     "Missing from phenotype data",
     "Missing from genotype data"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     nrow(pheno_raw),
@@ -182,6 +188,7 @@ kable(
   caption = "Alignment between genotype and phenotype data"
 )
 
+# Summarize the results in `identifier_summary`.
 identifier_summary <- data.frame(
   Check = c(
     "Missing genotype identifiers",
@@ -192,6 +199,7 @@ identifier_summary <- data.frame(
     "Duplicated phenotype identifiers",
     "Missing required phenotype columns"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     sum(is.na(ids) | ids == ""),
     sum(duplicated(ids)),
@@ -246,6 +254,7 @@ calculated. A locus is retained when its call rate is at least 0.90 and at
 least two genotype classes are observed.
 
 ```{r marker-quality-control}
+# Compute call rate and genotype-class diversity to decide which SSR loci are retained.
 genotype_classes <- integer(ncol(ssr_raw))
 
 for (j in seq_len(ncol(ssr_raw))) {
@@ -268,6 +277,7 @@ locus_audit$Keep_locus <-
   locus_audit$Call_rate >= CALL_RATE_MIN &
   locus_audit$N_genotype_classes >= 2
 
+# Retain in the SSR matrix only loci that pass the quality-control criteria.
 ssr <- ssr_raw[
   ,
   locus_audit$Keep_locus,
@@ -284,6 +294,7 @@ kable(
 The figure shows the call rate of every locus relative to the minimum threshold.
 
 ```{r marker-quality-plot, fig.height=7}
+# Build the locus call-rate figure and highlight the minimum quality-control threshold.
 ggplot(
   locus_audit,
   aes(
@@ -294,6 +305,7 @@ ggplot(
 ) +
   geom_col() +
   geom_hline(
+    # Add the horizontal line representing the minimum call-rate threshold.
     yintercept = CALL_RATE_MIN,
     linetype = 2
   ) +
@@ -312,6 +324,7 @@ ggplot(
 The amount of available SSR information is summarized for every individual.
 
 ```{r individual-summary}
+# Assemble the summary table presented in this section.
 individual_audit <- data.frame(
   IND = rownames(ssr_raw),
   N_called = rowSums(!is.na(ssr_raw)),
@@ -322,6 +335,7 @@ rownames(individual_audit) <- NULL
 
 individual_call_rate_summary <- data.frame(
   Measure = c("Minimum", "Mean", "Median", "Maximum"),
+  # List the call-rate values used in the individual summary.
   Call_rate = c(
     min(individual_audit$Call_rate),
     mean(individual_audit$Call_rate),
@@ -343,6 +357,7 @@ Descriptive statistics allow direct inspection of the scale and variation of
 the ten traits.
 
 ```{r phenotype-summary}
+# Compute descriptive statistics to characterize phenotype scale and variability.
 phenotype_sd <- numeric(ncol(phenotypes))
 phenotype_minimum <- numeric(ncol(phenotypes))
 phenotype_maximum <- numeric(ncol(phenotypes))
@@ -353,6 +368,7 @@ for (j in seq_len(ncol(phenotypes))) {
   phenotype_maximum[j] <- max(phenotypes[, j])
 }
 
+# Summarize the results in `phenotype_summary`.
 phenotype_summary <- data.frame(
   Trait = colnames(phenotypes),
   N = colSums(!is.na(phenotypes)),
@@ -379,6 +395,7 @@ is highlighted when its absolute distance from the trait mean is at least
 exactly as recorded in the original spreadsheet.
 
 ```{r distant-phenotype-values}
+# Standardize phenotypes and identify observations beyond the defined distance threshold.
 phenotype_means <- colMeans(phenotypes)
 phenotype_standard_deviations <- numeric(ncol(phenotypes))
 
@@ -392,6 +409,7 @@ phenotype_standardized <- scale(
   scale = phenotype_standard_deviations
 )
 
+# Locate observations whose standardized distance reaches the defined threshold.
 extreme_positions <- which(
   abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD,
   arr.ind = TRUE
@@ -409,6 +427,7 @@ phenotype_extremes <- data.frame(
   )
 )
 
+# Organize the phenotypes used in the analysis.
 phenotype_extremes <- phenotype_extremes[
   order(-phenotype_extremes$Absolute_standardized_distance),
 ]
@@ -417,6 +436,7 @@ rownames(phenotype_extremes) <- NULL
 kable(
   phenotype_extremes,
   digits = 3,
+  # Define the headers displayed in the table of highlighted phenotype observations.
   col.names = c(
     "Individual",
     "Trait",
@@ -436,7 +456,10 @@ kable(
 
 ### 8.2 Trait dictionary
 
+The next step organizes a tabular summary of the objects and results needed to interpret this section.
+
 ```{r trait-dictionary}
+# Associate each trait with its English and Portuguese descriptions and measurement unit.
 trait_dictionary <- data.frame(
   Trait = TRAITS,
   Description_en = c(
@@ -451,6 +474,7 @@ trait_dictionary <- data.frame(
     "Internal pulp firmness",
     "Soluble solids"
   ),
+  # Record the Portuguese description of each trait.
   Description_pt = c(
     "Massa média de frutos comerciais",
     "Produção de frutos comerciais",
@@ -463,6 +487,7 @@ trait_dictionary <- data.frame(
     "Firmeza interna da polpa",
     "Sólidos solúveis"
   ),
+  # Record the measurement unit of each trait.
   Unit = c(
     "kg", "kg", "kg", "cm", "cm",
     "cm", "cm", "N", "N", "°Brix"
@@ -477,7 +502,10 @@ kable(
 )
 ```
 
+The next step builds the corresponding visualization to support interpretation of the diagnostic.
+
 ```{r phenotype-plot, fig.height=8}
+# Reshape the phenotype matrix to long format before plotting trait distributions.
 phenotype_long <- data.frame(
   IND = rownames(phenotypes),
   phenotypes,
@@ -489,6 +517,7 @@ phenotype_long <- data.frame(
     values_to = "Value"
   )
 
+# Build the figure used for interpretation.
 ggplot(phenotype_long, aes(x = Value)) +
   geom_histogram(bins = 20) +
   facet_wrap(~ Trait, scales = "free", ncol = 2) +
@@ -506,6 +535,7 @@ The aligned phenotype matrix, SSR data, metadata, and summaries are gathered
 into an object used to construct the genomic matrices in the next module.
 
 ```{r save-results}
+# Collect settings, results, and diagnostics in the final module object.
 preprocessing_object <- list(
   ids = ids,
   metadata = metadata,
@@ -517,6 +547,7 @@ preprocessing_object <- list(
   phenotype_summary = phenotype_summary,
   phenotype_extremes = phenotype_extremes,
   trait_dictionary = trait_dictionary,
+  # Record parameters and thresholds required to reproduce this stage.
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
@@ -529,6 +560,7 @@ saveRDS(
   file.path(OUTPUT_DIR, "preprocessing_object.rds")
 )
 
+# Save the consolidated output for downstream use.
 write.csv(alignment, file.path(OUTPUT_DIR, "alignment_summary.csv"), row.names = FALSE)
 write.csv(locus_audit, file.path(OUTPUT_DIR, "locus_audit.csv"), row.names = FALSE)
 write.csv(individual_audit, file.path(OUTPUT_DIR, "individual_audit.csv"), row.names = FALSE)
@@ -545,6 +577,7 @@ The final structure of this step can be inspected directly from the dimensions
 and counts below.
 
 ```{r final-summary}
+# Summarize final dimensions and counts of missing or highlighted observations from preprocessing.
 data.frame(
   Item = c(
     "Individuals",
@@ -555,6 +588,7 @@ data.frame(
     "Missing SSR calls",
     "Highlighted phenotype observations"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     ncol(phenotypes),

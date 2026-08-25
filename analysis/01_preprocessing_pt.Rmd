@@ -53,6 +53,8 @@ suppressPackageStartupMessages({
 })
 ```
 
+A etapa seguinte define os caminhos dos arquivos usados como entradas e saídas do módulo.
+
 ```{r caminhos}
 GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
 PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
@@ -71,6 +73,7 @@ marcadores SSR e a aba `Genealex` para os identificadores dos indivíduos e dos
 locos. Os fenótipos são lidos da aba `Médias_IND_artigo`.
 
 ```{r leitura-dados}
+# Carrega as planilhas genotípica e fenotípica que alimentam o pré-processamento.
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -114,6 +117,7 @@ são obtidos da aba `Genealex`. Chamadas ausentes, codificadas como `-9`, são
 convertidas em `NA`.
 
 ```{r organizacao-ssr}
+# Organiza a informação dos marcadores e calcula os diagnósticos necessários nesta etapa.
 n_individuals <- nrow(genes)
 n_loci <- ncol(genes) - 1
 
@@ -151,6 +155,7 @@ com os identificadores da matriz SSR, de modo que cada linha fenotípica
 corresponda à mesma planta da linha genotípica.
 
 ```{r organizacao-fenotipos}
+# Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.
 TRAITS <- c(
   "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
   "DCI", "EP", "FFC", "FFP", "SS"
@@ -171,6 +176,7 @@ alignment <- data.frame(
     "Ausentes nos dados fenotípicos",
     "Ausentes nos dados genotípicos"
   ),
+  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
     length(ids),
     nrow(pheno_raw),
@@ -184,6 +190,7 @@ kable(
   caption = "Alinhamento entre os dados genotípicos e fenotípicos"
 )
 
+# Resume os resultados no objeto `identifier_summary`.
 identifier_summary <- data.frame(
   Verificacao = c(
     "Identificadores genotípicos ausentes",
@@ -194,6 +201,7 @@ identifier_summary <- data.frame(
     "Identificadores fenotípicos duplicados",
     "Colunas fenotípicas obrigatórias ausentes"
   ),
+  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
     sum(is.na(ids) | ids == ""),
     sum(duplicated(ids)),
@@ -248,6 +256,7 @@ genotípicas observadas. Um loco é mantido quando apresenta taxa de chamada
 igual ou superior a 0,90 e pelo menos duas classes genotípicas.
 
 ```{r qualidade-marcadores}
+# Calcula taxa de chamada e diversidade de classes genotípicas para decidir quais locos SSR serão mantidos.
 genotype_classes <- integer(ncol(ssr_raw))
 
 for (j in seq_len(ncol(ssr_raw))) {
@@ -270,6 +279,7 @@ locus_audit$Keep_locus <-
   locus_audit$Call_rate >= CALL_RATE_MIN &
   locus_audit$N_genotype_classes >= 2
 
+# Mantém na matriz SSR apenas os locos que passaram os critérios de qualidade.
 ssr <- ssr_raw[
   ,
   locus_audit$Keep_locus,
@@ -287,6 +297,7 @@ A figura permite visualizar a taxa de chamada de cada loco em relação ao limit
 mínimo utilizado.
 
 ```{r grafico-qualidade-marcadores, fig.height=7}
+# Constrói o gráfico de taxa de chamada dos locos e destaca o limite mínimo de qualidade.
 ggplot(
   locus_audit,
   aes(
@@ -297,6 +308,7 @@ ggplot(
 ) +
   geom_col() +
   geom_hline(
+    # Adiciona a linha horizontal que representa o limite mínimo de taxa de chamada.
     yintercept = CALL_RATE_MIN,
     linetype = 2
   ) +
@@ -315,6 +327,7 @@ ggplot(
 A quantidade de chamadas SSR disponíveis é resumida para cada indivíduo.
 
 ```{r resumo-individuos}
+# Calcula a quantidade e a proporção de chamadas SSR disponíveis para cada indivíduo.
 individual_audit <- data.frame(
   IND = rownames(ssr_raw),
   N_called = rowSums(!is.na(ssr_raw)),
@@ -325,6 +338,7 @@ rownames(individual_audit) <- NULL
 
 individual_call_rate_summary <- data.frame(
   Medida = c("Mínimo", "Média", "Mediana", "Máximo"),
+  # Lista as taxas de chamada usadas no resumo por indivíduo.
   Call_rate = c(
     min(individual_audit$Call_rate),
     mean(individual_audit$Call_rate),
@@ -346,6 +360,7 @@ As estatísticas descritivas permitem verificar diretamente a escala e a
 variação das dez características.
 
 ```{r resumo-fenotipos}
+# Calcula estatísticas descritivas para caracterizar a escala e a variabilidade dos fenótipos.
 phenotype_sd <- numeric(ncol(phenotypes))
 phenotype_minimum <- numeric(ncol(phenotypes))
 phenotype_maximum <- numeric(ncol(phenotypes))
@@ -356,6 +371,7 @@ for (j in seq_len(ncol(phenotypes))) {
   phenotype_maximum[j] <- max(phenotypes[, j])
 }
 
+# Resume os resultados no objeto `phenotype_summary`.
 phenotype_summary <- data.frame(
   Trait = colnames(phenotypes),
   N = colSums(!is.na(phenotypes)),
@@ -382,6 +398,7 @@ pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. Os valores são
 mantidos exatamente como registrados na planilha original.
 
 ```{r valores-fenotipicos-distantes}
+# Padroniza os fenótipos e identifica observações distantes da média segundo o limite definido.
 phenotype_means <- colMeans(phenotypes)
 phenotype_standard_deviations <- numeric(ncol(phenotypes))
 
@@ -395,6 +412,7 @@ phenotype_standardized <- scale(
   scale = phenotype_standard_deviations
 )
 
+# Localiza as observações cuja distância padronizada alcança o limite definido.
 extreme_positions <- which(
   abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD,
   arr.ind = TRUE
@@ -412,6 +430,7 @@ phenotype_extremes <- data.frame(
   )
 )
 
+# Organiza os fenótipos usados na análise.
 phenotype_extremes <- phenotype_extremes[
   order(-phenotype_extremes$Absolute_standardized_distance),
 ]
@@ -420,6 +439,7 @@ rownames(phenotype_extremes) <- NULL
 kable(
   phenotype_extremes,
   digits = 3,
+  # Define os cabeçalhos apresentados na tabela de observações fenotípicas destacadas.
   col.names = c(
     "Indivíduo",
     "Característica",
@@ -439,7 +459,10 @@ kable(
 
 ### 8.2 Dicionário das características
 
+A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
+
 ```{r dicionario-caracteristicas}
+# Associa a cada característica suas descrições em português e inglês e sua unidade de medida.
 trait_dictionary <- data.frame(
   Trait = TRAITS,
   Description_en = c(
@@ -454,6 +477,7 @@ trait_dictionary <- data.frame(
     "Internal pulp firmness",
     "Soluble solids"
   ),
+  # Registra a descrição em português de cada característica.
   Description_pt = c(
     "Massa média de frutos comerciais",
     "Produção de frutos comerciais",
@@ -466,6 +490,7 @@ trait_dictionary <- data.frame(
     "Firmeza interna da polpa",
     "Sólidos solúveis"
   ),
+  # Registra a unidade de medida de cada característica.
   Unit = c(
     "kg", "kg", "kg", "cm", "cm",
     "cm", "cm", "N", "N", "°Brix"
@@ -480,7 +505,10 @@ kable(
 )
 ```
 
+A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
+
 ```{r grafico-fenotipos, fig.height=8}
+# Reorganiza os fenótipos em formato longo e mostra suas distribuições em histogramas.
 phenotype_long <- data.frame(
   IND = rownames(phenotypes),
   phenotypes,
@@ -492,6 +520,7 @@ phenotype_long <- data.frame(
     values_to = "Value"
   )
 
+# Constrói o gráfico usado na interpretação.
 ggplot(phenotype_long, aes(x = Value)) +
   geom_histogram(bins = 20) +
   facet_wrap(~ Trait, scales = "free", ncol = 2) +
@@ -509,6 +538,7 @@ A matriz fenotípica alinhada, os dados SSR, os metadados e os resumos são
 reunidos em um objeto que será utilizado na construção das matrizes genômicas.
 
 ```{r salvamento-saidas}
+# Reúne os objetos do pré-processamento e grava as saídas usadas no módulo seguinte.
 preprocessing_object <- list(
   ids = ids,
   metadata = metadata,
@@ -520,6 +550,7 @@ preprocessing_object <- list(
   phenotype_summary = phenotype_summary,
   phenotype_extremes = phenotype_extremes,
   trait_dictionary = trait_dictionary,
+  # Registra os parâmetros e limites necessários para reproduzir esta etapa.
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
@@ -532,6 +563,7 @@ saveRDS(
   file.path(OUTPUT_DIR, "preprocessing_object.rds")
 )
 
+# Salva a saída consolidada para uso posterior.
 write.csv(alignment, file.path(OUTPUT_DIR, "alignment_summary.csv"), row.names = FALSE)
 write.csv(locus_audit, file.path(OUTPUT_DIR, "locus_audit.csv"), row.names = FALSE)
 write.csv(individual_audit, file.path(OUTPUT_DIR, "individual_audit.csv"), row.names = FALSE)
@@ -548,6 +580,7 @@ O resultado final desta etapa pode ser conferido diretamente pelas dimensões e
 contagens abaixo.
 
 ```{r inventario-final}
+# Resume as dimensões finais e as contagens de dados ausentes ou destacados no pré-processamento.
 data.frame(
   Item = c(
     "Indivíduos",
@@ -558,6 +591,7 @@ data.frame(
     "Chamadas SSR ausentes",
     "Observações fenotípicas destacadas"
   ),
+  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
     length(ids),
     ncol(phenotypes),
