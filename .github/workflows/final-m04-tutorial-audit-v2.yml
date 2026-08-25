@@ -1,0 +1,85 @@
+name: Final Module 04 tutorial audit v2
+
+on:
+  push:
+    branches: [final-m04-tutorial-audit]
+    paths: ['.github/workflows/final-m04-tutorial-audit-v2.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply corrected Module 04 transformation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re, textwrap
+          yml = Path('.github/workflows/final-m04-tutorial-audit.yml').read_text(encoding='utf-8')
+          m = re.search(r"python - <<'PY'\n(.*?)\n          PY", yml, flags=re.S)
+          if not m:
+              raise SystemExit('Embedded transformation not found')
+          code = textwrap.dedent(m.group(1))
+          old = "Module 05 uses these results to build the summary tables and figures for model\\ncomparison and genomic selection."
+          new = "Module 05 uses these results to construct summary tables and figures for method\\ncomparison and genomic selection."
+          if code.count(old) != 1:
+              raise SystemExit(f'Expected one final English target in embedded code, found {code.count(old)}')
+          code = code.replace(old, new, 1)
+          exec(compile(code, '<module04-audit>', 'exec'), {})
+          PY
+          git diff --check
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - name: Parse Module 04 chunks and inline R
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- c('analysis/04_results_pt.Rmd','analysis/04_results_en.Rmd')
+          n_chunks <- 0L; n_inline <- 0L
+          for (f in files) {
+            x <- readLines(f, warn=FALSE, encoding='UTF-8')
+            inside <- FALSE; prose <- character()
+            for (line in x) {
+              if (grepl('^\\s*```\\{r(?:[\\s,}]|$)', line, perl=TRUE)) { inside <- TRUE; next }
+              if (inside && grepl('^\\s*```\\s*$', line, perl=TRUE)) { inside <- FALSE; next }
+              if (!inside) prose <- c(prose,line)
+            }
+            inline <- unlist(regmatches(prose, gregexpr('`r [^`]+`', prose, perl=TRUE)))
+            if (length(inline)) for (expr in inline) {
+              code <- sub('^`r ', '', expr); code <- sub('`$', '', code); parse(text=code); n_inline <- n_inline + 1L
+            }
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl=TRUE)
+            for (s in starts) {
+              rel <- which(grepl('^\\s*```\\s*$', x[(s+1L):length(x)], perl=TRUE))[1]
+              if (is.na(rel)) stop('Unclosed chunk in ',f,' at line ',s)
+              e <- s + rel
+              code <- if (e > s+1L) x[(s+1L):(e-1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text=code); n_chunks <- n_chunks + 1L
+            }
+          }
+          cat('Parsed Module 04 R chunks:', n_chunks, '\n')
+          cat('Parsed Module 04 inline R expressions:', n_inline, '\n')
+          RS
+
+      - name: Commit only Module 04 source files
+        shell: bash
+        run: |
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' analysis/04_results_en.Rmd analysis/04_results_pt.Rmd | sort)"
+          test "$changed" = "$expected"
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/04_results_pt.Rmd analysis/04_results_en.Rmd
+          git commit -m "Refine Module 04 tutorial interpretation"
+          git push origin HEAD:final-m04-tutorial-audit
