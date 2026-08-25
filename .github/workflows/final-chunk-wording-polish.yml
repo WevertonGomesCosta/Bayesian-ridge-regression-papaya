@@ -1,0 +1,184 @@
+name: Polish final chunk wording
+
+on:
+  push:
+    branches:
+      - chunk-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply final context-specific wording
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path('analysis/01_preprocessing_pt.Rmd'): {
+                  '# Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.':
+                      '# Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.',
+              },
+              Path('analysis/01_preprocessing_en.Rmd'): {
+                  '# Organize the phenotype data and apply the preprocessing rules defined for this stage.\nTRAITS <-':
+                      '# Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.\nTRAITS <-',
+                  '# Organize marker information and compute the diagnostics required at this stage.\ngenotype_classes <-':
+                      '# Compute call rate and genotype-class diversity to decide which SSR loci are retained.\ngenotype_classes <-',
+                  '# Organize the phenotype data and apply the preprocessing rules defined for this stage.\nphenotype_sd <-':
+                      '# Compute descriptive statistics to characterize phenotype scale and variability.\nphenotype_sd <-',
+                  '# Organize the phenotype data and apply the preprocessing rules defined for this stage.\nphenotype_means <-':
+                      '# Standardize phenotypes and identify observations beyond the defined distance threshold.\nphenotype_means <-',
+                  '# Organize the phenotype data and apply the preprocessing rules defined for this stage.\nphenotype_long <-':
+                      '# Reshape the phenotype matrix to long format before plotting trait distributions.\nphenotype_long <-',
+              },
+              Path('analysis/04_results_pt.Rmd'): {
+                  '# Deriva os rankings ou resumos de seleção a partir dos resultados preditivos.\nmodel_selection <-':
+                      '# Reúne método selecionado, vencedores preditivo e por DIC e evidência OOF em uma tabela final por característica.\nmodel_selection <-',
+                  '# Recupera o resumo de herdabilidade derivado no M04.\nrrblup_heritability_summary <-':
+                      '# Resume entre folds o análogo de herdabilidade e a acurácia ajustada do RR-BLUP/BRR.\nrrblup_heritability_summary <-',
+                  '# Deriva a estrutura usada para priorizar ou resumir os candidatos.\nselection_objectives <-':
+                      '# Organiza, para cada característica, o sentido desejado de seleção e a regra de ordenação.\nselection_objectives <-',
+              },
+              Path('analysis/04_results_en.Rmd'): {
+                  '# Derive selection rankings or summaries from the predictive results.\nmodel_selection <-':
+                      '# Combine the selected method, predictive and DIC winners, and OOF evidence in the final trait-level table.\nmodel_selection <-',
+                  '# Retrieve the heritability summary derived in M04.\nrrblup_heritability_summary <-':
+                      '# Summarize the RR-BLUP/BRR model-based heritability analogue and adjusted accuracy across folds.\nrrblup_heritability_summary <-',
+                  '# Derive the structure used to prioritize or summarize candidates.\nselection_objectives <-':
+                      '# Organize the desired selection direction and ranking rule for each trait.\nselection_objectives <-',
+              },
+              Path('analysis/05_results_pt.Rmd'): {
+                  'A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.\n\n```{r input-summary}':
+                      'A etapa seguinte resume a cobertura dos objetos de resultados recebidos antes de apresentar as tabelas e figuras finais.\n\n```{r input-summary}',
+                  'A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selected-methods-table}':
+                      'A etapa seguinte organiza, para cada característica, o método selecionado, os vencedores de referência e os indicadores que sustentam a decisão.\n\n```{r selected-methods-table}',
+                  '# Organiza a estrutura da validação cruzada e dos ajustes.\nfold_stability_plot <- ggplot(': 
+                      '# Constrói o gráfico da correlação preditiva observada em cada fold para o método selecionado.\nfold_stability_plot <- ggplot(',
+              },
+              Path('analysis/05_results_en.Rmd'): {
+                  'The next step loads the input objects and organizes the structures required for the analysis.\n\n```{r input-summary}':
+                      'The next step summarizes the coverage of the result objects before presenting the final tables and figures.\n\n```{r input-summary}',
+                  'The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selected-methods-table}':
+                      'The next step organizes, for each trait, the selected method, reference winners, and indicators supporting the decision.\n\n```{r selected-methods-table}',
+                  '# Organize the cross-validation and fitting structure.\nfold_stability_plot <- ggplot(': 
+                      '# Build the plot of predictive correlation observed in each fold for the selected method.\nfold_stability_plot <- ggplot(',
+              },
+          }
+
+          changed = 0
+          for path, items in replacements.items():
+              text = path.read_text(encoding='utf-8')
+              for old, new in items.items():
+                  if old == new:
+                      continue
+                  if old not in text:
+                      raise RuntimeError(f'Expected wording not found in {path}: {old[:100]!r}')
+                  text = text.replace(old, new, 1)
+                  changed += 1
+              path.write_text(text, encoding='utf-8')
+          print('Context-specific wording replacements:', changed)
+          PY
+
+      - name: Re-audit documentation coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import math, re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+          HEADING_RE = re.compile(r'^\s*#{1,6}\s+')
+          WORD_RE = re.compile(r'[A-Za-zÀ-ÖØ-öø-ÿ]{2,}')
+          failures=[]; total=large=0
+
+          for path in sorted(Path('analysis').glob('*.Rmd')):
+              lines=path.read_text(encoding='utf-8').splitlines(); i=0; prev=-1
+              while i < len(lines):
+                  if not CHUNK_RE.match(lines[i]):
+                      i += 1; continue
+                  start=i; end=i+1
+                  while end < len(lines) and not END_RE.match(lines[end]):
+                      end += 1
+                  total += 1
+                  prose=any(
+                      len(WORD_RE.findall(x.strip())) >= 5 and
+                      not HEADING_RE.match(x.strip()) and
+                      not x.strip().startswith(('```','<!--','-->','<div','</div','$$','\\[','\\]','---','|',':--'))
+                      for x in lines[prev+1:start] if x.strip()
+                  )
+                  if not prose:
+                      failures.append(f'{path}:{start+1}: missing explanatory prose')
+                  body=lines[start+1:end]
+                  code_n=sum(1 for x in body if x.strip() and not x.lstrip().startswith('#'))
+                  if code_n >= 15:
+                      large += 1
+                      comments=sum(1 for x in body if x.lstrip().startswith('#') and not x.lstrip().startswith('#|'))
+                      required=max(2, math.ceil(code_n/15))
+                      if comments < required:
+                          failures.append(f'{path}:{start+1}: comments={comments}/{required}')
+                  prev=end; i=end+1
+
+          print(f'Audited chunks: {total}; large chunks: {large}')
+          if failures:
+              raise SystemExit('\n'.join(failures))
+          print('PASS: explanatory prose and large-chunk comment coverage preserved.')
+          PY
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse R chunks and commit
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern='\\.Rmd$', full.names=TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn=FALSE, encoding='UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl=TRUE)
+            for (s in starts) {
+              e_rel <- which(grepl('^\\s*```\\s*$', x[(s+1L):length(x)], perl=TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e > s + 1L) x[(s+1L):(e-1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text=code)
+              n <- n + 1L
+            }
+          }
+          stopifnot(n == 217L)
+          cat('Parsed R chunks:', n, '\n')
+          RS
+
+          git diff --check
+          rm -f .github/workflows/final-chunk-wording-polish.yml
+
+          python - <<'PY'
+          import subprocess
+          changed=subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()
+          allowed={
+              'analysis/01_preprocessing_en.Rmd',
+              'analysis/04_results_en.Rmd','analysis/04_results_pt.Rmd',
+              'analysis/05_results_en.Rmd','analysis/05_results_pt.Rmd',
+              '.github/workflows/final-chunk-wording-polish.yml'
+          }
+          bad=[p for p in changed if p not in allowed]
+          if bad:
+              raise SystemExit('Unexpected files:\n'+'\n'.join(bad))
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Polish semantic chunk wording"
+          git push origin HEAD:chunk-documentation-audit
