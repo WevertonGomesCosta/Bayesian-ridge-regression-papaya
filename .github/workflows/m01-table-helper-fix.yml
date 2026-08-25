@@ -1,0 +1,49 @@
+name: Validate Module 01 table helper
+
+on:
+  push:
+    branches:
+      - didactic-m01-standard
+    paths:
+      - '.github/workflows/m01-table-helper-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Refine table helper defaults
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          edits = {
+            'analysis/01_preprocessing_pt.Rmd': [
+              ('```{r formatacao-tabelas}', '```{r formatacao-tabelas, include=FALSE}'),
+              ('tabela_html <- function(x, caption = NULL, digits = NULL, col.names = NULL) {', 'tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.names = NA) {'),
+            ],
+            'analysis/01_preprocessing_en.Rmd': [
+              ('```{r table-formatting}', '```{r table-formatting, include=FALSE}'),
+              ('format_table <- function(x, caption = NULL, digits = NULL, col.names = NULL) {', 'format_table <- function(x, caption = NULL, digits = getOption("digits"), col.names = NA) {'),
+            ],
+          }
+          for filename, pairs in edits.items():
+            p = Path(filename)
+            text = p.read_text(encoding='utf-8')
+            for old, new in pairs:
+              if text.count(old) != 1:
+                raise SystemExit(f'{filename}: expected one {old!r}, found {text.count(old)}')
+              text = text.replace(old, new, 1)
+            p.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/01_preprocessing_pt.Rmd analysis/01_preprocessing_en.Rmd
+          git commit -m "Harden Module 01 table formatting helper"
+          git push origin HEAD:didactic-m01-standard
