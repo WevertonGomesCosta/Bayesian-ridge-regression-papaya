@@ -1,0 +1,60 @@
+name: Audit parameter documentation
+
+on:
+  push:
+    branches:
+      - parameter-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inventory constants and literal decision rules
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = sorted(Path('analysis').glob('0[1-5]_*.Rmd'))
+          upper = re.compile(r'^\s*([A-Z][A-Z0-9_]*)\s*<-\s*(.+)$')
+          literals = re.compile(r'(>=|<=|>|<|==)\s*(?:0?\.\d+|\d+L?|1e-?\d+)|\b(?:bins|base_size|fig\.width|fig\.height)\s*=\s*\d+(?:\.\d+)?')
+
+          print('=== UPPERCASE CONFIGURATION ASSIGNMENTS ===')
+          for path in files:
+              lines = path.read_text(encoding='utf-8').splitlines()
+              hits = []
+              for i, line in enumerate(lines, 1):
+                  m = upper.match(line)
+                  if m:
+                      prev = lines[i-2].strip() if i >= 2 else ''
+                      hits.append((i, m.group(1), m.group(2).strip(), prev))
+              if hits:
+                  print(f'\n## {path}')
+                  for i, name, value, prev in hits:
+                      print(f'{i}: {name} <- {value}')
+                      print(f'    previous: {prev}')
+
+          print('\n=== SELECTED LITERAL RULES / PRESENTATION SETTINGS ===')
+          for path in files:
+              lines = path.read_text(encoding='utf-8').splitlines()
+              hits=[]
+              in_chunk=False
+              for i,line in enumerate(lines,1):
+                  if line.lstrip().startswith('```{r'):
+                      in_chunk=True
+                  elif in_chunk and line.strip()=='```':
+                      in_chunk=False
+                  elif in_chunk and not line.lstrip().startswith('#') and literals.search(line):
+                      hits.append((i,line.strip()))
+              if hits:
+                  print(f'\n## {path}')
+                  for i,line in hits:
+                      print(f'{i}: {line}')
+          PY
