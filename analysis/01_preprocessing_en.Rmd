@@ -17,8 +17,6 @@ editor_options:
 github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
 ---
 
-The hidden chunk below defines only the rendering options shared by this page. It does not read data, modify analytical objects, or execute any preprocessing step.
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -40,26 +38,59 @@ control.
 
 The block column (`BL`) is removed because it is not part of the statistical model defined for this tutorial. Family (`FAM`) is preserved because it will be used both in the fixed-effect matrix and to stratify the cross-validation folds in Module 02. No individual is removed in this module.
 
-At the end of this stage, the reader will have three central objects: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics produced throughout the page are used to verify that these objects are ready for genomic-matrix construction.
+Preprocessing produces three central objects for the following stages: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics presented throughout the module verify the consistency of these objects before genomic-matrix construction.
 
 ## 2. Packages and file paths
 
-The first chunk loads only the packages required for spreadsheet reading, data manipulation, figures, tables, and portable paths. Package startup messages are suppressed so that the page remains focused on the analytical steps.
+The packages used in this module have distinct roles:
 
-```{r packages}
-suppressPackageStartupMessages({
-  library(readxl)
-  library(dplyr)
-  library(tidyr)
-  library(ggplot2)
-  library(knitr)
-  library(here)
-})
+- `readxl`: reads the Excel workbooks containing genotype and phenotype data;
+- `dplyr`: selects, transforms, and organizes tabular data;
+- `tidyr`: reshapes data between wide and long formats;
+- `ggplot2`: builds the quality-control and phenotype-distribution figures;
+- `knitr`: formats tables displayed in the tutorial;
+- `here`: builds project-relative file paths that do not depend on the local working directory.
+
+```{r packages, warning=FALSE, message=FALSE}
+library(readxl)  # Read Excel workbooks.
+library(dplyr)   # Manipulate and transform tables.
+library(tidyr)   # Reshape data between wide and long formats.
+library(ggplot2) # Build figures.
+library(knitr)   # Format tables and R Markdown output.
+library(here)    # Build portable project-relative paths.
 ```
 
-The next step defines the file paths used as inputs and outputs in this module. These paths only organize data reading and result persistence and are not statistical parameters.
+All tables in this module use `format_table()` for a consistent presentation. Tables occupy the available page width and use horizontal scrolling when their contents exceed that width. This helper changes presentation only; the underlying data are unchanged.
 
-Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available. Because the panel contains 150 individuals, this corresponds to at least 135 observed genotypes per locus. Together with the requirement of at least two genotype classes, the criterion avoids retaining loci with insufficient information to represent variation. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.
+```{r table-formatting}
+format_table <- function(x, caption = NULL, digits = NULL, col.names = NULL) {
+  table <- knitr::kable(
+    x,
+    format = "html",
+    caption = caption,
+    digits = digits,
+    col.names = col.names,
+    table.attr = paste0(
+      'class="table table-striped table-hover" ',
+      'style="width:100%; margin-bottom:0;"'
+    )
+  )
+  knitr::asis_output(
+    paste0(
+      '<div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">',
+      table,
+      '</div>'
+    )
+  )
+}
+```
+
+The paths defined below organize the input files and output directory; they are not statistical parameters.
+
+Two control parameters are fixed:
+
+- `CALL_RATE_MIN = 0.90`: requires at least 90% of the calls at a locus to be available. Because the panel contains 150 individuals, this corresponds to at least 135 observed genotypes per locus. Together with the requirement of at least two genotype classes, the criterion avoids retaining loci with insufficient information to represent variation.
+- `PHENOTYPE_DISTANCE_THRESHOLD = 4`: flags, only for inspection, observations at least four standard deviations from the trait mean. This diagnostic rule does not remove phenotypes, cap them at a cutoff, or otherwise alter their values.
 
 ```{r paths}
 # Define the two input files and the directory where preprocessing outputs are stored.
@@ -79,7 +110,7 @@ dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 The genotype workbook uses the `Genes` sheet for numerical SSR codes and the `Genealex` sheet for individual and locus identifiers. These two sheets are read without column names because they contain metadata rows specific to the source format; the identifier positions are handled explicitly in the next section. Phenotypes are read from the `Médias_IND_artigo` sheet, which already contains column names.
 
-The `BL` column is removed immediately after phenotype reading so that block is not propagated into analytical objects. The table displayed at the end of the chunk allows the dimensions of all three sources to be checked before alignment.
+The `BL` column is removed immediately after phenotype reading so that block is not propagated into analytical objects. The first rows make the original data organization visible, and the dimensions table checks the structure of the three sources before alignment.
 
 ```{r read-data}
 # Read `Genes` without column names because the sheet contains source-format metadata rows.
@@ -117,8 +148,10 @@ data.frame(
   Rows = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
   Columns = c(ncol(genes), ncol(genealex), ncol(pheno_raw))
 ) |>
-  kable(caption = "Dimensions of the spreadsheets used in the analysis")
+  format_table(caption = "Dimensions of the spreadsheets used in the analysis")
 ```
+
+The dimensions table confirms `r nrow(genes)` individuals in the `Genes` sheet and `r ncol(genes) - 1` columns corresponding to SSR loci, in addition to the first index column. The phenotype table contains `r nrow(pheno_raw)` individuals after removing `BL`. The `Genealex` sheet has its own metadata layout, so its dimensions should not be interpreted as a marker matrix.
 
 ## 4. Organizing the SSR data
 
@@ -161,6 +194,8 @@ colnames(ssr_raw) <- locus_names
 ssr_raw[1:6, 1:8]
 ```
 
+SSR codes represent the two alleles observed in each individual. For example, `12` denotes one copy of allele 1 and one copy of allele 2, `22` denotes two copies of allele 2, and `33` denotes two copies of allele 3. The `33` value shown for `P3K3256CC` is not an error or a special category: this locus is multi-allelic and allele 3 is represented in the panel. In Module 02, these genotype codes are decomposed into dosages of 0, 1, or 2 copies for each observed allele.
+
 ## 5. Organizing and aligning phenotypes
 
 Ten traits are used. Before the final objects are built, the module checks whether required columns are present, searches for missing or duplicated identifiers, and compares the sets of genotyped and phenotyped individuals. For the canonical dataset, these checks should indicate complete correspondence between the two sources.
@@ -174,7 +209,7 @@ TRAITS <- c(
   "DCI", "EP", "FFC", "FFP", "SS"
 )
 
-# Define the minimum phenotype-table contract before alignment.
+# Define the columns that must be present before alignment.
 required_columns <- c("IND", "FAM", TRAITS)
 missing_columns <- setdiff(required_columns, names(pheno_raw))
 
@@ -200,7 +235,7 @@ alignment <- data.frame(
   )
 )
 
-kable(
+format_table(
   alignment,
   caption = "Alignment between genotype and phenotype data"
 )
@@ -228,7 +263,7 @@ identifier_summary <- data.frame(
   )
 )
 
-kable(
+format_table(
   identifier_summary,
   caption = "Summary of identifiers and required columns"
 )
@@ -263,8 +298,10 @@ data.frame(
   Family = names(table(metadata$FAM)),
   Individuals = as.integer(table(metadata$FAM))
 ) |>
-  kable(caption = "Number of individuals per family")
+  format_table(caption = "Number of individuals per family")
 ```
+
+The checks confirm `r length(ids)` individuals in both sources, with no individuals missing between genotype and phenotype data. Missing or duplicated identifiers and locus names are also evaluated before alignment. After reordering, `FAM` contains `r nlevels(metadata$FAM)` families, with family sizes ranging from `r min(table(metadata$FAM))` to `r max(table(metadata$FAM))` individuals.
 
 ## 6. Marker quality control
 
@@ -303,12 +340,14 @@ ssr <- ssr_raw[
   drop = FALSE
 ]
 
-kable(
+format_table(
   locus_audit,
   digits = 3,
   caption = "Quality control of SSR loci"
 )
 ```
+
+Of the `r nrow(locus_audit)` loci evaluated, `r sum(locus_audit$Keep_locus)` satisfy both the call-rate and genotype-variation criteria. The removed locus is `r paste(locus_audit$Locus[!locus_audit$Keep_locus], collapse = ", ")`; its exclusion is due to insufficient genotype variation in the panel rather than removal of any individual.
 
 The figure orders loci by call rate and places a horizontal line at 0.90. Color reports the final retention decision, which also depends on the number of genotype classes; therefore, a locus may lie above the call-rate line and still be removed because it lacks genotype variation.
 
@@ -338,6 +377,8 @@ ggplot(
   theme_bw()
 ```
 
+The figure shows that retention does not depend only on position relative to the 0.90 line. A locus can have high call rate and still be excluded when only one genotype class is represented, as occurs for the locus identified in the preceding table.
+
 ## 7. Summary of genotype information
 
 The amount of available SSR information is summarized for every individual using the 35 original loci (`ssr_raw`). This diagnostic describes completeness of the received panel before locus filtering. No individual-exclusion threshold is applied in this tutorial; all 150 aligned individuals are preserved for subsequent stages.
@@ -363,12 +404,14 @@ individual_call_rate_summary <- data.frame(
   )
 )
 
-kable(
+format_table(
   individual_call_rate_summary,
   digits = 3,
   caption = "Distribution of SSR call rate by individual"
 )
 ```
+
+Individual call rate ranges from `r sprintf("%.1f%%", 100 * min(individual_audit$Call_rate))` to `r sprintf("%.1f%%", 100 * max(individual_audit$Call_rate))`, with a mean of `r sprintf("%.1f%%", 100 * mean(individual_audit$Call_rate))`. Because no individual-exclusion rule is applied, these differences are recorded only as genotype-completeness information.
 
 ## 8. Summary of phenotype traits
 
@@ -398,16 +441,18 @@ phenotype_summary <- data.frame(
 
 rownames(phenotype_summary) <- NULL
 
-kable(
+format_table(
   phenotype_summary,
   digits = 3,
   caption = "Summary of phenotype traits"
 )
 ```
 
+All ten traits contain `r min(phenotype_summary$N)` available observations, confirming that the analyzed phenotype variables have no missing values. Because traits use different units and ranges, standard deviations and intervals should be interpreted within each trait rather than compared directly across different measurement scales.
+
 ### 8.1 Phenotype observations far from the mean
 
-Standardized values are used only as a descriptive diagnostic. For each trait, the module calculates $z=(y-\bar{y})/s$, where $\bar{y}$ is the mean and $s$ is the sample standard deviation. An observation is highlighted when $|z|$ is at least `r PHENOTYPE_DISTANCE_THRESHOLD`. This threshold is intended to draw the reader's attention to values far from the mean, not to declare errors or statistical outliers. Values are retained exactly as recorded in the original spreadsheet and remain available to the models.
+Standardized values are used only as a descriptive diagnostic. For each trait, the module calculates $z=(y-\bar{y})/s$, where $\bar{y}$ is the mean and $s$ is the sample standard deviation. An observation is highlighted when $|z|$ is at least `r PHENOTYPE_DISTANCE_THRESHOLD`. This threshold highlights values far from the mean; it does not declare errors or statistical outliers. Values are retained exactly as recorded in the original spreadsheet and remain available to the models.
 
 ```{r distant-phenotype-values}
 # Standardize phenotypes and identify observations beyond the defined distance threshold.
@@ -448,7 +493,7 @@ phenotype_extremes <- phenotype_extremes[
 ]
 rownames(phenotype_extremes) <- NULL
 
-kable(
+format_table(
   phenotype_extremes,
   digits = 3,
   # Define the headers displayed in the table of highlighted phenotype observations.
@@ -468,6 +513,8 @@ kable(
   )
 )
 ```
+
+`r nrow(phenotype_extremes)` observations are highlighted at a standardized distance of at least `r PHENOTYPE_DISTANCE_THRESHOLD` standard deviations. These observations remain in the data and in the models; the table only documents values that merit additional inspection.
 
 ### 8.2 Trait dictionary
 
@@ -511,11 +558,13 @@ trait_dictionary <- data.frame(
 
 rownames(trait_dictionary) <- NULL
 
-kable(
+format_table(
   trait_dictionary[, c("Trait", "Description_en", "Unit")],
   caption = "Dictionary of phenotype traits"
 )
 ```
+
+The dictionary shows that production and mass are expressed in kg, fruit dimensions in cm, firmness in N, and soluble solids in °Brix. These different units explain why the numerical scales of the traits should not be compared directly.
 
 The histograms complement the descriptive statistics by showing distribution shape. Twenty bins are used only to provide consistent visual resolution. Because `scales = "free"`, every trait receives its own horizontal scale; this makes within-trait shape easier to see, but axis limits should not be compared directly across panels.
 
@@ -545,6 +594,8 @@ ggplot(phenotype_long, aes(x = Value)) +
   ) +
   theme_bw()
 ```
+
+The histograms allow concentration, dispersion, and asymmetry to be examined within each trait. They are descriptive diagnostics; they are not normality tests and do not imply automatic phenotype transformation.
 
 ## 9. Saving preprocessing results
 
@@ -617,7 +668,7 @@ data.frame(
     nrow(phenotype_extremes)
   )
 ) |>
-  kable(caption = "Final preprocessing summary")
+  format_table(caption = "Final preprocessing summary")
 ```
 
 This summary should be read as a workflow checkpoint: individuals and phenotypes remain aligned, filtering acts on SSR loci rather than individuals, and the count of highlighted phenotype observations is diagnostic rather than an automatic exclusion rule.
@@ -627,3 +678,8 @@ This summary should be read as a workflow checkpoint: individuals and phenotypes
 Module 02 converts the retained SSR loci into allele-dosage columns, constructs
 the marker and genomic relationship matrices, creates the family fixed-effect
 matrix, and defines the five cross-validation folds.
+
+<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<a href="index.html">← Home</a>
+<a href="02_matrices_en.html">Module 02 — Matrix construction →</a>
+</div>
