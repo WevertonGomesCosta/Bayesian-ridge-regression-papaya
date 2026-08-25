@@ -60,7 +60,11 @@ suppressPackageStartupMessages({
 })
 ```
 
-The next step loads the input objects and organizes the structures required for the analysis.
+The next step loads the preprocessing object and fixes the parameters used to construct the matrices and cross-validation design.
+
+Five folds are used because, with 150 individuals, 5-fold partitioning gives 30 validation individuals and 120 training individuals per fold while preserving family stratification. Each individual appears exactly once in validation; this is one family-stratified five-fold partition, not repeated cross-validation. `SEED_CV = 20260723` only reproduces the same allocation of individuals and has no inferential interpretation.
+
+`ALLELE_FREQUENCY_MIN = 0.05` retains allele-dosage columns with frequencies between 0.05 and 0.95 provided that dosage variance is also positive. Thus, very rare or nearly fixed alleles do not enter `M`. The call-rate threshold is inherited from Module 01 to record the same quality-control rule; loci reach this module after that decision has already been applied.
 
 ```{r input-object}
 # Define paths and load the preprocessing object used to construct the genomic matrices.
@@ -75,9 +79,11 @@ OUTPUT_DIR <- here(
   "matrices"
 )
 
+# Use five folds: 30 validation and 120 training individuals per fold.
 N_FOLDS <- 5L
-# Fix the seed used to create family-stratified folds.
+# Fix only the reproducibility of the family-stratified allocation.
 SEED_CV <- 20260723L
+# Exclude alleles with frequency below 5% or above 95%.
 ALLELE_FREQUENCY_MIN <- 0.05
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
@@ -90,6 +96,7 @@ phenotypes <- preprocessing$phenotypes
 ssr_raw <- preprocessing$ssr_raw
 locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
+# Recover, for provenance, the call-rate threshold applied in Module 01.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
@@ -259,6 +266,7 @@ ggplot(
   )
 ) +
   geom_histogram(
+    # Use 20 bins only to standardize the visual resolution of the histogram.
     bins = 20,
     position = "identity",
     alpha = 0.7

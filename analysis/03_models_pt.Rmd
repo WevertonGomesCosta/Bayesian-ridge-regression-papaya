@@ -197,29 +197,41 @@ generalização leave-family-out.
 
 ## 5. Configuração das cadeias MCMC
 
-Foram utilizadas 1.000.000 de iterações, descarte inicial de 200.000 iterações
-e thinning igual a 4, seguindo a configuração principal da análise de
-referência [@silva2021brrguava]. O parâmetro global de alocação de variância do
-BGLR foi definido como `R2 = 0.5`.
+Foram utilizadas 1.000.000 de iterações, descarte inicial de 200.000 iterações e thinning igual a 4, seguindo a configuração principal da análise de referência [@silva2021brrguava]. O parâmetro global de alocação de variância do BGLR foi definido como `R2 = 0.5`.
+
+`SEED_BASE = 202608050` não é um hiperparâmetro do modelo: ele apenas inicia uma sequência determinística de sementes, à qual o número de cada ajuste é somado para que as 350 combinações sejam reproduzíveis sem compartilhar a mesma semente. As quantidades de amostras salvas e mantidas são derivadas de iterações, burn-in e thinning e, portanto, não constituem escolhas adicionais.
+
+A parametrização BayesB2 fixa a probabilidade de efeito zero em `1e-5`, equivalente a `probIn = 0.99999`, com `counts = 1e6` para concentrar fortemente essa probabilidade de inclusão; a motivação é detalhada na Seção 6.4. Os limiares `ESS < 1000` e `|Geweke Z| > 2` são usados somente para sinalizar cadeias que merecem revisão, nunca como exclusão automática. Para o Lasso Bayesiano, `BL_LAMBDA_TYPE = "FIXED"` antecipa que o lambda calculado na Seção 6.6 permanecerá constante durante cada cadeia.
 
 ```{r mcmc-settings}
+# Define o comprimento total da cadeia MCMC de cada ajuste.
 N_ITER <- 1000000L
+# Descarta as 200 mil iterações iniciais como burn-in.
 BURN_IN <- 200000L
+# Salva uma amostra a cada quatro iterações.
 THIN <- 4L
+# Usa R2 = 0,5 como parâmetro global de alocação de variância do BGLR.
 R2_PRIOR <- 0.5
+# Inicia a sequência determinística de sementes; cada ajuste recebe um incremento único.
 SEED_BASE <- 202608050L
 
+# Deriva o número de amostras salvas antes e depois do descarte do burn-in.
 RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
 BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
 RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
 
+# Parametriza a variante BayesB2 com probabilidade de efeito zero igual a 1e-5.
 BAYESB2_ZERO_PROBABILITY <- 1e-5
 BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
+# Concentra fortemente a priori de probIn em torno de 0,99999.
 BAYESB2_COUNTS <- 1e6
 
+# Sinaliza para revisão cadeias com ESS menor que 1.000.
 ESS_REVIEW_THRESHOLD <- 1000
+# Sinaliza para revisão cadeias com |Z de Geweke| maior que 2.
 GEWEKE_REVIEW_THRESHOLD <- 2
 
+# Mantém o lambda do Lasso Bayesiano fixo durante a cadeia.
 BL_LAMBDA_TYPE <- "FIXED"
 ```
 
@@ -370,6 +382,7 @@ seguido de
 \]
 
 ```{r bl-lambda}
+# Divide R2 entre os dois termos lineares do preditor: família e componente genômico BL.
 BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 

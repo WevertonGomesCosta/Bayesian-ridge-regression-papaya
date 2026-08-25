@@ -195,29 +195,41 @@ breeding population rather than leave-family-out generalization.
 
 ## 5. MCMC settings
 
-The analysis uses 1,000,000 iterations, a burn-in of 200,000 iterations, and a
-thinning interval of 4, following the main configuration of the reference
-analysis [@silva2021brrguava]. The global BGLR prior-allocation parameter is
-set to `R2 = 0.5`.
+The analysis uses 1,000,000 iterations, a burn-in of 200,000 iterations, and a thinning interval of 4, following the main configuration of the reference analysis [@silva2021brrguava]. The global BGLR prior-allocation parameter is set to `R2 = 0.5`.
+
+`SEED_BASE = 202608050` is not a model hyperparameter: it only starts a deterministic seed sequence, to which the run number is added so that all 350 combinations are reproducible without sharing the same seed. The numbers of saved and retained samples are derived from iterations, burn-in, and thinning and therefore are not additional choices.
+
+The BayesB2 parameterization fixes the zero-effect probability at `1e-5`, equivalent to `probIn = 0.99999`, with `counts = 1e6` to strongly concentrate that inclusion probability; the rationale is detailed in Section 6.4. Thresholds `ESS < 1000` and `|Geweke Z| > 2` only flag chains for review and never act as automatic exclusion rules. For the Bayesian Lasso, `BL_LAMBDA_TYPE = "FIXED"` anticipates that the lambda calculated in Section 6.6 remains constant during each chain.
 
 ```{r mcmc-settings}
+# Set the total MCMC chain length for each fit.
 N_ITER <- 1000000L
+# Discard the first 200,000 iterations as burn-in.
 BURN_IN <- 200000L
+# Save one sample every four iterations.
 THIN <- 4L
+# Use R2 = 0.5 as BGLR's global prior-allocation parameter.
 R2_PRIOR <- 0.5
+# Start the deterministic seed sequence; each run receives a unique increment.
 SEED_BASE <- 202608050L
 
+# Derive the number of saved samples before and after burn-in removal.
 RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
 BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
 RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
 
+# Parameterize BayesB2 with a zero-effect probability of 1e-5.
 BAYESB2_ZERO_PROBABILITY <- 1e-5
 BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
+# Strongly concentrate the probIn prior around 0.99999.
 BAYESB2_COUNTS <- 1e6
 
+# Flag chains with ESS below 1,000 for review.
 ESS_REVIEW_THRESHOLD <- 1000
+# Flag chains with |Geweke Z| above 2 for review.
 GEWEKE_REVIEW_THRESHOLD <- 2
 
+# Keep the Bayesian Lasso lambda fixed during the chain.
 BL_LAMBDA_TYPE <- "FIXED"
 ```
 
@@ -368,6 +380,7 @@ followed by
 \]
 
 ```{r bl-lambda}
+# Split R2 across the two linear predictor terms: family and the BL genomic component.
 BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 

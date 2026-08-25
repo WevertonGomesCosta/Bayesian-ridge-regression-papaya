@@ -52,14 +52,19 @@ suppressPackageStartupMessages({
 })
 ```
 
-The next step defines the file paths used as inputs and outputs in this module.
+The next step defines the file paths used as inputs and outputs in this module. These paths only organize data reading and result persistence and are not statistical parameters.
+
+Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available; together with the requirement of at least two genotype classes, this avoids retaining loci with insufficient information. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.
 
 ```{r paths}
+# Define the two input files and the directory where preprocessing outputs are stored.
 GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
 PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
 OUTPUT_DIR <- here("output", "preprocessing")
 
+# Require at least 90% available calls for an SSR locus to be retained.
 CALL_RATE_MIN <- 0.90
+# Use four standard deviations only as a diagnostic flagging threshold.
 PHENOTYPE_DISTANCE_THRESHOLD <- 4
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
@@ -519,6 +524,7 @@ phenotype_long <- data.frame(
 
 # Build the figure used for interpretation.
 ggplot(phenotype_long, aes(x = Value)) +
+  # Use 20 bins only to standardize the visual resolution of the histograms.
   geom_histogram(bins = 20) +
   facet_wrap(~ Trait, scales = "free", ncol = 2) +
   labs(

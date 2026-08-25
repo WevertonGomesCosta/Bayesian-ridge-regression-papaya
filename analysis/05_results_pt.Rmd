@@ -48,7 +48,7 @@ suppressPackageStartupMessages({
 })
 ```
 
-A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.
+A etapa seguinte carrega os objetos de entrada e define o padrão visual do módulo. Rótulos, cores, tamanho-base de fonte, dimensões das figuras e resolução de exportação são escolhas exclusivamente de apresentação: não entram em nenhum cálculo de desempenho, seleção ou inferência. A paleta é mantida fixa para que cada método tenha a mesma identificação visual em todas as figuras.
 
 ```{r inputs-and-style}
 # Define os caminhos de saída e carrega os objetos necessários para este módulo.
@@ -107,6 +107,7 @@ method_colors <- c(
   GBLUP = "#DD4477"
 )
 
+# Usa fonte-base 12 para legibilidade; essa escolha não altera qualquer resultado analítico.
 project_theme <- theme_bw(base_size = 12) +
   theme(
     legend.position = "bottom",
@@ -529,6 +530,8 @@ kable(
 
 ## 9. Correlações entre valores genômicos OOF
 
+As correlações são usadas sem arredondamento nos cálculos e na escala de cores. Como os valores são impressos com duas casas decimais no mapa de calor, apenas o rótulo de correlações com `|r| < 0.005` é mostrado como zero para evitar a exibição de `-0.00`; o valor numérico original permanece inalterado.
+
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
@@ -542,7 +545,7 @@ names(correlation_long) <- c(
   "Correlation"
 )
 
-# Formata os rótulos das correlações exibidos nas células do mapa de calor.
+# Zera somente o rótulo de |r| < 0,005; a correlação original continua sendo usada na análise e na cor.
 correlation_long <- correlation_long |>
   mutate(
     Correlation_label = replace(
@@ -643,8 +646,7 @@ kable(
 )
 ```
 
-Os primeiros indivíduos de cada ranking mostram os candidatos priorizados pela
-regra exploratória.
+A tabela seguinte mostra somente os cinco primeiros indivíduos de cada ranking como prévia de leitura. O valor `n = 5` é uma escolha de apresentação; o ranking completo permanece disponível no objeto e nos arquivos derivados.
 
 ```{r proportional-selection-preview}
 selected_individuals_by_trait |>
@@ -663,6 +665,8 @@ selected_individuals_by_trait |>
 ```
 
 ## 11. Recorrência entre características
+
+As classes de recorrência apresentadas aqui são as mesmas definidas no Módulo 04. O objeto completo preserva candidatos presentes em pelo menos duas características; para manter a tabela principal compacta, este módulo exibe apenas recorrência intermediária ou alta, isto é, candidatos presentes em três ou mais características. O corte `N_traits >= 3` é exclusivamente de apresentação e não redefine o conjunto de candidatos armazenado.
 
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
@@ -700,7 +704,7 @@ kable(
 A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
 
 ```{r recurrent-candidates-table}
-# Mantém os candidatos recorrentes em pelo menos três características para a tabela principal.
+# Exibe na tabela principal apenas recorrência intermediária/alta (>=3); o objeto completo mantém >=2.
 main_multitrait_candidates <- multitrait_candidates |>
   filter(N_traits >= 3L) |>
   mutate(
