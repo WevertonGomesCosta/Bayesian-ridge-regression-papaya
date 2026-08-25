@@ -1,0 +1,305 @@
+name: Polish chunk documentation
+
+on:
+  push:
+    branches:
+      - chunk-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Replace remaining mechanical comments
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+
+          generic_start = {
+              '# Executa o bloco de cálculo correspondente a esta etapa do módulo.',
+              '# Execute the calculation block corresponding to this stage of the module.',
+          }
+          create_re = re.compile(r'^(\s*)# (?:Cria|Create) `([^`]+)` (?:para uso nas etapas seguintes deste bloco\.|for use in the following steps of this block\.)$')
+          component_pt_re = re.compile(r'^(\s*)# Organiza o componente `([^`]+)` desta estrutura\.$')
+          component_en_re = re.compile(r'^(\s*)# Organize the `([^`]+)` component of this structure\.$')
+
+          def parse_chunks(lines):
+              out = []
+              i = 0
+              while i < len(lines):
+                  if not CHUNK_RE.match(lines[i]):
+                      i += 1
+                      continue
+                  start = i
+                  j = i + 1
+                  while j < len(lines) and not END_RE.match(lines[j]):
+                      j += 1
+                  if j >= len(lines):
+                      raise RuntimeError(f'Unclosed chunk at line {start + 1}')
+                  inside = lines[start].split('{r', 1)[1].rsplit('}', 1)[0].strip()
+                  label = inside.split(',', 1)[0].strip() if inside else 'unnamed'
+                  out.append((start, j, label or 'unnamed'))
+                  i = j + 1
+              return out
+
+          def start_text(label, pt):
+              k = label.lower()
+              if pt:
+                  rules = [
+                      (('leitura', 'read-data'), 'Carrega as planilhas genotípica e fenotípica que alimentam o pré-processamento.'),
+                      (('organizacao-fenotipos',), 'Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.'),
+                      (('qualidade-marcadores',), 'Calcula taxa de chamada e diversidade de classes genotípicas para decidir quais locos SSR serão mantidos.'),
+                      (('grafico-qualidade',), 'Mostra a taxa de chamada dos locos SSR e o limite mínimo usado no controle de qualidade.'),
+                      (('resumo-individuos',), 'Calcula a quantidade e a proporção de chamadas SSR disponíveis para cada indivíduo.'),
+                      (('resumo-fenotipos',), 'Calcula estatísticas descritivas para caracterizar a escala e a variabilidade dos fenótipos.'),
+                      (('valores-fenotipicos-distantes',), 'Padroniza os fenótipos e identifica observações distantes da média segundo o limite definido.'),
+                      (('dicionario-caracteristicas',), 'Associa a cada característica suas descrições em português e inglês e sua unidade de medida.'),
+                      (('grafico-fenotipos',), 'Reorganiza os fenótipos em formato longo e mostra suas distribuições em histogramas.'),
+                      (('salvamento-saidas',), 'Reúne os objetos do pré-processamento e grava as saídas usadas no módulo seguinte.'),
+                      (('entrada', 'input-object'), 'Define os caminhos e carrega o objeto de pré-processamento usado para construir as matrizes.'),
+                      (('inputs',), 'Define os caminhos de saída e carrega os objetos necessários para este módulo.'),
+                      (('assemble-fit-results',), 'Consolida as listas produzidas pelos ajustes em tabelas de métricas, predições, valores genômicos e diagnósticos.'),
+                      (('pooled-oof-metrics',), 'Combina as predições OOF e calcula as métricas preditivas agregadas por característica e método.'),
+                      (('model-comparison',), 'Integra desempenho por fold e DIC para construir as medidas usadas na comparação dos métodos.'),
+                      (('selected-performance',), 'Extrai métricas preditivas, DIC e diagnósticos do método selecionado em cada característica.'),
+                      (('multitrait-recurrence',), 'Conta a recorrência dos indivíduos entre os rankings exploratórios das características com OOF positivo.'),
+                      (('inputs-and-style',), 'Carrega os objetos dos módulos anteriores e define os rótulos usados nas tabelas e figuras finais.'),
+                  ]
+                  for keys, text in rules:
+                      if any(key in k for key in keys):
+                          return '# ' + text
+                  return '# Prepara os objetos necessários para executar os cálculos desta etapa.'
+              rules = [
+                  (('read-data',), 'Load the genotype and phenotype workbooks used by the preprocessing module.'),
+                  (('organize-phenotypes',), 'Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.'),
+                  (('marker-quality-control',), 'Compute call rate and genotype-class diversity to decide which SSR loci are retained.'),
+                  (('marker-quality-plot',), 'Display SSR-locus call rates together with the minimum quality-control threshold.'),
+                  (('individual-summary',), 'Compute the number and proportion of available SSR calls for each individual.'),
+                  (('phenotype-summary',), 'Compute descriptive statistics to characterize phenotype scale and variability.'),
+                  (('distant-phenotype-values',), 'Standardize phenotypes and identify observations beyond the defined distance threshold.'),
+                  (('trait-dictionary',), 'Associate each trait with its English and Portuguese descriptions and measurement unit.'),
+                  (('phenotype-plot',), 'Reshape phenotypes to long format and display their distributions as histograms.'),
+                  (('save-results',), 'Collect the module objects and save the outputs required downstream.'),
+                  (('input-object',), 'Define paths and load the preprocessing object used to construct the genomic matrices.'),
+                  (('inputs',), 'Define output paths and load the objects required by this module.'),
+                  (('assemble-fit-results',), 'Consolidate fitting lists into metric, prediction, genomic-value, and diagnostic tables.'),
+                  (('pooled-oof-metrics',), 'Combine OOF predictions and compute aggregate predictive metrics by trait and method.'),
+                  (('model-comparison',), 'Combine fold performance and DIC to build the quantities used for model comparison.'),
+                  (('selected-performance',), 'Extract predictive metrics, DIC, and diagnostics for the selected method in each trait.'),
+                  (('multitrait-recurrence',), 'Count individual recurrence across exploratory rankings for traits with positive OOF correlation.'),
+                  (('inputs-and-style',), 'Load upstream result objects and define labels used in the final tables and figures.'),
+              ]
+              for keys, text in rules:
+                  if any(key in k for key in keys):
+                      return '# ' + text
+              return '# Prepare the objects required to perform the calculations at this stage.'
+
+          create_map_pt = {
+              'ssr': 'Mantém na matriz SSR apenas os locos que passaram os critérios de qualidade.',
+              'extreme_positions': 'Localiza as observações cuja distância padronizada alcança o limite definido.',
+              'SEED_CV': 'Fixa a semente usada para formar os folds estratificados por família.',
+              'marker_name': 'Cria um identificador único para a combinação entre loco e alelo.',
+              'retained_markers_full': 'Seleciona as colunas alélicas que atendem aos filtros de frequência e variação de dosagem.',
+              'family_balance': 'Quantifica, em cada família, a maior diferença no número de indivíduos entre folds.',
+              'locus_columns': 'Identifica as colunas de dosagem retidas que pertencem ao loco corrente.',
+              'fit': 'Ajusta o modelo BGLR configurado e captura os avisos emitidos durante o ajuste.',
+              'model_catalogue': 'Registra os métodos, componentes BGLR e entradas genômicas usados nas especificações.',
+              'selected_individuals_by_trait': 'Mantém, em cada característica com OOF positivo, os candidatos incluídos na proporção definida para o ranking.',
+          }
+          create_map_en = {
+              'ssr': 'Retain in the SSR matrix only loci that pass the quality-control criteria.',
+              'extreme_positions': 'Locate observations whose standardized distance reaches the defined threshold.',
+              'SEED_CV': 'Fix the seed used to create family-stratified folds.',
+              'marker_name': 'Create a unique identifier for each locus-allele combination.',
+              'retained_markers_full': 'Select allele columns that pass the frequency and dosage-variation filters.',
+              'family_balance': 'Quantify, within each family, the largest difference in individual counts across folds.',
+              'locus_columns': 'Identify retained dosage columns that belong to the current locus.',
+              'fit': 'Fit the configured BGLR model and capture warnings emitted during fitting.',
+              'model_catalogue': 'Record the methods, BGLR components, and genomic inputs used by the specifications.',
+              'selected_individuals_by_trait': 'Retain candidates included in the defined ranking proportion for each positive-OOF trait.',
+          }
+
+          field_map_pt = {
+              'Call_rate': 'Lista as taxas de chamada usadas no resumo por indivíduo.',
+              'col.names': 'Define os cabeçalhos apresentados na tabela de observações fenotípicas destacadas.',
+              'Description_pt': 'Registra a descrição em português de cada característica.',
+              'Description_en': 'Registra a descrição em inglês de cada característica.',
+              'Unit': 'Registra a unidade de medida de cada característica.',
+              'settings': 'Registra os parâmetros e limites necessários para reproduzir esta etapa.',
+              'xintercept': 'Marca no gráfico os limites inferior e superior da frequência alélica.',
+              'yintercept': 'Marca no gráfico o limite mínimo de taxa de chamada.',
+              'Item': 'Lista os itens verificados no inventário das matrizes.',
+              'Estrutura': 'Descreve a estrutura de efeitos adotada por cada método.',
+              'genomic': 'Define o componente genômico desta especificação de modelo.',
+              'Posterior_mean_SD': 'Registra o desvio-padrão disponível para a média posterior do intercepto.',
+              'Linhas': 'Conta o número de registros produzido em cada saída do módulo.',
+              'Genomic_input': 'Registra se cada método usa a matriz de dosagens M ou a matriz genômica G.',
+          }
+          field_map_en = {
+              'Call_rate': 'List the call-rate values used in the individual summary.',
+              'col.names': 'Define the headers displayed in the table of highlighted phenotype observations.',
+              'Description_pt': 'Record the Portuguese description of each trait.',
+              'Description_en': 'Record the English description of each trait.',
+              'Unit': 'Record the measurement unit of each trait.',
+              'settings': 'Record parameters and thresholds required to reproduce this stage.',
+              'xintercept': 'Mark the lower and upper allele-frequency thresholds in the figure.',
+              'yintercept': 'Mark the minimum call-rate threshold in the figure.',
+              'Item': 'List the items checked in the matrix inventory.',
+              'Structure': 'Describe the effect structure adopted by each method.',
+              'genomic': 'Define the genomic component of this model specification.',
+              'Posterior_mean_SD': 'Record the available standard deviation for the posterior intercept mean.',
+              'Rows': 'Count the number of records produced in each module output.',
+              'Genomic_input': 'Record whether each method uses dosage matrix M or genomic matrix G.',
+          }
+
+          for path in sorted(Path('analysis').glob('0[1-5]*.Rmd')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              pt = path.name.endswith('_pt.Rmd')
+              for start, end, label in parse_chunks(lines):
+                  for i in range(start + 1, end):
+                      stripped = lines[i].strip()
+                      if stripped in generic_start:
+                          indent = lines[i][:len(lines[i]) - len(lines[i].lstrip())]
+                          lines[i] = indent + start_text(label, pt)
+
+                      m = create_re.match(lines[i])
+                      if m:
+                          indent, obj = m.groups()
+                          mapping = create_map_pt if pt else create_map_en
+                          text = mapping.get(
+                              obj,
+                              (f'Constrói `{obj}` com a informação necessária para a operação seguinte.' if pt
+                               else f'Build `{obj}` with the information required by the next operation.')
+                          )
+                          lines[i] = indent + '# ' + text
+
+                      m = component_pt_re.match(lines[i]) if pt else component_en_re.match(lines[i])
+                      if m:
+                          indent, field = m.groups()
+                          mapping = field_map_pt if pt else field_map_en
+                          text = mapping.get(
+                              field,
+                              (f'Registra os valores de `{field}` que completam esta estrutura.' if pt
+                               else f'Record the `{field}` values that complete this structure.')
+                          )
+                          lines[i] = indent + '# ' + text
+
+              path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Reject mechanical comment patterns
+        shell: bash
+        run: |
+          if grep -R -n -E 'Executa o bloco de cálculo correspondente|Execute the calculation block corresponding|Cria `[^`]+` para uso nas etapas seguintes|Create `[^`]+` for use in the following steps|Organiza o componente `[^`]+` desta estrutura|Organize the `[^`]+` component of this structure|Continua a transformação desta etapa|Continue the current transformation step' analysis/0*.Rmd; then
+            echo 'Mechanical documentation patterns remain.'
+            exit 1
+          fi
+          echo 'PASS: no mechanical documentation patterns remain.'
+
+      - name: Audit chunk coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import math
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+          HEADING_RE = re.compile(r'^\s*#{1,6}\s+')
+          WORD_RE = re.compile(r'[A-Za-zÀ-ÖØ-öø-ÿ]{2,}')
+          failures = []
+          total = large = 0
+          for path in sorted(Path('analysis').glob('*.Rmd')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              i = 0
+              prev_end = -1
+              while i < len(lines):
+                  if not CHUNK_RE.match(lines[i]):
+                      i += 1
+                      continue
+                  s = i
+                  j = i + 1
+                  while j < len(lines) and not END_RE.match(lines[j]):
+                      j += 1
+                  total += 1
+                  prose = any(
+                      len(WORD_RE.findall(x.strip())) >= 5 and
+                      not HEADING_RE.match(x.strip()) and
+                      not x.strip().startswith(('```', '<!--', '-->', '<div', '</div', '$$', '\\[', '\\]', '---', '|', ':--'))
+                      for x in lines[prev_end + 1:s] if x.strip()
+                  )
+                  if not prose:
+                      failures.append(f'{path}:{s+1}: missing explanatory prose')
+                  body = lines[s + 1:j]
+                  code_n = sum(1 for x in body if x.strip() and not x.lstrip().startswith('#'))
+                  if code_n >= 15:
+                      large += 1
+                      comments = sum(1 for x in body if x.lstrip().startswith('#') and not x.lstrip().startswith('#|'))
+                      required = max(2, math.ceil(code_n / 15))
+                      if comments < required:
+                          failures.append(f'{path}:{s+1}: comments={comments}, required={required}')
+                  prev_end = j
+                  i = j + 1
+          print(f'Audited chunks: {total}; large chunks: {large}')
+          if failures:
+              raise SystemExit('\n'.join(failures))
+          print('PASS: every chunk has explanatory prose and every large chunk has sufficient internal comments.')
+          PY
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Validate syntax and commit
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern = '\\.Rmd$', full.names = TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn = FALSE, encoding = 'UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl = TRUE)
+            for (s in starts) {
+              e_rel <- which(grepl('^\\s*```\\s*$', x[(s + 1L):length(x)], perl = TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e > s + 1L) x[(s + 1L):(e - 1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text = code)
+              n <- n + 1L
+            }
+          }
+          stopifnot(n == 217L)
+          cat('Parsed R chunks:', n, '\n')
+          RS
+
+          git diff --check
+          rm -f .github/workflows/polish-chunk-documentation.yml
+
+          python - <<'PY'
+          import subprocess
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          allowed = {f'analysis/{m}_{lang}.Rmd' for m in ['01_preprocessing','02_matrices','03_models','04_results','05_results'] for lang in ['en','pt']}
+          allowed.add('.github/workflows/polish-chunk-documentation.yml')
+          bad = [p for p in changed if p not in allowed]
+          if bad:
+              raise SystemExit('Unexpected files:\n' + '\n'.join(bad))
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Polish tutorial chunk annotations"
+          git push origin HEAD:chunk-documentation-audit
