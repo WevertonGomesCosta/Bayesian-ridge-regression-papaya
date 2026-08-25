@@ -19,6 +19,8 @@ editor_options:
 github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
 ---
 
+The hidden chunk below defines only page-wide rendering options. It does not recompute metrics, select models, or alter the results received from Module 03.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -47,6 +49,8 @@ DF, EP, FFC, FFP, and SS; decrease PRODEF and DCI.
 
 ## 2. Packages and model-fitting results
 
+The first chunk loads only the packages used for tabular manipulation, output organization, and tutorial rendering. No BGLR model is fitted in this module.
+
 ```{r packages}
 suppressPackageStartupMessages({
   library(dplyr)
@@ -56,7 +60,7 @@ suppressPackageStartupMessages({
 })
 ```
 
-The next step loads the input objects and organizes the structures required for the analysis.
+The module uses two consolidated objects: `matrices_object.rds`, which supplies phenotypes, metadata, and definitions inherited from Module 02, and `models_object.rds`, which supplies fold-level metrics, OOF predictions, and MCMC diagnostics produced in Module 03. The chunk below only loads these structures and creates the directory for derived outputs.
 
 ```{r inputs}
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
@@ -152,9 +156,9 @@ fold_summary <- metrics |>
   )
 ```
 
-Pearson-correlation p-values are retained as nominal descriptive measures
-because training sets overlap across folds. They are reported for context and
-are not used to determine eligibility for genomic selection.
+There are two summary scales in this section. `pooled_metrics` combines the 150 OOF predictions and provides the global performance of each trait × method combination; this pooled correlation is the primary reference for ranking predictive winners. `fold_summary` preserves variation across the five folds and is used later to assess stability and construct the descriptive one-standard-error tolerances.
+
+Pearson-correlation p-values are retained as nominal descriptive measures because training sets overlap across folds. They are reported for context and are not used to determine eligibility for genomic selection.
 
 ```{r pooled-oof-preview}
 pooled_metrics |>
@@ -173,7 +177,7 @@ difference from the smallest mean DIC within each trait is converted into
 relative weights:
 
 \[
-\Delta_j=DIC_j-\min(DIC),
+\Delta_j=\overline{DIC}_j-\min_k(\overline{DIC}_k),
 \]
 
 \[
@@ -208,7 +212,7 @@ model_comparison <- pooled_metrics |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The table below places Bayesian fit and OOF performance side by side. `Mean_DIC`, `Delta_DIC`, `Wprob`, and `ER` should be compared only among methods for the same trait; `r`, RMSE, and MAE describe out-of-sample predictive performance. Similarity in DIC does not replace predictive evidence.
 
 ```{r model-comparison-preview}
 model_comparison |>
@@ -282,7 +286,7 @@ dic_winners <- model_comparison |>
   )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The following table shows whether the method with the largest OOF correlation is also the method with the smallest mean DIC. Disagreement between the two columns is not treated as an error: predictive performance and fit–complexity address different criteria.
 
 ```{r selection-winners-table}
 predictive_winners |>
@@ -317,7 +321,7 @@ convergence_by_trait_method <- convergence |>
   )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The summary below should be read as screening of the two scalar diagnostics monitored per fit in Module 03. `Parameters_flagged = 0` means only that no flags occurred in those monitored quantities; it is not proof that every marker effect has converged.
 
 ```{r selection-convergence-table}
 convergence_by_trait_method |>
@@ -331,11 +335,9 @@ convergence_by_trait_method |>
 
 ### 5.3 Competitive set
 
-The one-standard-error rule is applied to mean fold correlation and RMSE. The
-`Delta_DIC <= 2` threshold and MCMC diagnostics are then used to determine the
-candidates eligible under the rule. Because the training sets overlap across
-folds, these standard errors are descriptive tolerances and are not interpreted
-as independent-sample inferential standard errors.
+The one-standard-error rule is applied to mean fold correlation and RMSE. For each trait, the correlation tolerance uses the across-fold standard deviation of the method with the largest `Mean_fold_r`, divided by `sqrt(5)`; analogously, the RMSE tolerance uses the method with the smallest `Mean_fold_RMSE`. A candidate must satisfy both tolerances simultaneously.
+
+Next, `Delta_DIC <= 2` restricts the set to fits with operationally similar DIC, and any flag among the monitored diagnostics prevents classification as an automatic candidate. Because training sets overlap across folds, these standard errors are descriptive tolerances rather than independent-sample inferential standard errors.
 
 ```{r selection-competitive-set}
 # Combine performance, DIC, and MCMC diagnostics to define the competitive set for each trait.
@@ -405,7 +407,7 @@ model_selection_support <- model_comparison |>
   )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The example table lets the reader follow each filter in the rule: competitiveness by correlation/RMSE, DIC proximity, chain-review status, and automatic eligibility. `Automatic_candidate = TRUE` requires all of these operational conditions to be satisfied.
 
 ```{r selection-competitive-table}
 model_selection_support |>
@@ -423,8 +425,7 @@ model_selection_support |>
 
 ### 5.4 Method choice
 
-RR-BLUP receives priority among automatic candidates. If no automatic candidate
-is available, the predictive winner is retained as a provisional choice.
+RR-BLUP receives priority among automatic candidates as an explicit parsimony choice and homogeneous-shrinkage benchmark; this priority does not imply universal statistical superiority of RR-BLUP. If RR-BLUP is not an automatic candidate, the remaining candidates are ordered by pooled OOF correlation, followed by RMSE, MAE, and DIC. If no automatic candidate exists, the predictive winner is retained only as a provisional choice requiring review.
 
 ```{r selection-choice}
 # Best automatic candidate for each trait.
@@ -503,7 +504,7 @@ selection_spec <- predictive_winners |>
   arrange(match(Trait, traits))
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The table summarizes the result of this hierarchy. `rule_based_selected` means that at least one automatic candidate existed and the rule could be applied; `provisional_review_required` means that the choice was retained for inspection rather than automatically validated.
 
 ```{r selection-choice-table}
 selection_spec |>
@@ -566,7 +567,7 @@ selected_performance <- model_selection_support |>
   )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The following table contains only the method actually selected for each trait, combining its OOF evidence, DIC, and number of monitored parameters with a flag. It should be read together with `Selection_status`, because a provisional choice can appear here even when review is required.
 
 ```{r selected-performance-table}
 selected_performance |>
@@ -622,7 +623,7 @@ oof_direction_summary <- model_selection |>
   arrange(OOF_predictive_direction)
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+This is the main decision table by trait. In addition to the selected method, it preserves the predictive and DIC winners, records whether the RR-BLUP preference was applied, and makes the direction and nominal strength of the OOF signal explicit.
 
 ```{r model-selection-table}
 model_selection |>
@@ -638,7 +639,7 @@ model_selection |>
   )
 ```
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The direction summary counts how many traits end with positive or nonpositive OOF correlation for the selected method. It does not classify magnitude, practical utility, or significance.
 
 ```{r oof-direction-table}
 kable(
@@ -649,7 +650,7 @@ kable(
 
 ## 6. Stability across folds for the selected methods
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+Fold-level metrics show whether pooled performance depends strongly on a particular part of the partition. Sign changes in correlation, large RMSE dispersion, or clearly discrepant folds should be interpreted as descriptive instability; with only five overlapping folds, this table is not a formal heterogeneity test.
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
@@ -670,7 +671,7 @@ selected_fold_diagnostics |>
 
 ## 7. Computational time
 
-The next step summarizes execution times to compare the computational cost of the methods.
+The table summarizes times recorded across the 50 fits of each method. These values support operational comparison within this execution, but depend on hardware, system load, implementation, and I/O; they should not be treated as universal speed benchmarks.
 
 ```{r runtime}
 # Summarize the computational cost of the evaluated methods.
@@ -703,7 +704,7 @@ analogue is obtained from the common marker variance and the \(\sum 2pq\)
 denominator. Fold-level adjusted accuracy is defined as
 \(r_f/\sqrt{H_f^2}\). The resulting \(H^2\) is reported as a model-based
 heritability analogue rather than as an independent classical estimate of
-narrow-sense heritability.
+narrow-sense heritability. The quantity named `Predictive_accuracy` is a derived ratio, `r_f/sqrt(H_f^2)`, rather than an observed correlation between true and predicted genetic values. Because it depends on sample estimates of `r_f` and `H_f^2`, it may be negative or exceed 1; it should therefore be interpreted as an adjusted-accuracy index under this definition, not as a measure necessarily bounded to [0, 1].
 
 ```{r rrblup-heritability}
 # Compute and organize the RR-BLUP/BRR model-based heritability summary.
@@ -759,8 +760,7 @@ a validation-consistent ranking because an individual's own phenotype does not
 enter its score. They are not final breeding values from a model refitted to
 all 150 phenotypes.
 
-Selection direction is applied to the genomic value only when the ranking is
-constructed. The original genomic value remains unchanged.
+Selection direction is applied to the genomic value only when the ranking is constructed. The original genomic value remains unchanged. For each trait, `Genomic_value` is exactly the OOF `Genomic_component` produced by the selected method; different traits may therefore use genomic values supplied by different methods.
 
 ```{r selected-oof-genomic-values}
 # Define the desired selection direction and link OOF genomic values to the selected method for each trait.
@@ -826,8 +826,9 @@ ranking is produced. Positive correlations with nominal `p >= 0.05` are kept
 explicitly as weak/exploratory signals and should not be interpreted as
 demonstrated predictive utility. Within each positive-OOF trait, the 20% of
 individuals with the largest oriented score are listed; this 20% is a
-configurable tutorial rule, not an estimated optimal selection intensity. For
-traits whose objective is to decrease, the score is the negative genomic value.
+configurable tutorial rule, not an estimated optimal selection intensity. With 150 available candidates, 20% corresponds to 30 individuals. For traits whose objective is to decrease, the score is the negative genomic value.
+
+`IND` is used only as a deterministic secondary ordering key when two scores are exactly tied. The selected proportion remains fixed even if a tie occurs at the boundary; `Exact_boundary_tie = TRUE` only reports that the last included and first excluded candidates have the same score, so there is no genomic-score evidence separating them at that cutoff.
 
 ```{r genomic-ranking}
 # Orient genomic values by the selection objective and rank individuals within each trait.
@@ -907,7 +908,7 @@ selected_individuals_by_trait <- genomic_ranking |>
   arrange(match(Trait, traits), Rank)
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The first table confirms, for each eligible trait, how many candidates were available and how many compose the 20% proportion.
 
 ```{r selection-size-table}
 kable(
@@ -917,7 +918,7 @@ kable(
 )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The cutoff table shows the score of the last included candidate and the first candidate not included. `Exact_boundary_tie` should be checked before interpreting the cutoff as a substantive separation between candidates.
 
 ```{r selection-cutoff-table}
 kable(
@@ -927,7 +928,7 @@ kable(
 )
 ```
 
-The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
+The preview shows only the first five names in each ranking for readability. The complete object retains every candidate belonging to the prioritized 20%.
 
 ```{r selected-individuals-preview}
 selected_individuals_by_trait |>
@@ -942,7 +943,7 @@ selected_individuals_by_trait |>
 
 ## 11. Recurrence across traits
 
-Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed.
+Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. `Selection_frequency` divides this count by the number of positive-OOF traits, not necessarily by all ten original traits. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed; appearing in several lists does not demonstrate joint multi-trait superiority.
 
 Recurrence classes are descriptive conventions: high for four or more traits, intermediate for three, broad for two, specific for one, and none for zero. The `multitrait_candidates` object retains individuals recurring in at least two traits so potentially useful information is not discarded before downstream presentation. These cutoffs organize the summary and are not statistical-significance thresholds.
 
@@ -1025,8 +1026,7 @@ kable(
 
 ## 12. Correlations among OOF genomic values
 
-These correlations describe associations among predicted genomic values and are
-not genetic-correlation estimates from a multivariate model.
+These correlations describe associations among the OOF genomic values produced by the selected method for each trait. Because different traits may use different methods and the values are cross-fitted, the matrix summarizes associations among predictive scores rather than jointly estimated genetic covariance. It should therefore not be interpreted as a genetic-correlation matrix from a multivariate model.
 
 ```{r oof-correlations}
 selected_genomic_wide <- selected_oof_genomic_values |>
@@ -1045,7 +1045,7 @@ kable(
 
 ## 13. Saving the results
 
-The next step organizes and saves the generated outputs for use in the downstream modules.
+The final chunk writes individual CSV files for inspection of the main derivations and a consolidated `module04_results.rds` for programmatic use by Module 05. These files contain results derived from Module 03 outputs; no genomic model is refitted at this stage.
 
 ```{r save-results}
 # Save the tables derived by the module before assembling the consolidated RDS object.
@@ -1106,5 +1106,4 @@ saveRDS(
 
 ## 14. Next step
 
-Module 05 uses these results to construct summary tables and figures for method
-comparison and genomic selection.
+Module 05 uses only these derivations to build the summary tables and figures. The OOF genomic values remain cross-fitted validation scores; this workflow does not transform them into final breeding values from a refit using all 150 phenotypes.
