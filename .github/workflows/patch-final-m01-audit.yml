@@ -1,0 +1,53 @@
+name: Patch Module 01 audit workflow
+
+on:
+  push:
+    branches:
+      - final-m01-tutorial-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fix validator and math escaping
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/final-m01-tutorial-audit.yml')
+          text = path.read_text(encoding='utf-8')
+
+          old = "                parse(text=sub('^`r |`$', '', expr))"
+          new = "                expr_code <- sub('^`r ', '', expr)\n                expr_code <- sub('`$', '', expr_code)\n                parse(text=expr_code)"
+          if text.count(old) != 1:
+              raise RuntimeError(f'validator anchor count: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          # The embedded Python transformation must write one LaTeX backslash to the Rmd.
+          if r'\\\\bar' not in text:
+              raise RuntimeError('expected escaped bar pattern not found')
+          text = text.replace(r'\\\\bar', r'\\bar')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git diff --check
+
+      - name: Commit patched workflow and remove helper
+        shell: bash
+        run: |
+          rm -f .github/workflows/patch-final-m01-audit.yml
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix Module 01 audit validation"
+          git push origin HEAD:final-m01-tutorial-audit
