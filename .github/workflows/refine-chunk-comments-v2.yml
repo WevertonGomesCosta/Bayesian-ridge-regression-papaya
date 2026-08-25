@@ -1,0 +1,313 @@
+name: Refine chunk comments v2
+
+on:
+  push:
+    branches:
+      - chunk-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply logical-comment refinement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          source = Path('.github/workflows/refine-chunk-comments.yml').read_text(encoding='utf-8').splitlines()
+          scripts = []
+          collecting = False
+          current = []
+          for line in source:
+              stripped = line.strip()
+              if stripped == "python - <<'PY'":
+                  collecting = True
+                  current = []
+                  continue
+              if collecting and stripped == 'PY':
+                  scripts.append('\n'.join(current) + '\n')
+                  collecting = False
+                  continue
+              if collecting:
+                  current.append(line[10:] if line.startswith('          ') else line)
+          if not scripts:
+              raise RuntimeError('Logical-comment transformation script not found')
+          subprocess.run(['python', '-c', scripts[0]], check=True)
+          PY
+
+      - name: Complete comments at remaining logical boundaries
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import math
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+
+          def parse_chunks(lines):
+              out = []
+              i = 0
+              while i < len(lines):
+                  if not CHUNK_RE.match(lines[i]):
+                      i += 1
+                      continue
+                  s = i
+                  j = i + 1
+                  while j < len(lines) and not END_RE.match(lines[j]):
+                      j += 1
+                  inside = lines[s].split('{r', 1)[1].rsplit('}', 1)[0].strip()
+                  label = inside.split(',', 1)[0].strip() if inside else 'unnamed'
+                  out.append((s, j, label))
+                  i = j + 1
+              return out
+
+          def op_comment(line, label, pt):
+              s = line.strip()
+              low = s.lower()
+              pairs = [
+                  ('group_by(', 'Agrupa as observações antes de calcular os resumos.', 'Group observations before computing the summaries.'),
+                  ('summarise(', 'Resume as informações dentro de cada grupo.', 'Summarize the information within each group.'),
+                  ('summarize(', 'Resume as informações dentro de cada grupo.', 'Summarize the information within each group.'),
+                  ('mutate(', 'Deriva as variáveis necessárias para esta etapa.', 'Derive the variables required at this stage.'),
+                  ('transmute(', 'Constrói as colunas que formarão a saída deste bloco.', 'Build the columns that form the output of this block.'),
+                  ('select(', 'Mantém e organiza as variáveis usadas no resultado.', 'Keep and organize the variables used in the result.'),
+                  ('filter(', 'Restringe os dados às observações relevantes nesta etapa.', 'Restrict the data to observations relevant at this stage.'),
+                  ('arrange(', 'Ordena os resultados para a etapa seguinte ou para exibição.', 'Order the results for the next step or for display.'),
+                  ('left_join(', 'Integra as informações auxiliares necessárias ao cálculo.', 'Join the supporting information required for the calculation.'),
+                  ('inner_join(', 'Combina somente as observações correspondentes entre as tabelas.', 'Combine only matching observations across the tables.'),
+                  ('count(', 'Conta as ocorrências usadas no resumo.', 'Count the occurrences used in the summary.'),
+                  ('pivot_longer(', 'Reorganiza os dados para o formato longo.', 'Reshape the data to long format.'),
+                  ('pivot_wider(', 'Reorganiza os dados para o formato largo.', 'Reshape the data to wide format.'),
+                  ('bind_rows(', 'Combina os resultados parciais em uma única tabela.', 'Combine partial results into a single table.'),
+              ]
+              for token, br, en in pairs:
+                  if low.startswith(token):
+                      return '# ' + (br if pt else en)
+
+              m = re.match(r'^([A-Za-z][A-Za-z0-9_.]*)\s*<-', s)
+              if m:
+                  lhs = m.group(1)
+                  key = lhs.lower()
+                  if pt:
+                      if 'audit' in key:
+                          return f'# Consolida os indicadores de controle de qualidade em `{lhs}`.'
+                      if any(k in key for k in ('support', 'comparison')):
+                          return f'# Integra as evidências de comparação no objeto `{lhs}`.'
+                      if any(k in key for k in ('selection', 'ranking', 'candidate')):
+                          return f'# Organiza a regra de priorização no objeto `{lhs}`.'
+                      if any(k in key for k in ('summary', 'distribution')):
+                          return f'# Resume os resultados no objeto `{lhs}`.'
+                      return f'# Organiza o resultado intermediário `{lhs}`.'
+                  else:
+                      if 'audit' in key:
+                          return f'# Consolidate quality-control indicators in `{lhs}`.'
+                      if any(k in key for k in ('support', 'comparison')):
+                          return f'# Combine model-comparison evidence in `{lhs}`.'
+                      if any(k in key for k in ('selection', 'ranking', 'candidate')):
+                          return f'# Organize the prioritization rule in `{lhs}`.'
+                      if any(k in key for k in ('summary', 'distribution')):
+                          return f'# Summarize the results in `{lhs}`.'
+                      return f'# Organize the intermediate result `{lhs}`.'
+
+              nm = re.match(r'^([A-Za-z][A-Za-z0-9_.]*)\s*=', s)
+              if nm:
+                  name = nm.group(1)
+                  return (f'# Define os valores de `{name}` usados nesta estrutura.' if pt
+                          else f'# Define the `{name}` values used in this structure.')
+
+              return ('# Separa esta transformação em uma etapa explícita para facilitar a leitura.' if pt
+                      else '# Keep this transformation as an explicit step to make the code easier to follow.')
+
+          def logical_candidate(line):
+              if not line.strip() or line.lstrip().startswith('#'):
+                  return False
+              indent = len(line) - len(line.lstrip())
+              if indent > 8:
+                  return False
+              s = line.strip()
+              if re.match(r'^[A-Za-z][A-Za-z0-9_.]*\s*<-', s):
+                  return True
+              if re.match(r'^[A-Za-z][A-Za-z0-9_.]*\s*=', s):
+                  return True
+              verbs = ('group_by(', 'summarise(', 'summarize(', 'mutate(', 'transmute(',
+                       'select(', 'filter(', 'arrange(', 'left_join(', 'inner_join(',
+                       'count(', 'pivot_longer(', 'pivot_wider(', 'bind_rows(')
+              return s.startswith(verbs)
+
+          def supplement(body, label, pt):
+              code_positions = [i for i, x in enumerate(body) if x.strip() and not x.lstrip().startswith('#')]
+              code_n = len(code_positions)
+              if code_n < 15:
+                  return body
+              required = max(2, math.ceil(code_n / 15))
+              comments = [i for i, x in enumerate(body) if x.lstrip().startswith('#') and not x.lstrip().startswith('#|')]
+              missing = required - len(comments)
+              if missing <= 0:
+                  return body
+
+              # Map physical lines to code-line ordinals for even distribution.
+              ordinal = -1
+              cand = []
+              for i, x in enumerate(body):
+                  if x.strip() and not x.lstrip().startswith('#'):
+                      ordinal += 1
+                      if logical_candidate(x):
+                          prev_comment = i > 0 and body[i - 1].lstrip().startswith('#')
+                          if not prev_comment:
+                              cand.append((ordinal, i))
+
+              chosen = []
+              used = set()
+              for k in range(1, missing + 1):
+                  target = round(k * code_n / (missing + 1))
+                  available = [(abs(o - target), o, i) for o, i in cand if i not in used]
+                  if not available:
+                      break
+                  _, _, i = min(available)
+                  chosen.append(i)
+                  used.add(i)
+
+              # If required, use blank-line boundaries rather than arbitrary lines.
+              if len(chosen) < missing:
+                  blank_candidates = []
+                  ordinal = -1
+                  for i, x in enumerate(body):
+                      if x.strip() and not x.lstrip().startswith('#'):
+                          ordinal += 1
+                          if i > 0 and not body[i - 1].strip() and i not in used:
+                              blank_candidates.append((ordinal, i))
+                  while len(chosen) < missing and blank_candidates:
+                      target = round((len(chosen) + 1) * code_n / (missing + 1))
+                      _, _, i = min((abs(o-target), o, i) for o, i in blank_candidates if i not in used)
+                      chosen.append(i)
+                      used.add(i)
+                      blank_candidates = [(o, j) for o, j in blank_candidates if j != i]
+
+              if len(chosen) < missing:
+                  raise RuntimeError(f'Could not place logical comments in chunk {label}: need {missing}, placed {len(chosen)}')
+
+              inserts = {i: op_comment(body[i], label, pt) for i in chosen}
+              out = []
+              for i, x in enumerate(body):
+                  if i in inserts:
+                      indent = x[:len(x) - len(x.lstrip())]
+                      out.append(indent + inserts[i])
+                  out.append(x)
+              return out
+
+          for path in sorted(Path('analysis').glob('0[1-5]*.Rmd')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              pt = path.name.endswith('_pt.Rmd')
+              for start, end, label in reversed(parse_chunks(lines)):
+                  lines[start + 1:end] = supplement(lines[start + 1:end], label, pt)
+              path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+
+      - name: Audit documentation coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import math
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+          HEADING_RE = re.compile(r'^\s*#{1,6}\s+')
+          WORD_RE = re.compile(r'[A-Za-zÀ-ÖØ-öø-ÿ]{2,}')
+          failures = []
+          total = large = 0
+          for path in sorted(Path('analysis').glob('*.Rmd')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              i = 0
+              prev_end = -1
+              while i < len(lines):
+                  if not CHUNK_RE.match(lines[i]):
+                      i += 1
+                      continue
+                  s = i
+                  j = i + 1
+                  while j < len(lines) and not END_RE.match(lines[j]):
+                      j += 1
+                  total += 1
+                  prose = any(
+                      len(WORD_RE.findall(x.strip())) >= 5 and
+                      not HEADING_RE.match(x.strip()) and
+                      not x.strip().startswith(('```', '<!--', '-->', '<div', '</div', '$$', '\\[', '\\]', '---', '|', ':--'))
+                      for x in lines[prev_end + 1:s] if x.strip()
+                  )
+                  if not prose:
+                      failures.append(f'{path}:{s+1}: missing explanatory prose')
+                  body = lines[s + 1:j]
+                  code_n = sum(1 for x in body if x.strip() and not x.lstrip().startswith('#'))
+                  if code_n >= 15:
+                      large += 1
+                      comments = sum(1 for x in body if x.lstrip().startswith('#') and not x.lstrip().startswith('#|'))
+                      required = max(2, math.ceil(code_n / 15))
+                      if comments < required:
+                          failures.append(f'{path}:{s+1}:{comments}/{required} comments')
+                  prev_end = j
+                  i = j + 1
+          print(f'Audited chunks: {total}; large chunks: {large}')
+          if failures:
+              raise SystemExit('\n'.join(failures))
+          print('PASS: every chunk has explanatory prose and large chunks have distributed logical comments.')
+          PY
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Validate R syntax and commit
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern = '\\.Rmd$', full.names = TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn = FALSE, encoding = 'UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl = TRUE)
+            for (s in starts) {
+              e_rel <- which(grepl('^\\s*```\\s*$', x[(s + 1L):length(x)], perl = TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e > s + 1L) x[(s + 1L):(e - 1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text = code)
+              n <- n + 1L
+            }
+          }
+          stopifnot(n == 217L)
+          cat('Parsed R chunks:', n, '\n')
+          RS
+
+          git diff --check
+          rm -f .github/workflows/refine-chunk-comments.yml
+          rm -f .github/workflows/refine-chunk-comments-v2.yml
+
+          python - <<'PY'
+          import subprocess
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          allowed = {f'analysis/{m}_{lang}.Rmd' for m in ['01_preprocessing','02_matrices','03_models','04_results','05_results'] for lang in ['en','pt']}
+          allowed.update({'.github/workflows/refine-chunk-comments.yml', '.github/workflows/refine-chunk-comments-v2.yml'})
+          bad = [p for p in changed if p not in allowed]
+          if bad:
+              raise SystemExit('Unexpected files:\n' + '\n'.join(bad))
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Use logical comments in tutorial chunks"
+          git push origin HEAD:chunk-documentation-audit
