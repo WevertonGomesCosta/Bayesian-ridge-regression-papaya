@@ -1,0 +1,50 @@
+name: Validate content-only cleanup M01 M02
+
+on:
+  push:
+    branches:
+      - didactic-content-cleanup-m01-m02
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.event.head_commit.message == 'Run content-only cleanup for M01 and M02'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: didactic-content-cleanup-m01-m02
+          fetch-depth: 0
+
+      - name: Apply content-only cleanup
+        run: python .github/content_cleanup_m01_m02.py
+
+      - name: Validate diff
+        shell: bash
+        run: |
+          git diff --check
+          echo '=== changed files ==='
+          git diff --name-only
+          echo '=== remaining meta terms ==='
+          grep -niE 'consistent presentation|apresentação consistente|helper changes presentation|função altera somente a apresentação|paths defined below organize|caminhos definidos a seguir organizam|the reader|o leitor|hidden chunk|chunk oculto|first chunk|primeiro chunk|suppressPackageStartupMessages' \
+            analysis/01_preprocessing_pt.Rmd analysis/01_preprocessing_en.Rmd \
+            analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd || true
+
+      - name: Commit source cleanup
+        shell: bash
+        run: |
+          changed=$(git diff --name-only)
+          expected=$'analysis/01_preprocessing_en.Rmd\nanalysis/01_preprocessing_pt.Rmd\nanalysis/02_matrices_en.Rmd\nanalysis/02_matrices_pt.Rmd'
+          if [ "$changed" != "$expected" ]; then
+            echo "Unexpected changed files:"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          git config user.name "Weverton Gomes da Costa"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/01_preprocessing_pt.Rmd analysis/01_preprocessing_en.Rmd \
+                  analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd
+          git commit -m "Remove implementation meta-text from Modules 01 and 02"
+          git push origin HEAD:didactic-content-cleanup-m01-m02
