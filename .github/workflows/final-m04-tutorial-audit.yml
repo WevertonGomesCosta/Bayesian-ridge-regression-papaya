@@ -1,0 +1,162 @@
+name: Final Module 04 tutorial audit
+
+on:
+  push:
+    branches: [final-m04-tutorial-audit]
+    paths: ['.github/workflows/final-m04-tutorial-audit.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refine Module 04 PT and EN tutorial text
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def executable_signature(text):
+              chunks=[]; inside=False; cur=[]
+              for line in text.splitlines():
+                  if re.match(r'^\s*```\{r(?:[\s,}]|$)', line):
+                      inside=True; cur=[]; continue
+                  if inside and re.match(r'^\s*```\s*$', line):
+                      cleaned=[]
+                      for x in cur:
+                          if re.match(r'^\s*#', x):
+                              continue
+                          x=re.sub(r'\s+','',x)
+                          if x: cleaned.append(x)
+                      chunks.append('\n'.join(cleaned)); inside=False; continue
+                  if inside: cur.append(line)
+              return '\n---CHUNK---\n'.join(chunks)
+
+          replacements = {
+          'analysis/04_results_pt.Rmd': [
+            ('---\n\n```{r setup, include=FALSE}', '---\n\nO chunk oculto a seguir define apenas opções globais de renderização da página. Ele não recalcula métricas, não seleciona modelos e não altera os resultados recebidos do Módulo 03.\n\n```{r setup, include=FALSE}'),
+            ('## 2. Pacotes e resultados do ajuste dos modelos\n\n```{r packages}', '## 2. Pacotes e resultados do ajuste dos modelos\n\nO primeiro chunk carrega apenas os pacotes usados para manipulação tabular, organização das saídas e renderização do tutorial. Nenhum modelo BGLR é ajustado neste módulo.\n\n```{r packages}'),
+            ('A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.', 'O módulo usa dois objetos consolidados: `matrices_object.rds`, que fornece fenótipos, metadados e definições herdadas do Módulo 02, e `models_object.rds`, que fornece métricas por fold, predições OOF e diagnósticos MCMC produzidos no Módulo 03. O chunk abaixo apenas carrega essas estruturas e cria o diretório das saídas derivadas.'),
+            ('Os p-valores da correlação de Pearson são mantidos como medidas nominais e\ndescritivas porque os conjuntos de treinamento se sobrepõem entre folds. Eles\nsão apresentados como contexto e não são usados para definir a elegibilidade\npara seleção genômica.', 'Há duas escalas de resumo nesta seção. `pooled_metrics` reúne as 150 predições OOF e fornece o desempenho global de cada característica × método; essa correlação agrupada é a referência principal para ordenar os vencedores preditivos. `fold_summary` preserva a variação entre os cinco folds e é usado posteriormente para avaliar estabilidade e construir as tolerâncias descritivas da regra de um erro-padrão.\n\nOs p-valores da correlação de Pearson são mantidos como medidas nominais e descritivas porque os conjuntos de treinamento se sobrepõem entre folds. Eles são apresentados como contexto e não são usados para definir a elegibilidade para seleção genômica.'),
+            ('\\Delta_j=DIC_j-\\min(DIC),', '\\Delta_j=\\overline{DIC}_j-\\min_k(\\overline{DIC}_k),'),
+            ('A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.\n\n```{r model-comparison-preview}', 'A tabela abaixo coloca lado a lado ajuste Bayesiano e desempenho OOF. `Mean_DIC`, `Delta_DIC`, `Wprob` e `ER` devem ser comparados somente entre métodos da mesma característica; `r`, RMSE e MAE descrevem o desempenho preditivo fora da amostra. A proximidade em DIC não substitui a evidência preditiva.\n\n```{r model-comparison-preview}'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selection-winners-table}', 'A tabela seguinte evidencia se o método com maior correlação OOF também é o de menor DIC médio. Discordância entre as duas colunas não é tratada como erro: ela mostra que desempenho preditivo e ajuste–complexidade respondem a critérios diferentes.\n\n```{r selection-winners-table}'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selection-convergence-table}', 'O resumo abaixo deve ser lido como triagem dos dois diagnósticos escalares monitorados por ajuste no Módulo 03. `Parameters_flagged = 0` significa apenas ausência de flags nesses parâmetros monitorados; não constitui prova de convergência de todos os efeitos de marcador.\n\n```{r selection-convergence-table}'),
+            ('A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds.\nEm seguida, o limite `Delta_DIC <= 2` e os diagnósticos MCMC definem os\ncandidatos elegíveis pela regra. Como os conjuntos de treinamento se sobrepõem\nentre folds, esses erros-padrão são tolerâncias descritivas e não são\ninterpretados como erros-padrão inferenciais de amostras independentes.', 'A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds. Para cada característica, a tolerância de correlação usa o desvio-padrão entre folds do método com a maior `Mean_fold_r`, dividido por `sqrt(5)`; analogamente, a tolerância de RMSE usa o método com a menor `Mean_fold_RMSE`. Um candidato precisa satisfazer simultaneamente as duas tolerâncias.\n\nEm seguida, `Delta_DIC <= 2` restringe o conjunto a ajustes com DIC operacionalmente semelhante e qualquer flag entre os diagnósticos monitorados impede a classificação como candidato automático. Como os conjuntos de treinamento se sobrepõem entre folds, esses erros-padrão são tolerâncias descritivas e não são interpretados como erros-padrão inferenciais de amostras independentes.'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selection-competitive-table}', 'A tabela de exemplo permite acompanhar cada filtro da regra: competitividade por correlação/RMSE, proximidade por DIC, necessidade de revisão de cadeia e elegibilidade automática. `Automatic_candidate = TRUE` exige que todas essas condições operacionais sejam satisfeitas.\n\n```{r selection-competitive-table}'),
+            ('Entre os candidatos automáticos, RR-BLUP recebe prioridade. Na ausência de\ncandidato automático, o vencedor preditivo é mantido como escolha provisória.', 'Entre os candidatos automáticos, RR-BLUP recebe prioridade como escolha explícita de parcimônia e referência de contração homogênea; essa prioridade não implica superioridade estatística universal do RR-BLUP. Se RR-BLUP não for candidato automático, os demais são ordenados pela correlação OOF agrupada, seguida de RMSE, MAE e DIC. Na ausência de qualquer candidato automático, o vencedor preditivo é mantido apenas como escolha provisória que requer revisão.'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selection-choice-table}', 'A tabela resume o resultado dessa hierarquia. `rule_based_selected` indica que pelo menos um candidato automático existia e a regra pôde ser aplicada; `provisional_review_required` indica que a escolha foi preservada para inspeção, não validada automaticamente.\n\n```{r selection-choice-table}'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selected-performance-table}', 'A tabela seguinte traz apenas o método efetivamente selecionado em cada característica, reunindo sua evidência OOF, DIC e número de parâmetros monitorados com flag. Ela deve ser lida em conjunto com `Selection_status`, porque uma escolha provisória pode aparecer aqui mesmo quando requer revisão.\n\n```{r selected-performance-table}'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r model-selection-table}', 'Esta é a tabela principal de decisão por característica. Além do método selecionado, ela preserva os vencedores preditivo e por DIC, registra se a preferência por RR-BLUP foi aplicada e explicita a direção e a força nominal do sinal OOF.\n\n```{r model-selection-table}'),
+            ('A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.\n\n```{r oof-direction-table}', 'O resumo de direção conta quantas características terminam com correlação OOF positiva ou não positiva para o método selecionado. Ele não classifica magnitude, utilidade prática ou significância.\n\n```{r oof-direction-table}'),
+            ('## 6. Estabilidade entre folds dos métodos selecionados\n\nA etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.', '## 6. Estabilidade entre folds dos métodos selecionados\n\nAs métricas por fold revelam se o desempenho agrupado depende de um subconjunto particular da partição. Mudanças de sinal da correlação, grande dispersão de RMSE ou folds claramente discrepantes devem ser interpretados como instabilidade descritiva; com apenas cinco folds sobrepostos, esta tabela não fornece um teste formal de heterogeneidade.'),
+            ('A etapa seguinte resume os tempos de execução para comparar o custo computacional dos métodos.', 'A tabela resume os tempos registrados durante os 50 ajustes de cada método. Esses valores permitem comparação operacional dentro desta mesma execução, mas dependem de hardware, carga do sistema, implementação e E/S; portanto, não devem ser tratados como benchmarks universais de velocidade.'),
+            ('herdabilidade no sentido restrito.\n\n```{r rrblup-heritability}', 'herdabilidade no sentido restrito. A quantidade denominada `Predictive_accuracy` é uma razão derivada, `r_f/sqrt(H_f^2)`, e não uma correlação observada diretamente entre valor genético verdadeiro e predito. Por depender de estimativas amostrais de `r_f` e `H_f^2`, ela pode ser negativa ou exceder 1; por isso deve ser interpretada como índice de acurácia ajustada segundo essa definição, e não como uma medida necessariamente limitada ao intervalo [0, 1].\n\n```{r rrblup-heritability}'),
+            ('A direção de seleção é aplicada ao valor genômico somente no momento de\nconstruir o ranking. O valor genômico original permanece inalterado.', 'A direção de seleção é aplicada ao valor genômico somente no momento de construir o ranking. O valor genômico original permanece inalterado. Em cada característica, a coluna `Genomic_value` é exatamente o `Genomic_component` da predição OOF produzida pelo método selecionado; métodos diferentes podem, portanto, fornecer os valores usados em características diferentes.'),
+            ('uma intensidade ótima estimada. Para características cujo objetivo é diminuir,\no escore é o negativo do valor genômico.', 'uma intensidade ótima estimada. Com 150 candidatos disponíveis, 20% correspondem a 30 indivíduos. Para características cujo objetivo é diminuir, o escore é o negativo do valor genômico.\n\nA ordenação usa `IND` apenas como critério secundário determinístico quando dois escores são exatamente iguais. A proporção selecionada permanece fixa mesmo se houver empate no limite; `Exact_boundary_tie = TRUE` apenas informa que o último incluído e o primeiro excluído possuem o mesmo escore e, portanto, não há evidência genômica para distingui-los naquele corte.'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selection-size-table}', 'A primeira tabela confirma, para cada característica elegível, quantos candidatos estavam disponíveis e quantos compõem a proporção de 20%.\n\n```{r selection-size-table}'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selection-cutoff-table}', 'A tabela de corte mostra o escore do último candidato incluído e do primeiro não incluído. A coluna `Exact_boundary_tie` deve ser consultada antes de interpretar o limite como separação substantiva entre candidatos.\n\n```{r selection-cutoff-table}'),
+            ('A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.\n\n```{r selected-individuals-preview}', 'A prévia apresenta somente os cinco primeiros nomes de cada ranking para facilitar a leitura. O objeto completo mantém todos os candidatos pertencentes aos 20% priorizados.\n\n```{r selected-individuals-preview}'),
+            ('A recorrência é descritiva: entre as características com correlação OOF positiva, conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. Sinais OOF positivos fracos permanecem exploratórios. Não são usados pesos e não é construído índice de seleção multicaracterística.', 'A recorrência é descritiva: entre as características com correlação OOF positiva, conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. `Selection_frequency` divide essa contagem pelo número de características com OOF positivo, e não necessariamente pelas dez características originais. Sinais OOF positivos fracos permanecem exploratórios. Não são usados pesos e não é construído índice de seleção multicaracterística; aparecer em várias listas não equivale a demonstrar superioridade multicaracterística conjunta.'),
+            ('Estas correlações descrevem a associação entre valores genômicos preditos e não\nsão estimativas de correlação genética obtidas de um modelo multivariado.', 'Estas correlações descrevem a associação entre os valores genômicos OOF produzidos pelos métodos selecionados em cada característica. Como características diferentes podem usar métodos diferentes e os valores são cross-fitted, a matriz resume associação entre escores preditos, não covariância genética estimada conjuntamente. Portanto, ela não deve ser interpretada como matriz de correlações genéticas de um modelo multivariado.'),
+            ('A etapa seguinte organiza e salva as saídas produzidas para uso nos módulos posteriores.', 'O chunk final grava CSVs individuais para inspeção das principais derivações e um `module04_results.rds` consolidado para consumo programático pelo Módulo 05. Esses arquivos contêm resultados derivados das saídas do Módulo 03; nenhum modelo genômico é reajustado nesta etapa.'),
+            ('O Módulo 05 utiliza esses resultados para construir as tabelas e figuras de\nsíntese da comparação dos métodos e da seleção genômica.', 'O Módulo 05 utiliza exclusivamente essas derivações para construir as tabelas e figuras de síntese. Os valores genômicos OOF continuam sendo apresentados como escores cross-fitted de validação; este fluxo não os transforma em valores genéticos finais de um refit com todos os 150 fenótipos.')
+          ],
+          'analysis/04_results_en.Rmd': [
+            ('---\n\n```{r setup, include=FALSE}', '---\n\nThe hidden chunk below defines only page-wide rendering options. It does not recompute metrics, select models, or alter the results received from Module 03.\n\n```{r setup, include=FALSE}'),
+            ('## 2. Packages and model-fitting results\n\n```{r packages}', '## 2. Packages and model-fitting results\n\nThe first chunk loads only the packages used for tabular manipulation, output organization, and tutorial rendering. No BGLR model is fitted in this module.\n\n```{r packages}'),
+            ('The next step loads the input objects and organizes the structures required for the analysis.', 'The module uses two consolidated objects: `matrices_object.rds`, which supplies phenotypes, metadata, and definitions inherited from Module 02, and `models_object.rds`, which supplies fold-level metrics, OOF predictions, and MCMC diagnostics produced in Module 03. The chunk below only loads these structures and creates the directory for derived outputs.'),
+            ('Pearson-correlation p-values are retained as nominal descriptive measures\nbecause training sets overlap across folds. They are reported for context and\nare not used to determine eligibility for genomic selection.', 'There are two summary scales in this section. `pooled_metrics` combines the 150 OOF predictions and provides the global performance of each trait × method combination; this pooled correlation is the primary reference for ranking predictive winners. `fold_summary` preserves variation across the five folds and is used later to assess stability and construct the descriptive one-standard-error tolerances.\n\nPearson-correlation p-values are retained as nominal descriptive measures because training sets overlap across folds. They are reported for context and are not used to determine eligibility for genomic selection.'),
+            ('\\Delta_j=DIC_j-\\min(DIC),', '\\Delta_j=\\overline{DIC}_j-\\min_k(\\overline{DIC}_k),'),
+            ('The next step organizes a tabular summary of the objects and results needed to interpret this section.\n\n```{r model-comparison-preview}', 'The table below places Bayesian fit and OOF performance side by side. `Mean_DIC`, `Delta_DIC`, `Wprob`, and `ER` should be compared only among methods for the same trait; `r`, RMSE, and MAE describe out-of-sample predictive performance. Similarity in DIC does not replace predictive evidence.\n\n```{r model-comparison-preview}'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selection-winners-table}', 'The following table shows whether the method with the largest OOF correlation is also the method with the smallest mean DIC. Disagreement between the two columns is not treated as an error: predictive performance and fit–complexity address different criteria.\n\n```{r selection-winners-table}'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selection-convergence-table}', 'The summary below should be read as screening of the two scalar diagnostics monitored per fit in Module 03. `Parameters_flagged = 0` means only that no flags occurred in those monitored quantities; it is not proof that every marker effect has converged.\n\n```{r selection-convergence-table}'),
+            ('The one-standard-error rule is applied to mean fold correlation and RMSE. The\n`Delta_DIC <= 2` threshold and MCMC diagnostics are then used to determine the\ncandidates eligible under the rule. Because the training sets overlap across\nfolds, these standard errors are descriptive tolerances and are not interpreted\nas independent-sample inferential standard errors.', 'The one-standard-error rule is applied to mean fold correlation and RMSE. For each trait, the correlation tolerance uses the across-fold standard deviation of the method with the largest `Mean_fold_r`, divided by `sqrt(5)`; analogously, the RMSE tolerance uses the method with the smallest `Mean_fold_RMSE`. A candidate must satisfy both tolerances simultaneously.\n\nNext, `Delta_DIC <= 2` restricts the set to fits with operationally similar DIC, and any flag among the monitored diagnostics prevents classification as an automatic candidate. Because training sets overlap across folds, these standard errors are descriptive tolerances rather than independent-sample inferential standard errors.'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selection-competitive-table}', 'The example table lets the reader follow each filter in the rule: competitiveness by correlation/RMSE, DIC proximity, chain-review status, and automatic eligibility. `Automatic_candidate = TRUE` requires all of these operational conditions to be satisfied.\n\n```{r selection-competitive-table}'),
+            ('RR-BLUP receives priority among automatic candidates. If no automatic candidate\nis available, the predictive winner is retained as a provisional choice.', 'RR-BLUP receives priority among automatic candidates as an explicit parsimony choice and homogeneous-shrinkage benchmark; this priority does not imply universal statistical superiority of RR-BLUP. If RR-BLUP is not an automatic candidate, the remaining candidates are ordered by pooled OOF correlation, followed by RMSE, MAE, and DIC. If no automatic candidate exists, the predictive winner is retained only as a provisional choice requiring review.'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selection-choice-table}', 'The table summarizes the result of this hierarchy. `rule_based_selected` means that at least one automatic candidate existed and the rule could be applied; `provisional_review_required` means that the choice was retained for inspection rather than automatically validated.\n\n```{r selection-choice-table}'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selected-performance-table}', 'The following table contains only the method actually selected for each trait, combining its OOF evidence, DIC, and number of monitored parameters with a flag. It should be read together with `Selection_status`, because a provisional choice can appear here even when review is required.\n\n```{r selected-performance-table}'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r model-selection-table}', 'This is the main decision table by trait. In addition to the selected method, it preserves the predictive and DIC winners, records whether the RR-BLUP preference was applied, and makes the direction and nominal strength of the OOF signal explicit.\n\n```{r model-selection-table}'),
+            ('The next step organizes a tabular summary of the objects and results needed to interpret this section.\n\n```{r oof-direction-table}', 'The direction summary counts how many traits end with positive or nonpositive OOF correlation for the selected method. It does not classify magnitude, practical utility, or significance.\n\n```{r oof-direction-table}'),
+            ('## 6. Stability across folds for the selected methods\n\nThe next step derives and presents the corresponding selection or prioritization rule from the calculated results.', '## 6. Stability across folds for the selected methods\n\nFold-level metrics show whether pooled performance depends strongly on a particular part of the partition. Sign changes in correlation, large RMSE dispersion, or clearly discrepant folds should be interpreted as descriptive instability; with only five overlapping folds, this table is not a formal heterogeneity test.'),
+            ('The next step summarizes execution times to compare the computational cost of the methods.', 'The table summarizes times recorded across the 50 fits of each method. These values support operational comparison within this execution, but depend on hardware, system load, implementation, and I/O; they should not be treated as universal speed benchmarks.'),
+            ('narrow-sense heritability.\n\n```{r rrblup-heritability}', 'narrow-sense heritability. The quantity named `Predictive_accuracy` is a derived ratio, `r_f/sqrt(H_f^2)`, rather than an observed correlation between true and predicted genetic values. Because it depends on sample estimates of `r_f` and `H_f^2`, it may be negative or exceed 1; it should therefore be interpreted as an adjusted-accuracy index under this definition, not as a measure necessarily bounded to [0, 1].\n\n```{r rrblup-heritability}'),
+            ('Selection direction is applied to the genomic value only when the ranking is\nconstructed. The original genomic value remains unchanged.', 'Selection direction is applied to the genomic value only when the ranking is constructed. The original genomic value remains unchanged. For each trait, `Genomic_value` is exactly the OOF `Genomic_component` produced by the selected method; different traits may therefore use genomic values supplied by different methods.'),
+            ('configurable tutorial rule, not an estimated optimal selection intensity. For\ntraits whose objective is to decrease, the score is the negative genomic value.', 'configurable tutorial rule, not an estimated optimal selection intensity. With 150 available candidates, 20% corresponds to 30 individuals. For traits whose objective is to decrease, the score is the negative genomic value.\n\n`IND` is used only as a deterministic secondary ordering key when two scores are exactly tied. The selected proportion remains fixed even if a tie occurs at the boundary; `Exact_boundary_tie = TRUE` only reports that the last included and first excluded candidates have the same score, so there is no genomic-score evidence separating them at that cutoff.'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selection-size-table}', 'The first table confirms, for each eligible trait, how many candidates were available and how many compose the 20% proportion.\n\n```{r selection-size-table}'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selection-cutoff-table}', 'The cutoff table shows the score of the last included candidate and the first candidate not included. `Exact_boundary_tie` should be checked before interpreting the cutoff as a substantive separation between candidates.\n\n```{r selection-cutoff-table}'),
+            ('The next step derives and presents the corresponding selection or prioritization rule from the calculated results.\n\n```{r selected-individuals-preview}', 'The preview shows only the first five names in each ranking for readability. The complete object retains every candidate belonging to the prioritized 20%.\n\n```{r selected-individuals-preview}'),
+            ('Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed.', 'Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. `Selection_frequency` divides this count by the number of positive-OOF traits, not necessarily by all ten original traits. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed; appearing in several lists does not demonstrate joint multi-trait superiority.'),
+            ('These correlations describe associations among predicted genomic values and are\nnot genetic-correlation estimates from a multivariate model.', 'These correlations describe associations among the OOF genomic values produced by the selected method for each trait. Because different traits may use different methods and the values are cross-fitted, the matrix summarizes associations among predictive scores rather than jointly estimated genetic covariance. It should therefore not be interpreted as a genetic-correlation matrix from a multivariate model.'),
+            ('The next step organizes and saves the generated outputs for use in the downstream modules.', 'The final chunk writes individual CSV files for inspection of the main derivations and a consolidated `module04_results.rds` for programmatic use by Module 05. These files contain results derived from Module 03 outputs; no genomic model is refitted at this stage.'),
+            ('Module 05 uses these results to build the summary tables and figures for model\ncomparison and genomic selection.', 'Module 05 uses only these derivations to build the summary tables and figures. The OOF genomic values remain cross-fitted validation scores; this workflow does not transform them into final breeding values from a refit using all 150 phenotypes.')
+          ]}
+
+          for path_str, reps in replacements.items():
+              p=Path(path_str); original=p.read_text(encoding='utf-8'); sig=executable_signature(original); text=original
+              for old,new in reps:
+                  c=text.count(old)
+                  if c != 1:
+                      raise SystemExit(f'{path_str}: expected one match, found {c}: {old[:120]!r}')
+                  text=text.replace(old,new,1)
+              if executable_signature(text) != sig:
+                  raise SystemExit(f'{path_str}: executable R code changed')
+              p.write_text(text, encoding='utf-8')
+          print('PASS: Module 04 tutorial prose refined; executable R code unchanged.')
+          PY
+          git diff --check
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+
+      - name: Parse Module 04 chunks and inline R
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- c('analysis/04_results_pt.Rmd','analysis/04_results_en.Rmd')
+          n_chunks <- 0L; n_inline <- 0L
+          for (f in files) {
+            x <- readLines(f, warn=FALSE, encoding='UTF-8')
+            inside <- FALSE; prose <- character()
+            for (line in x) {
+              if (grepl('^\\s*```\\{r(?:[\\s,}]|$)', line, perl=TRUE)) { inside <- TRUE; next }
+              if (inside && grepl('^\\s*```\\s*$', line, perl=TRUE)) { inside <- FALSE; next }
+              if (!inside) prose <- c(prose,line)
+            }
+            inline <- unlist(regmatches(prose, gregexpr('`r [^`]+`', prose, perl=TRUE)))
+            if (length(inline)) for (expr in inline) {
+              code <- sub('^`r ', '', expr); code <- sub('`$', '', code); parse(text=code); n_inline <- n_inline + 1L
+            }
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl=TRUE)
+            for (s in starts) {
+              rel <- which(grepl('^\\s*```\\s*$', x[(s+1L):length(x)], perl=TRUE))[1]
+              if (is.na(rel)) stop('Unclosed chunk in ',f,' at line ',s)
+              e <- s + rel
+              code <- if (e > s+1L) x[(s+1L):(e-1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text=code); n_chunks <- n_chunks + 1L
+            }
+          }
+          cat('Parsed Module 04 R chunks:', n_chunks, '\n')
+          cat('Parsed Module 04 inline R expressions:', n_inline, '\n')
+          RS
+
+      - name: Commit only Module 04 source files
+        shell: bash
+        run: |
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' analysis/04_results_en.Rmd analysis/04_results_pt.Rmd | sort)"
+          test "$changed" = "$expected"
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/04_results_pt.Rmd analysis/04_results_en.Rmd
+          git commit -m "Refine Module 04 tutorial interpretation"
+          git push origin HEAD:final-m04-tutorial-audit
