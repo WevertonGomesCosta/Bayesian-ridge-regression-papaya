@@ -10,13 +10,29 @@ permissions:
 
 jobs:
   refine:
-    if: github.event.head_commit.message == 'Validate Module 02 didactic standard'
+    if: github.event.head_commit.message == 'Run corrected Module 02 didactic standard'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: didactic-m02-standard
           fetch-depth: 0
+
+      - name: Correct English source targets in temporary helper
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/m02_refine.py')
+          t = p.read_text(encoding='utf-8')
+          t = t.replace('The heatmap presents', 'The heatmap displays')
+          t = t.replace('## 9. Use of folds in model fitting', '## 9. Using the folds for model fitting')
+          t = t.replace('Example of individual fold assignment', 'Example of individual allocation to folds')
+          t = t.replace(
+              'text = text.replace("calculated in the previous chunk", "calculated previously")',
+              'text = text.replace("calculated in the previous chunk", "calculated previously")\n    text = text.replace("computed in the previous chunk", "computed previously")'
+          )
+          p.write_text(t, encoding='utf-8')
+          PY
 
       - name: Apply didactic refinement
         run: python .github/m02_refine.py
@@ -66,6 +82,7 @@ jobs:
       - name: Commit Module 02 sources
         shell: bash
         run: |
+          git checkout -- .github/m02_refine.py
           changed=$(git diff --name-only)
           expected=$'analysis/02_matrices_en.Rmd\nanalysis/02_matrices_pt.Rmd'
           if [ "$changed" != "$expected" ]; then
