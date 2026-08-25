@@ -1,0 +1,130 @@
+name: Apply chunk documentation audit v2
+
+on:
+  push:
+    branches:
+      - chunk-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reuse validated transformation and audit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          source = Path('.github/workflows/apply-chunk-documentation.yml').read_text(encoding='utf-8').splitlines()
+          scripts = []
+          collecting = False
+          current = []
+
+          for line in source:
+              stripped = line.strip()
+              if stripped == "python - <<'PY'":
+                  collecting = True
+                  current = []
+                  continue
+              if collecting and stripped == 'PY':
+                  scripts.append('\n'.join(current) + '\n')
+                  collecting = False
+                  current = []
+                  continue
+              if collecting:
+                  # Remove the YAML block indentation used by the original workflow.
+                  current.append(line[10:] if line.startswith('          ') else line)
+
+          if len(scripts) < 2:
+              raise RuntimeError(f'Expected at least two embedded Python scripts, found {len(scripts)}')
+
+          # Script 1 adds prose/comments while preserving executable R code.
+          subprocess.run(['python', '-c', scripts[0]], check=True)
+          # Script 2 re-audits all chunks against the documented rules.
+          subprocess.run(['python', '-c', scripts[1]], check=True)
+          PY
+
+      - name: Set up R for syntax validation
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse every R chunk
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern = '\\.Rmd$', full.names = TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn = FALSE, encoding = 'UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl = TRUE)
+            for (s in starts) {
+              tail <- x[(s + 1L):length(x)]
+              e_rel <- which(grepl('^\\s*```\\s*$', tail, perl = TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e > s + 1L) x[(s + 1L):(e - 1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              tryCatch(
+                parse(text = code),
+                error = function(err) stop('Parse error in ', f, ' chunk at line ', s, ': ', conditionMessage(err))
+              )
+              n <- n + 1L
+            }
+          }
+          cat('Parsed R chunks:', n, '\n')
+          stopifnot(n == 217L)
+          RS
+
+      - name: Validate and commit source-only changes
+        shell: bash
+        run: |
+          git diff --check
+
+          # Temporary audit machinery must disappear from the net branch diff.
+          rm -f .github/workflows/audit-chunk-documentation.yml
+          rm -f .github/workflows/apply-chunk-documentation.yml
+          rm -f .github/workflows/apply-chunk-documentation-v2.yml
+
+          python - <<'PY'
+          import subprocess
+
+          allowed = {
+              'analysis/01_preprocessing_en.Rmd',
+              'analysis/01_preprocessing_pt.Rmd',
+              'analysis/02_matrices_en.Rmd',
+              'analysis/02_matrices_pt.Rmd',
+              'analysis/03_models_en.Rmd',
+              'analysis/03_models_pt.Rmd',
+              'analysis/04_results_en.Rmd',
+              'analysis/04_results_pt.Rmd',
+              'analysis/05_results_en.Rmd',
+              'analysis/05_results_pt.Rmd',
+              '.github/workflows/audit-chunk-documentation.yml',
+              '.github/workflows/apply-chunk-documentation.yml',
+              '.github/workflows/apply-chunk-documentation-v2.yml',
+          }
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          bad = [path for path in changed if path not in allowed]
+          if bad:
+              raise SystemExit('Unexpected changed files:\n' + '\n'.join(bad))
+
+          source = [path for path in changed if path.startswith('analysis/')]
+          if len(source) != 10:
+              raise SystemExit(f'Expected 10 analysis Rmd changes, found {len(source)}: {source}')
+          print('Validated changed files:')
+          print('\n'.join(changed))
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Document tutorial chunks for guided reading"
+          git push origin HEAD:chunk-documentation-audit
