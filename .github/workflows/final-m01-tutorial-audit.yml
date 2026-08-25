@@ -1,0 +1,587 @@
+name: Final Module 01 tutorial audit
+
+on:
+  push:
+    branches:
+      - final-m01-tutorial-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refine Module 01 tutorial narrative
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          files = {
+              'pt': Path('analysis/01_preprocessing_pt.Rmd'),
+              'en': Path('analysis/01_preprocessing_en.Rmd'),
+          }
+
+          def replace_once(text, old, new, label):
+              n = text.count(old)
+              if n != 1:
+                  raise RuntimeError(f'{label}: expected 1 occurrence, found {n}')
+              return text.replace(old, new, 1)
+
+          def executable_signature(text):
+              lines = text.splitlines()
+              chunks = []
+              inside = False
+              current = []
+              for line in lines:
+                  if re.match(r'^\s*```\{r(?:[\s,}]|$)', line):
+                      inside = True
+                      current = []
+                      continue
+                  if inside and re.match(r'^\s*```\s*$', line):
+                      chunks.append('\n'.join(
+                          x for x in current
+                          if not re.match(r'^\s*#', x)
+                      ))
+                      inside = False
+                      continue
+                  if inside:
+                      current.append(line)
+              return chunks
+
+          before = {}
+          for lang, path in files.items():
+              before[lang] = executable_signature(path.read_text(encoding='utf-8'))
+
+          # ---------- Portuguese ----------
+          p = files['pt']
+          text = p.read_text(encoding='utf-8')
+
+          text = replace_once(
+              text,
+              '---\n\n```{r setup, include=FALSE}',
+              '---\n\nO chunk oculto a seguir define somente opções de renderização compartilhadas por esta página. Ele não lê dados, não altera objetos analíticos e não executa nenhuma etapa do pré-processamento.\n\n```{r setup, include=FALSE}',
+              'pt setup intro'
+          )
+
+          text = replace_once(
+              text,
+              'A coluna de bloco (`BL`) é removida porque não participa do modelo estatístico.\nA família (`FAM`) é mantida para ser utilizada como efeito fixo nos módulos\nseguintes.',
+              'A coluna de bloco (`BL`) é removida porque não participa do modelo estatístico definido para este tutorial. A família (`FAM`) é preservada porque será utilizada tanto na matriz de efeitos fixos quanto na estratificação dos folds de validação cruzada no Módulo 02. Nenhum indivíduo é removido neste módulo.\n\nAo final da etapa, o leitor terá três objetos centrais: a matriz fenotípica alinhada, a matriz SSR após o controle de qualidade dos locos e os metadados com indivíduo e família. Os diagnósticos produzidos ao longo da página servem para verificar se esses objetos podem seguir para a construção das matrizes genômicas.',
+              'pt objective'
+          )
+
+          text = replace_once(
+              text,
+              '## 2. Pacotes e caminhos dos arquivos\n\n```{r pacotes}',
+              '## 2. Pacotes e caminhos dos arquivos\n\nO primeiro chunk carrega apenas os pacotes usados para leitura das planilhas, manipulação de dados, gráficos, tabelas e caminhos portáveis. As mensagens de inicialização são suprimidas para manter a página centrada nas etapas analíticas.\n\n```{r pacotes}',
+              'pt packages intro'
+          )
+
+          text = replace_once(
+              text,
+              'Dois parâmetros de controle são fixados neste ponto. `CALL_RATE_MIN = 0.90` exige que pelo menos 90% das chamadas de um loco estejam disponíveis; em conjunto com a exigência de pelo menos duas classes genotípicas, esse limite evita manter locos com informação insuficiente. `PHENOTYPE_DISTANCE_THRESHOLD = 4` identifica, apenas para inspeção, observações a pelo menos quatro desvios-padrão da média da característica. Essa regra é diagnóstica: nenhum fenótipo é removido, winsorizado ou alterado por esse limite.',
+              'Dois parâmetros de controle são fixados neste ponto. `CALL_RATE_MIN = 0.90` exige que pelo menos 90% das chamadas de um loco estejam disponíveis. Como o painel possui 150 indivíduos, isso corresponde a pelo menos 135 genótipos observados por loco. Em conjunto com a exigência de pelo menos duas classes genotípicas, o critério evita manter locos com informação insuficiente para representar variação. `PHENOTYPE_DISTANCE_THRESHOLD = 4` identifica, apenas para inspeção, observações a pelo menos quatro desvios-padrão da média da característica. Essa regra é diagnóstica: nenhum fenótipo é removido, winsorizado ou alterado por esse limite.',
+              'pt parameters'
+          )
+
+          text = replace_once(
+              text,
+              'A planilha genotípica utiliza a aba `Genes` para os códigos numéricos dos\nmarcadores SSR e a aba `Genealex` para os identificadores dos indivíduos e dos\nlocos. Os fenótipos são lidos da aba `Médias_IND_artigo`.',
+              'A planilha genotípica utiliza a aba `Genes` para os códigos numéricos dos marcadores SSR e a aba `Genealex` para os identificadores dos indivíduos e dos locos. Essas duas abas são lidas sem cabeçalho porque contêm linhas de metadados próprias do formato de origem; a posição dos identificadores será tratada explicitamente na seção seguinte. Os fenótipos são lidos da aba `Médias_IND_artigo`, que já possui nomes de colunas.\n\nA coluna `BL` é retirada imediatamente após a leitura dos fenótipos para impedir que o bloco seja propagado para os objetos analíticos. A tabela exibida ao final do chunk permite conferir as dimensões das três fontes antes de qualquer alinhamento.',
+              'pt reading'
+          )
+
+          text = replace_once(
+              text,
+              '# Carrega as planilhas genotípica e fenotípica que alimentam o pré-processamento.\ngenes <- read_excel(',
+              '# Lê `Genes` sem cabeçalho porque a aba contém linhas de metadados do formato de origem.\ngenes <- read_excel(',
+              'pt genes comment'
+          )
+          text = replace_once(
+              text,
+              'genealex <- read_excel(\n  GENOTYPE_FILE,',
+              '# Lê `Genealex` sem cabeçalho; os identificadores serão extraídos por posição na próxima seção.\ngenealex <- read_excel(\n  GENOTYPE_FILE,',
+              'pt genealex comment'
+          )
+          text = replace_once(
+              text,
+              'pheno_raw <- read_excel(\n  PHENOTYPE_FILE,',
+              '# Lê os fenótipos com seus nomes de colunas e remove BL antes de qualquer alinhamento.\npheno_raw <- read_excel(\n  PHENOTYPE_FILE,',
+              'pt pheno comment'
+          )
+
+          text = replace_once(
+              text,
+              'A primeira coluna da aba `Genes` identifica os grupos populacionais e as demais\ncolunas contêm os 35 locos SSR. Os identificadores dos indivíduos e dos locos\nsão obtidos da aba `Genealex`. Chamadas ausentes, codificadas como `-9`, são\nconvertidas em `NA`.',
+              'A primeira coluna da aba `Genes` contém um índice sequencial de grupos populacionais e não representa a variável fenotípica `FAM`; por isso ela é excluída da matriz de marcadores. As 35 colunas restantes correspondem aos locos SSR originais.\n\nNa aba `Genealex`, os identificadores dos indivíduos começam na quarta linha da segunda coluna e os nomes dos locos aparecem na terceira linha, em colunas alternadas a partir da terceira coluna. As expressões `4:(3 + n_individuals)` e `seq(3, 2 + 2 * n_loci, by = 2)` traduzem exatamente essa estrutura do arquivo de origem. Os identificadores são mantidos como texto — importante para valores alfanuméricos — e espaços externos são removidos com `trimws()`. Por fim, chamadas SSR ausentes codificadas como `-9` são convertidas em `NA` para que as funções de R as reconheçam como dados ausentes.',
+              'pt ssr organization prose'
+          )
+
+          text = replace_once(
+              text,
+              '# Organiza a informação dos marcadores e calcula os diagnósticos necessários nesta etapa.\nn_individuals <- nrow(genes)\nn_loci <- ncol(genes) - 1\n\nindividual_rows <- 4:(3 + n_individuals)\nlocus_columns <- seq(3, 2 + 2 * n_loci, by = 2)',
+              '# Obtém as dimensões do painel a partir da aba `Genes`; a primeira coluna não é um loco SSR.\nn_individuals <- nrow(genes)\nn_loci <- ncol(genes) - 1\n\n# Traduz a estrutura da aba `Genealex`: indivíduos a partir da linha 4 e locos em colunas alternadas.\nindividual_rows <- 4:(3 + n_individuals)\nlocus_columns <- seq(3, 2 + 2 * n_loci, by = 2)',
+              'pt ssr structure comments'
+          )
+          text = replace_once(
+              text,
+              'ids <- trimws(',
+              '# Mantém os identificadores como texto para preservar códigos alfanuméricos.\nids <- trimws(',
+              'pt ids comment'
+          )
+          text = replace_once(
+              text,
+              'storage.mode(ssr_raw) <- "numeric"\nssr_raw[ssr_raw == -9] <- NA_real_',
+              'storage.mode(ssr_raw) <- "numeric"\n# Converte o código de ausência do arquivo original para o valor ausente padrão do R.\nssr_raw[ssr_raw == -9] <- NA_real_',
+              'pt missing code comment'
+          )
+
+          text = replace_once(
+              text,
+              'Dez características são utilizadas. A tabela fenotípica é ordenada de acordo\ncom os identificadores da matriz SSR, de modo que cada linha fenotípica\ncorresponda à mesma planta da linha genotípica.',
+              'Dez características são utilizadas. Antes de construir os objetos finais, o módulo verifica se as colunas obrigatórias existem, procura identificadores ausentes ou duplicados e compara os conjuntos de indivíduos genotipados e fenotipados. Para o conjunto canônico, essas verificações devem indicar correspondência completa entre as duas fontes.\n\nEm seguida, a tabela fenotípica é reordenada com `match()` de acordo com os identificadores da matriz SSR, de modo que cada linha fenotípica corresponda à mesma planta da linha genotípica. `FAM` é convertida em fator para representar a variável categórica que será usada no Módulo 02, enquanto as dez características são reunidas em uma matriz numérica.',
+              'pt phenotype alignment prose'
+          )
+          text = replace_once(
+              text,
+              'required_columns <- c("IND", "FAM", TRAITS)\nmissing_columns <- setdiff(required_columns, names(pheno_raw))',
+              '# Define o contrato mínimo da tabela fenotípica antes do alinhamento.\nrequired_columns <- c("IND", "FAM", TRAITS)\nmissing_columns <- setdiff(required_columns, names(pheno_raw))',
+              'pt required columns comment'
+          )
+          text = replace_once(
+              text,
+              'missing_in_pheno <- setdiff(ids, pheno_raw$IND)\nmissing_in_geno <- setdiff(pheno_raw$IND, ids)',
+              '# Compara os conjuntos de identificadores nas duas fontes antes de reordenar as linhas.\nmissing_in_pheno <- setdiff(ids, pheno_raw$IND)\nmissing_in_geno <- setdiff(pheno_raw$IND, ids)',
+              'pt mismatch comment'
+          )
+          text = replace_once(
+              text,
+              'metadata <- data.frame(',
+              '# Separa os metadados; FAM permanece categórica e não é incorporada aos fenótipos numéricos.\nmetadata <- data.frame(',
+              'pt metadata comment'
+          )
+          text = replace_once(
+              text,
+              'phenotypes <- as.matrix(pheno[, TRAITS])',
+              '# Constrói a matriz fenotípica numérica na mesma ordem dos indivíduos genotipados.\nphenotypes <- as.matrix(pheno[, TRAITS])',
+              'pt phenotype matrix comment'
+          )
+
+          text = replace_once(
+              text,
+              'Para cada loco são calculados a taxa de chamada e o número de classes\ngenotípicas observadas. Um loco é mantido quando apresenta taxa de chamada\nigual ou superior a 0,90 e pelo menos duas classes genotípicas.',
+              'Para cada loco são calculados a taxa de chamada — proporção dos 150 indivíduos com genótipo observado — e o número de classes genotípicas distintas. Um loco é mantido quando apresenta taxa de chamada igual ou superior a 0,90 (pelo menos 135 chamadas observadas) e pelo menos duas classes genotípicas. O segundo critério remove locos sem variação observável no painel, mesmo que sua taxa de chamada seja alta.\n\nA tabela permite identificar separadamente qual critério determinou a retenção ou remoção de cada loco. A matriz `ssr` criada ao final contém apenas os locos que seguem para a codificação alélica do Módulo 02; `ssr_raw` é preservada para os diagnósticos da fonte original.',
+              'pt QC prose'
+          )
+          text = replace_once(
+              text,
+              'A figura permite visualizar a taxa de chamada de cada loco em relação ao limite\nmínimo utilizado.',
+              'A figura ordena os locos pela taxa de chamada e posiciona uma linha horizontal em 0,90. A cor informa a decisão final de retenção, que depende também do número de classes genotípicas; portanto, um loco pode estar acima da linha de taxa de chamada e ainda assim ser removido por falta de variação genotípica.',
+              'pt QC plot prose'
+          )
+
+          text = replace_once(
+              text,
+              'A quantidade de chamadas SSR disponíveis é resumida para cada indivíduo.',
+              'A quantidade de chamadas SSR disponíveis é resumida para cada indivíduo usando os 35 locos originais (`ssr_raw`). Esse diagnóstico descreve a completude do painel recebido antes do filtro por loco. Não é aplicado um limiar de exclusão de indivíduos neste tutorial; todos os 150 indivíduos alinhados são preservados para as etapas seguintes.',
+              'pt individual summary prose'
+          )
+          text = replace_once(
+              text,
+              '# Calcula a quantidade e a proporção de chamadas SSR disponíveis para cada indivíduo.',
+              '# Calcula, nos locos originais, a quantidade e a proporção de chamadas disponíveis por indivíduo.',
+              'pt individual comment'
+          )
+
+          text = replace_once(
+              text,
+              'As estatísticas descritivas permitem verificar diretamente a escala e a\nvariação das dez características.',
+              'As estatísticas descritivas permitem verificar diretamente a escala, a dispersão e a amplitude das dez características antes de qualquer ajuste de predição. `N` também confirma a disponibilidade de fenótipos por característica. Nenhuma transformação ou padronização permanente dos fenótipos é realizada nesta etapa; os valores originais são preservados para os modelos.',
+              'pt phenotype summary prose'
+          )
+
+          text = replace_once(
+              text,
+              'Os valores padronizados são utilizados apenas como diagnóstico descritivo. Uma\nobservação é destacada quando sua distância absoluta em relação à média é de\npelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. Os valores são\nmantidos exatamente como registrados na planilha original.',
+              'Os valores padronizados são utilizados apenas como diagnóstico descritivo. Para cada característica, o módulo calcula $z=(y-\\bar{y})/s$, em que $\\bar{y}$ é a média e $s$ é o desvio-padrão amostral. Uma observação é destacada quando $|z|$ é de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD`. Esse limite serve para chamar a atenção do leitor para valores distantes da média, não para declarar erros ou outliers estatísticos. Os valores são mantidos exatamente como registrados na planilha original e continuam disponíveis para os modelos.',
+              'pt extremes prose'
+          )
+          text = replace_once(
+              text,
+              '# Organiza os fenótipos usados na análise.\nphenotype_extremes <- phenotype_extremes[',
+              '# Ordena somente a tabela diagnóstica; a matriz `phenotypes` permanece inalterada.\nphenotype_extremes <- phenotype_extremes[',
+              'pt extremes comment'
+          )
+
+          text = replace_once(
+              text,
+              'A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.',
+              'O dicionário associa os códigos usados no código às descrições biológicas e às unidades de medida. Essa tabela é importante porque as dez características estão em escalas diferentes e os mesmos códigos serão utilizados nos módulos de modelagem e resultados.',
+              'pt dictionary prose'
+          )
+          text = replace_once(
+              text,
+              'A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.',
+              'Os histogramas complementam as estatísticas descritivas ao mostrar a forma das distribuições. São usadas 20 classes apenas para uma resolução visual consistente. Como `scales = "free"`, cada característica recebe seu próprio eixo horizontal; isso facilita visualizar a forma interna de cada distribuição, mas os limites dos eixos não devem ser comparados diretamente entre painéis.',
+              'pt histogram prose'
+          )
+          text = replace_once(
+              text,
+              '  facet_wrap(~ Trait, scales = "free", ncol = 2) +',
+              '  # Usa escala horizontal própria para cada característica, pois as unidades e amplitudes diferem.\n  facet_wrap(~ Trait, scales = "free", ncol = 2) +',
+              'pt free scales comment'
+          )
+
+          text = replace_once(
+              text,
+              'A matriz fenotípica alinhada, os dados SSR, os metadados e os resumos são\nreunidos em um objeto que será utilizado na construção das matrizes genômicas.',
+              'A matriz fenotípica alinhada, os dados SSR, os metadados, o dicionário de características e os diagnósticos são reunidos em `preprocessing_object.rds`. Esse arquivo RDS é a interface principal com o Módulo 02 porque preserva conjuntamente estruturas, nomes e classes dos objetos.\n\nOs arquivos CSV gravados em paralelo são saídas tabulares de inspeção: permitem examinar alinhamento, qualidade dos locos, completude por indivíduo, resumo fenotípico, observações destacadas e dicionário de características sem abrir o objeto RDS. Os parâmetros que definem esta etapa também são registrados em `settings`.',
+              'pt saving prose'
+          )
+          text = replace_once(
+              text,
+              'saveRDS(\n  preprocessing_object,',
+              '# Salva o objeto RDS que será lido diretamente pelo Módulo 02.\nsaveRDS(\n  preprocessing_object,',
+              'pt RDS comment'
+          )
+          text = replace_once(
+              text,
+              '# Salva a saída consolidada para uso posterior.\nwrite.csv(alignment,',
+              '# Exporta diagnósticos tabulares em CSV para inspeção independente do objeto RDS.\nwrite.csv(alignment,',
+              'pt CSV comment'
+          )
+
+          text = replace_once(
+              text,
+              'O resultado final desta etapa pode ser conferido diretamente pelas dimensões e\ncontagens abaixo.',
+              'O inventário final reúne as dimensões que devem ser conferidas antes de seguir: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade, número de famílias, chamadas SSR ausentes e observações fenotípicas apenas destacadas para inspeção.',
+              'pt final inventory prose'
+          )
+          text = replace_once(
+              text,
+              ') |>\n  kable(caption = "Resumo final do pré-processamento")\n```\n\n## 10. Próxima etapa',
+              ') |>\n  kable(caption = "Resumo final do pré-processamento")\n```\n\nEsse resumo deve ser interpretado como um ponto de controle do fluxo: os indivíduos e fenótipos permanecem alinhados, o filtro atua sobre locos SSR — não sobre indivíduos — e a contagem de observações fenotípicas destacadas é diagnóstica, sem exclusão automática.\n\n## 10. Próxima etapa',
+              'pt final interpretation'
+          )
+
+          p.write_text(text, encoding='utf-8')
+
+          # ---------- English ----------
+          p = files['en']
+          text = p.read_text(encoding='utf-8')
+
+          text = replace_once(
+              text,
+              '---\n\n```{r setup, include=FALSE}',
+              '---\n\nThe hidden chunk below defines only the rendering options shared by this page. It does not read data, modify analytical objects, or execute any preprocessing step.\n\n```{r setup, include=FALSE}',
+              'en setup intro'
+          )
+
+          text = replace_once(
+              text,
+              'The block column (`BL`) is removed because it is not part of the statistical\nmodel. Family (`FAM`) is retained for later use as a fixed effect.',
+              'The block column (`BL`) is removed because it is not part of the statistical model defined for this tutorial. Family (`FAM`) is preserved because it will be used both in the fixed-effect matrix and to stratify the cross-validation folds in Module 02. No individual is removed in this module.\n\nAt the end of this stage, the reader will have three central objects: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics produced throughout the page are used to verify that these objects are ready for genomic-matrix construction.',
+              'en objective'
+          )
+
+          text = replace_once(
+              text,
+              '## 2. Packages and file paths\n\n```{r packages}',
+              '## 2. Packages and file paths\n\nThe first chunk loads only the packages required for spreadsheet reading, data manipulation, figures, tables, and portable paths. Package startup messages are suppressed so that the page remains focused on the analytical steps.\n\n```{r packages}',
+              'en packages intro'
+          )
+
+          text = replace_once(
+              text,
+              'Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available; together with the requirement of at least two genotype classes, this avoids retaining loci with insufficient information. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.',
+              'Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available. Because the panel contains 150 individuals, this corresponds to at least 135 observed genotypes per locus. Together with the requirement of at least two genotype classes, the criterion avoids retaining loci with insufficient information to represent variation. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.',
+              'en parameters'
+          )
+
+          text = replace_once(
+              text,
+              'The genotype workbook uses the `Genes` sheet for numerical SSR codes and the\n`Genealex` sheet for individual and locus identifiers. Phenotypes are read from\nthe `Médias_IND_artigo` sheet.',
+              'The genotype workbook uses the `Genes` sheet for numerical SSR codes and the `Genealex` sheet for individual and locus identifiers. These two sheets are read without column names because they contain metadata rows specific to the source format; the identifier positions are handled explicitly in the next section. Phenotypes are read from the `Médias_IND_artigo` sheet, which already contains column names.\n\nThe `BL` column is removed immediately after phenotype reading so that block is not propagated into analytical objects. The table displayed at the end of the chunk allows the dimensions of all three sources to be checked before alignment.',
+              'en reading'
+          )
+          text = replace_once(
+              text,
+              '# Load the genotype and phenotype workbooks used by the preprocessing module.\ngenes <- read_excel(',
+              '# Read `Genes` without column names because the sheet contains source-format metadata rows.\ngenes <- read_excel(',
+              'en genes comment'
+          )
+          text = replace_once(
+              text,
+              'genealex <- read_excel(\n  GENOTYPE_FILE,',
+              '# Read `Genealex` without column names; identifiers are extracted by position in the next section.\ngenealex <- read_excel(\n  GENOTYPE_FILE,',
+              'en genealex comment'
+          )
+          text = replace_once(
+              text,
+              'pheno_raw <- read_excel(\n  PHENOTYPE_FILE,',
+              '# Read phenotypes with their column names and remove BL before alignment.\npheno_raw <- read_excel(\n  PHENOTYPE_FILE,',
+              'en pheno comment'
+          )
+
+          text = replace_once(
+              text,
+              'The first column of `Genes` identifies population groups and the remaining\ncolumns contain the 35 SSR loci. Individual and locus identifiers are obtained\nfrom `Genealex`. Missing SSR calls coded as `-9` are converted to `NA`.',
+              'The first column of `Genes` contains a sequential population-group index and does not represent the phenotype variable `FAM`; it is therefore excluded from the marker matrix. The remaining 35 columns correspond to the original SSR loci.\n\nIn `Genealex`, individual identifiers begin on row 4 of column 2, whereas locus names occur on row 3 in alternating columns beginning with column 3. The expressions `4:(3 + n_individuals)` and `seq(3, 2 + 2 * n_loci, by = 2)` translate this source-file layout directly. Identifiers are kept as text — which preserves alphanumeric codes — and surrounding spaces are removed with `trimws()`. Finally, missing SSR calls coded as `-9` are converted to `NA` so that R functions recognize them as missing data.',
+              'en ssr organization prose'
+          )
+          text = replace_once(
+              text,
+              '# Organize marker information and compute the diagnostics required at this stage.\nn_individuals <- nrow(genes)\nn_loci <- ncol(genes) - 1\n\nindividual_rows <- 4:(3 + n_individuals)\nlocus_columns <- seq(3, 2 + 2 * n_loci, by = 2)',
+              '# Obtain panel dimensions from `Genes`; its first column is not an SSR locus.\nn_individuals <- nrow(genes)\nn_loci <- ncol(genes) - 1\n\n# Translate the `Genealex` layout: individuals start on row 4 and loci occupy alternating columns.\nindividual_rows <- 4:(3 + n_individuals)\nlocus_columns <- seq(3, 2 + 2 * n_loci, by = 2)',
+              'en ssr structure comments'
+          )
+          text = replace_once(
+              text,
+              'ids <- trimws(',
+              '# Keep identifiers as text to preserve alphanumeric codes.\nids <- trimws(',
+              'en ids comment'
+          )
+          text = replace_once(
+              text,
+              'storage.mode(ssr_raw) <- "numeric"\nssr_raw[ssr_raw == -9] <- NA_real_',
+              'storage.mode(ssr_raw) <- "numeric"\n# Convert the original missing-value code to R\'s standard missing value.\nssr_raw[ssr_raw == -9] <- NA_real_',
+              'en missing code comment'
+          )
+
+          text = replace_once(
+              text,
+              'Ten traits are used. The phenotype table is reordered according to the SSR\nidentifiers so that every phenotype row corresponds to the same plant in the\ngenotype matrix.',
+              'Ten traits are used. Before the final objects are built, the module checks whether required columns are present, searches for missing or duplicated identifiers, and compares the sets of genotyped and phenotyped individuals. For the canonical dataset, these checks should indicate complete correspondence between the two sources.\n\nThe phenotype table is then reordered with `match()` according to the SSR identifiers so that every phenotype row corresponds to the same plant in the genotype matrix. `FAM` is converted to a factor to represent the categorical variable used in Module 02, while the ten traits are collected in a numeric matrix.',
+              'en phenotype alignment prose'
+          )
+          text = replace_once(
+              text,
+              'required_columns <- c("IND", "FAM", TRAITS)\nmissing_columns <- setdiff(required_columns, names(pheno_raw))',
+              '# Define the minimum phenotype-table contract before alignment.\nrequired_columns <- c("IND", "FAM", TRAITS)\nmissing_columns <- setdiff(required_columns, names(pheno_raw))',
+              'en required columns comment'
+          )
+          text = replace_once(
+              text,
+              'missing_in_pheno <- setdiff(ids, pheno_raw$IND)\nmissing_in_geno <- setdiff(pheno_raw$IND, ids)',
+              '# Compare identifier sets in both sources before reordering rows.\nmissing_in_pheno <- setdiff(ids, pheno_raw$IND)\nmissing_in_geno <- setdiff(pheno_raw$IND, ids)',
+              'en mismatch comment'
+          )
+          text = replace_once(
+              text,
+              'metadata <- data.frame(',
+              '# Separate metadata; FAM remains categorical and is not mixed with numeric phenotypes.\nmetadata <- data.frame(',
+              'en metadata comment'
+          )
+          text = replace_once(
+              text,
+              'phenotypes <- as.matrix(pheno[, TRAITS])',
+              '# Build the numeric phenotype matrix in the same order as genotyped individuals.\nphenotypes <- as.matrix(pheno[, TRAITS])',
+              'en phenotype matrix comment'
+          )
+
+          text = replace_once(
+              text,
+              'For each locus, the call rate and number of observed genotype classes are\ncalculated. A locus is retained when its call rate is at least 0.90 and at\nleast two genotype classes are observed.',
+              'For each locus, the call rate — the proportion of the 150 individuals with an observed genotype — and the number of distinct genotype classes are calculated. A locus is retained when its call rate is at least 0.90 (at least 135 observed calls) and at least two genotype classes are present. The second criterion removes loci with no observable variation in the panel even when their call rate is high.\n\nThe table makes it possible to identify which criterion determined retention or removal for each locus. The `ssr` matrix created at the end contains only loci passed to allele-dosage coding in Module 02; `ssr_raw` is retained for diagnostics of the original source.',
+              'en QC prose'
+          )
+          text = replace_once(
+              text,
+              'The figure shows the call rate of every locus relative to the minimum threshold.',
+              'The figure orders loci by call rate and places a horizontal line at 0.90. Color reports the final retention decision, which also depends on the number of genotype classes; therefore, a locus may lie above the call-rate line and still be removed because it lacks genotype variation.',
+              'en QC plot prose'
+          )
+
+          text = replace_once(
+              text,
+              'The amount of available SSR information is summarized for every individual.',
+              'The amount of available SSR information is summarized for every individual using the 35 original loci (`ssr_raw`). This diagnostic describes completeness of the received panel before locus filtering. No individual-exclusion threshold is applied in this tutorial; all 150 aligned individuals are preserved for subsequent stages.',
+              'en individual summary prose'
+          )
+          text = replace_once(
+              text,
+              '# Assemble the summary table presented in this section.',
+              '# Compute, across the original loci, the number and proportion of available calls per individual.',
+              'en individual comment'
+          )
+
+          text = replace_once(
+              text,
+              'Descriptive statistics allow direct inspection of the scale and variation of\nthe ten traits.',
+              'Descriptive statistics allow direct inspection of the scale, dispersion, and range of the ten traits before prediction models are fitted. `N` also confirms phenotype availability by trait. No permanent transformation or standardization of phenotypes is performed at this stage; original values are preserved for the models.',
+              'en phenotype summary prose'
+          )
+
+          text = replace_once(
+              text,
+              'Standardized values are used only as a descriptive diagnostic. An observation\nis highlighted when its absolute distance from the trait mean is at least\n`r PHENOTYPE_DISTANCE_THRESHOLD` standard deviations. Values are retained\nexactly as recorded in the original spreadsheet.',
+              'Standardized values are used only as a descriptive diagnostic. For each trait, the module calculates $z=(y-\\bar{y})/s$, where $\\bar{y}$ is the mean and $s$ is the sample standard deviation. An observation is highlighted when $|z|$ is at least `r PHENOTYPE_DISTANCE_THRESHOLD`. This threshold is intended to draw the reader\'s attention to values far from the mean, not to declare errors or statistical outliers. Values are retained exactly as recorded in the original spreadsheet and remain available to the models.',
+              'en extremes prose'
+          )
+          text = replace_once(
+              text,
+              '# Organize the phenotypes used in the analysis.\nphenotype_extremes <- phenotype_extremes[',
+              '# Sort only the diagnostic table; the `phenotypes` matrix remains unchanged.\nphenotype_extremes <- phenotype_extremes[',
+              'en extremes comment'
+          )
+
+          text = replace_once(
+              text,
+              'The next step organizes a tabular summary of the objects and results needed to interpret this section.',
+              'The dictionary links the codes used in the R objects to biological descriptions and measurement units. This is important because the ten traits are on different scales and the same codes are used throughout the modeling and results modules.',
+              'en dictionary prose'
+          )
+          text = replace_once(
+              text,
+              'The next step builds the corresponding visualization to support interpretation of the diagnostic.',
+              'The histograms complement the descriptive statistics by showing distribution shape. Twenty bins are used only to provide consistent visual resolution. Because `scales = "free"`, every trait receives its own horizontal scale; this makes within-trait shape easier to see, but axis limits should not be compared directly across panels.',
+              'en histogram prose'
+          )
+          text = replace_once(
+              text,
+              '  facet_wrap(~ Trait, scales = "free", ncol = 2) +',
+              '  # Give each trait its own horizontal scale because units and ranges differ.\n  facet_wrap(~ Trait, scales = "free", ncol = 2) +',
+              'en free scales comment'
+          )
+
+          text = replace_once(
+              text,
+              'The aligned phenotype matrix, SSR data, metadata, and summaries are gathered\ninto an object used to construct the genomic matrices in the next module.',
+              'The aligned phenotype matrix, SSR data, metadata, trait dictionary, and diagnostics are gathered in `preprocessing_object.rds`. This RDS file is the primary interface with Module 02 because it preserves object structures, names, and classes together.\n\nThe CSV files written in parallel are inspection-oriented tabular outputs: they allow alignment, locus quality, individual completeness, phenotype summaries, highlighted observations, and the trait dictionary to be examined without opening the RDS object. Parameters defining this stage are also recorded in `settings`.',
+              'en saving prose'
+          )
+          text = replace_once(
+              text,
+              'saveRDS(\n  preprocessing_object,',
+              '# Save the RDS object that is read directly by Module 02.\nsaveRDS(\n  preprocessing_object,',
+              'en RDS comment'
+          )
+          text = replace_once(
+              text,
+              '# Save the consolidated output for downstream use.\nwrite.csv(alignment,',
+              '# Export tabular diagnostics as CSV files for inspection independently of the RDS object.\nwrite.csv(alignment,',
+              'en CSV comment'
+          )
+
+          text = replace_once(
+              text,
+              'The final structure of this step can be inspected directly from the dimensions\nand counts below.',
+              'The final inventory collects the dimensions that should be checked before continuing: numbers of individuals and traits, loci before and after quality control, families, missing SSR calls, and phenotype observations highlighted only for inspection.',
+              'en final inventory prose'
+          )
+          text = replace_once(
+              text,
+              ') |>\n  kable(caption = "Final preprocessing summary")\n```\n\n## 10. Next step',
+              ') |>\n  kable(caption = "Final preprocessing summary")\n```\n\nThis summary should be read as a workflow checkpoint: individuals and phenotypes remain aligned, filtering acts on SSR loci rather than individuals, and the count of highlighted phenotype observations is diagnostic rather than an automatic exclusion rule.\n\n## 10. Next step',
+              'en final interpretation'
+          )
+
+          p.write_text(text, encoding='utf-8')
+
+          # Validate that executable R code is unchanged, while allowing added comments.
+          for lang, path in files.items():
+              after = executable_signature(path.read_text(encoding='utf-8'))
+              if before[lang] != after:
+                  raise RuntimeError(f'{path}: executable R code changed during editorial audit')
+
+          # Every R chunk must have explanatory prose before it. A paragraph must occur
+          # after the previous heading/chunk and before the chunk opener.
+          for path in files.values():
+              lines = path.read_text(encoding='utf-8').splitlines()
+              for i, line in enumerate(lines):
+                  if not re.match(r'^\s*```\{r(?:[\s,}]|$)', line):
+                      continue
+                  j = i - 1
+                  while j >= 0 and not lines[j].strip():
+                      j -= 1
+                  if j < 0 or lines[j].lstrip().startswith(('#', '```')):
+                      raise RuntimeError(f'{path}: chunk at line {i+1} lacks explanatory prose immediately before it')
+
+          print('PASS: Module 01 PT/EN refined with executable R code unchanged.')
+          PY
+
+          git diff --check
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse all Module 01 R chunks and inline expressions
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- c('analysis/01_preprocessing_pt.Rmd', 'analysis/01_preprocessing_en.Rmd')
+          n_chunks <- 0L
+          n_inline <- 0L
+
+          for (f in files) {
+            x <- readLines(f, warn=FALSE, encoding='UTF-8')
+            inside <- FALSE
+            prose <- character()
+
+            for (line in x) {
+              if (grepl('^\\s*```\\{r(?:[\\s,}]|$)', line, perl=TRUE)) {
+                inside <- TRUE
+                next
+              }
+              if (inside && grepl('^\\s*```\\s*$', line, perl=TRUE)) {
+                inside <- FALSE
+                next
+              }
+              if (!inside) prose <- c(prose, line)
+            }
+
+            inline <- unlist(regmatches(prose, gregexpr('`r [^`]+`', prose, perl=TRUE)))
+            if (length(inline)) {
+              for (expr in inline) {
+                parse(text=sub('^`r |`$', '', expr))
+                n_inline <- n_inline + 1L
+              }
+            }
+
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl=TRUE)
+            for (s in starts) {
+              e_rel <- which(grepl('^\\s*```\\s*$', x[(s+1L):length(x)], perl=TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e > s + 1L) x[(s+1L):(e-1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              parse(text=code)
+              n_chunks <- n_chunks + 1L
+            }
+          }
+
+          cat('Parsed Module 01 R chunks:', n_chunks, '\n')
+          cat('Parsed Module 01 inline R expressions:', n_inline, '\n')
+          RS
+
+      - name: Commit source refinement and remove temporary workflow
+        shell: bash
+        run: |
+          rm -f .github/workflows/final-m01-tutorial-audit.yml
+
+          python - <<'PY'
+          import subprocess
+          changed = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
+          expected = {
+              'analysis/01_preprocessing_pt.Rmd',
+              'analysis/01_preprocessing_en.Rmd',
+              '.github/workflows/final-m01-tutorial-audit.yml',
+          }
+          if changed != expected:
+              raise SystemExit(f'Unexpected changed files: {sorted(changed)}')
+          PY
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add -A
+          git commit -m "Refine Module 01 tutorial guidance"
+          git push origin HEAD:final-m01-tutorial-audit
