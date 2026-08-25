@@ -1,0 +1,80 @@
+name: Validate Module 02 didactic standard
+
+on:
+  push:
+    branches:
+      - didactic-m02-standard
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.event.head_commit.message == 'Validate Module 02 didactic standard'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: didactic-m02-standard
+          fetch-depth: 0
+
+      - name: Apply didactic refinement
+        run: python .github/m02_refine.py
+
+      - name: Validate scope and editorial rules
+        shell: bash
+        run: |
+          git diff --check
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [
+              Path('analysis/02_matrices_pt.Rmd'),
+              Path('analysis/02_matrices_en.Rmd'),
+          ]
+          forbidden = {
+              files[0]: [
+                  'O chunk oculto', 'o leitor', 'O primeiro chunk',
+                  'suppressPackageStartupMessages', 'conjunto canônico',
+                  'neste chunk', 'no chunk', 'contrato mínimo'
+              ],
+              files[1]: [
+                  'The hidden chunk', 'the reader', 'The first chunk',
+                  'suppressPackageStartupMessages', 'canonical dataset',
+                  'in this chunk', 'previous chunk', 'minimum phenotype-table contract'
+              ],
+          }
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              for phrase in forbidden[path]:
+                  if phrase.lower() in text.lower():
+                      raise SystemExit(f'Forbidden phrase remains in {path}: {phrase}')
+              if path.name.endswith('_pt.Rmd'):
+                  assert 'tabela_html <- function' in text
+                  assert 'href="01_preprocessing_pt.html"' in text
+                  assert 'href="03_models_pt.html"' in text
+                  assert not re.search(r'(?<!::)\bkable\(', text)
+              else:
+                  assert 'format_table <- function' in text
+                  assert 'href="01_preprocessing_en.html"' in text
+                  assert 'href="03_models_en.html"' in text
+                  assert not re.search(r'(?<!::)\bkable\(', text)
+          print('PASS: editorial rules and responsive-table standard.')
+          PY
+
+      - name: Commit Module 02 sources
+        shell: bash
+        run: |
+          changed=$(git diff --name-only)
+          expected=$'analysis/02_matrices_en.Rmd\nanalysis/02_matrices_pt.Rmd'
+          if [ "$changed" != "$expected" ]; then
+            echo "Unexpected changed files:"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          git config user.name "Weverton Gomes da Costa"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd
+          git commit -m "Apply clearer didactic standard to Module 02"
+          git push origin HEAD:didactic-m02-standard
