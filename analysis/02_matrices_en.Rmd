@@ -19,6 +19,8 @@ editor_options:
 github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
 ---
 
+The hidden chunk below defines only the rendering options shared by this page. It does not load analytical objects, construct matrices, or affect cross-validation.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -48,7 +50,11 @@ genotype panel and then held fixed. No validation phenotype enters these
 steps. This corresponds to a transductive candidate-genotype setting and
 should not be interpreted as external validation in a new genotype population.
 
+At the end of the module, the reader will have four components used directly in Module 03: the fixed-effect matrix `X`, the centered marker matrix `M`, the genomic relationship matrix `G`, and the `cv_folds` table identifying each individual's validation fold. Diagnostics throughout the page check whether allele coding, centering, genomic relationships, and family stratification are coherent with this design.
+
 ## 2. Packages and input object
+
+The first chunk loads only the packages required for object manipulation, tabular reshaping, figures, tables, and portable paths. No matrix is created at this stage.
 
 ```{r packages}
 suppressPackageStartupMessages({
@@ -100,7 +106,7 @@ trait_dictionary <- preprocessing$trait_dictionary
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
-The structure received from preprocessing is shown before marker coding.
+Before marker coding, the following table checks the structure received from Module 01: numbers of individuals and traits, loci before and after quality control, and families. It acts as a checkpoint between modules; no new filter is applied in this chunk.
 
 ```{r input-summary}
 # Summarize the dimensions and categories of the preprocessing object received by the module.
@@ -126,10 +132,9 @@ data.frame(
 
 ## 3. Allele-dosage coding
 
-Each SSR code contains two allele labels. For example, `12` represents one copy
-of allele 1 and one copy of allele 2, whereas `22` represents two copies of
-allele 2. One dosage column is created for every observed allele at each
-retained locus.
+Each SSR code contains two allele labels. For example, `12` represents one copy of allele 1 and one copy of allele 2, whereas `22` represents two copies of allele 2. For every observed allele at each retained locus, an individual's dosage is computed as the sum of two indicator functions, one for each allele position in the genotype. The resulting value is 0, 1, or 2 according to whether the individual carries zero, one, or two copies of that allele.
+
+One column is created for every locus–allele combination, and missing SSR calls remain `NA` until imputation. Before any allele-column filtering, dosages across all alleles at a diploid locus sum to 2 for every observed genotype. This property is later used as a coding diagnostic.
 
 ```{r allele-dosage-coding}
 # Organize marker information and compute the diagnostics required at this stage.
@@ -201,9 +206,9 @@ dosage_full_raw[1:6, 1:8]
 
 ## 4. Allele frequencies and retention of dosage columns
 
-Very rare allele columns provide little information in a small sample. Alleles
-with frequencies between 0.05 and 0.95 and nonzero dosage variation are
-retained.
+The frequency of an allele column is computed as the mean observed dosage divided by 2 because each diploid individual can contribute two copies of the allele. `NA` values are ignored here, so the frequency uses available genotype calls only.
+
+Columns are retained when frequency lies between 0.05 and 0.95 and dosage standard deviation is positive. The lower and upper limits are symmetric: they remove very rare alleles and nearly fixed columns, while `Dosage_sd > 0` guarantees observed variation. The filter acts on allele-dosage columns; it does not remove individuals.
 
 ```{r allele-frequency-control}
 # Compute dosage frequency and variability to retain informative allele columns.
@@ -254,7 +259,7 @@ kable(
 )
 ```
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The histogram shows where allele-column frequencies are concentrated. Vertical lines mark 0.05 and 0.95, and fill indicates the final retention decision, which also requires positive dosage variation. The 20 bins are only a visual-resolution choice and do not participate in filtering.
 
 ```{r allele-frequency-plot, fig.height=5}
 # Display the allele-frequency distribution and the thresholds used by the filter.
@@ -290,9 +295,9 @@ ggplot(
 
 ## 5. Marker matrix
 
-Missing dosages are replaced by the mean of the corresponding column. Each
-column is then centered by subtracting its mean. The resulting matrix is
-denoted by \(\mathbf M\).
+Missing dosages are replaced by the mean of the corresponding column computed from the full genotype panel. Because the same mean is subtracted during centering, a mean-imputed dosage becomes exactly zero in `M`: it represents no deviation from the column average rather than a new genotype class.
+
+The resulting matrix is denoted by \(\mathbf M\). Its columns are centered but are not standardized to unit variance. As defined in the objective, imputation uses genotype information from all 150 candidates; no validation phenotype enters this calculation.
 
 ```{r marker-matrix}
 # Impute missing dosages by column means, center the columns, and construct marker matrix M.
@@ -323,7 +328,7 @@ M_full <- sweep(
 )
 ```
 
-Some properties of `M` can be inspected directly.
+The summary of `M` checks four basic properties. Its row count should match the 150 candidates; its column count is the number of retained allele-dosage columns; its rank reveals linear dependencies among columns; and the maximum absolute column mean should be close to zero, confirming numerical centering.
 
 ```{r marker-matrix-summary}
 data.frame(
@@ -351,14 +356,17 @@ genomic relationship matrix is calculated as
 \]
 
 ```{r genomic-relationship-matrix}
+# Recover p_j from the dosage mean, which equals 2p_j.
 allele_frequencies_full <- marker_means_full / 2
 
+# Compute the VanRaden scaling from allele-column frequencies.
 denominator_full <- sum(
   2 *
     allele_frequencies_full *
     (1 - allele_frequencies_full)
 )
 
+# Convert cross-products of centered dosages into scaled genomic relationships.
 G_full <- tcrossprod(M_full) / denominator_full
 
 # Remove only numerical asymmetry.
@@ -373,7 +381,7 @@ eigenvalues_G_full <- eigen(
 )$values
 ```
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The denominator reports the scale used to construct `G`. The mean diagonal summarizes each individual's relationship with itself on this scale and is not forced to equal exactly 1. The symmetry difference should be close to zero. Because `G` is built from a cross-product, it is theoretically positive semidefinite; therefore, a slightly negative smallest eigenvalue, when limited to numerical precision, should be interpreted as rounding rather than evidence of negative relatedness.
 
 ```{r genomic-relationship-summary}
 # Build or check the matrices used for genomic prediction.
@@ -400,11 +408,12 @@ data.frame(
 
 ## 7. Fixed-effect matrix
 
-Family is the only categorical fixed effect. `model.matrix()` includes the
-intercept; in Module 03 this column is removed from `X` because BGLR already
-fits an intercept automatically.
+Family is the only categorical fixed effect. With `~ FAM`, `model.matrix()` uses R's default treatment contrasts: it creates an intercept and enough indicator columns to represent differences among family levels relative to a reference category. Thus, `X` incorporates family structure without treating `FAM` as a numeric variable.
+
+In Module 03, the intercept column is removed from `X` because BGLR already fits an intercept automatically; retaining both would duplicate the same constant effect.
 
 ```{r fixed-effect-matrix}
+# Build the design matrix for the tutorial's only categorical fixed effect.
 X <- model.matrix(
   ~ FAM,
   data = metadata
@@ -427,12 +436,12 @@ Family stratification targets prediction among individuals from the represented
 breeding population. It is not a leave-family-out design and therefore does
 not estimate predictive performance for entirely new families.
 
-The 150 individuals are divided into five validation groups. Individuals from
-each family are distributed evenly across folds, and a fixed seed preserves the
-same allocation across executions.
+The 150 individuals are divided into five validation groups of 30 individuals. The algorithm processes one family at a time: it shuffles family members, orders folds by their current total load, uses a random order only to break ties between equally loaded folds, cycles family members across those folds, and then updates the global load. This combines two goals: spreading each family across folds and keeping total fold sizes balanced.
+
+The fixed seed preserves exactly the same partition across executions. The same fold table is used for all ten traits and all methods, so differences among models cannot arise from different validation partitions.
 
 ```{r cross-validation-folds}
-# Build or summarize the cross-validation fold structure.
+# Initialize the stratified partition and track each fold's accumulated total load.
 set.seed(SEED_CV)
 
 family <- droplevels(metadata$FAM)
@@ -497,7 +506,7 @@ kable(
 )
 ```
 
-The family × fold table shows the resulting stratification directly.
+The family × fold table shows the resulting stratification directly. Within each family, counts should be as balanced as its sample size allows; `family_balance`, computed in the previous chunk, measures the difference between the largest and smallest count for that family. Because members are distributed cyclically, this difference is at most one individual for every family.
 
 ```{r families-by-fold}
 kable(
@@ -506,7 +515,7 @@ kable(
 )
 ```
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The heatmap displays the same family × fold table visually: every cell explicitly shows the number of individuals, while fill makes imbalances easier to spot. It is a diagnostic of the partition, not an additional measure of predictive performance.
 
 ```{r family-fold-plot, fig.height=7}
 # Reshape the family-by-fold table and build the individual-distribution figure.
@@ -534,10 +543,11 @@ ggplot(
 
 ## 9. Using the folds for model fitting
 
-The `cv_folds` table identifies which individuals will be masked in each
-validation round. `X`, `M`, and `G` remain fixed. For each trait and fold,
-Module 03 creates a copy of the phenotype vector and replaces the 30 validation
-phenotypes with `NA`.
+The `cv_folds` table identifies which individuals are masked in each validation round. For fold `k`, the 30 individuals with `Fold == k` have their phenotypes replaced by `NA`, while the other 120 provide training phenotypes. This procedure is repeated for every trait and method.
+
+`X`, `M`, and `G` remain fixed and include all 150 genotyped candidates, consistent with the transductive design defined at the start of the module. Consequently, every individual receives a prediction when its own phenotype is masked, producing an out-of-fold prediction downstream; this is not equivalent to predicting an external genotype population.
+
+The table below displays the first assignments after sorting by fold, family, and individual. It simply makes the structure of `cv_folds` concrete: the `Fold` column is the only information Module 03 uses to decide which phenotypes are masked in each validation round.
 
 ```{r fold-example}
 cv_folds |>
@@ -548,7 +558,7 @@ cv_folds |>
 
 ## 10. Genomic relationship heatmap
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The heatmap provides a full view of `G`: diagonal cells represent each individual's relationship with itself, whereas off-diagonal cells represent pairwise genomic relationships. Individuals remain in their original object order; no hierarchical clustering or reordering is applied to create visual blocks. Apparent patterns can therefore suggest relationship structure, but the figure is not a clustering or population-structure test.
 
 ```{r genomic-relationship-plot, fig.height=8}
 # Reshape G to long format and build the genomic-relationship heatmap.
@@ -578,14 +588,9 @@ ggplot(
 
 ## 11. Diagnostics of the constructed matrices
 
-All observed allele columns are retained to preserve a symmetric multiallelic
-representation. Because dosage columns within a locus are linearly dependent,
-individual allele coefficients are not interpreted in isolation; later modules
-focus on predictions and genomic values.
+All allele columns satisfying the declared filters are retained; no category is artificially discarded merely to force full rank. When all alleles at a locus remain represented, their dosages sum to 2 in each diploid individual and an exact linear dependency exists among those columns. Individual allele coefficients are therefore not interpreted in isolation; later modules focus on predictions and genomic values.
 
-Dependencies among allele columns from the same locus mean that the 72 dosage
-columns do not represent 72 independent dimensions. The summary below shows
-dimensions, ranks, and numerical properties of the matrices obtained.
+In the canonical dataset, the 72 dosage columns do not represent 72 independent dimensions. The diagnostic compares the observed rank of `M` with `sum(k_l - 1)`, where `k_l` is the number of retained allele columns at locus `l`; it also checks whether within-locus dosage still sums to 2, whether `M` is numerically centered, and whether `G` can be reconstructed from `M` and the same denominator. Symmetry, rank, diagonal, and smallest eigenvalue complete the numerical check of `G`.
 
 ```{r matrix-diagnostics}
 # Check dimensions, ranks, linear dependencies, and numerical properties of X, M, and G.
@@ -695,7 +700,7 @@ kable(
 
 ## 12. Saving matrices and folds
 
-The next step organizes and saves the generated outputs for use in the downstream modules.
+The `matrices_object.rds` file is the primary interface with Module 03: it gathers matrices, aligned phenotypes, metadata, frequencies, folds, and parameters in one object while preserving their classes. The CSV files are inspection-oriented outputs for checking fold allocation, sample-size summaries, allele-column audits, and the numerical inventory without opening the RDS object.
 
 ```{r save-matrix-objects}
 # Collect matrices, metadata, frequencies, and folds in the object persisted by the module.
@@ -724,12 +729,13 @@ matrices_object <- list(
   )
 )
 
+# Save the RDS object read directly by Module 03.
 saveRDS(
   matrices_object,
   file.path(OUTPUT_DIR, "matrices_object.rds")
 )
 
-# Save the consolidated output for downstream use.
+# Export tabular diagnostics as CSV files for inspection independently of the RDS object.
 write.csv(cv_folds, file.path(OUTPUT_DIR, "cv_folds.csv"), row.names = FALSE)
 write.csv(fold_summary, file.path(OUTPUT_DIR, "fold_summary.csv"), row.names = FALSE)
 write.csv(
