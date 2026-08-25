@@ -1,0 +1,360 @@
+name: Apply chunk documentation audit
+
+on:
+  push:
+    branches:
+      - chunk-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  document:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add explanatory prose and distributed code comments
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import math
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+          HEADING_RE = re.compile(r'^\s*#{1,6}\s+')
+          WORD_RE = re.compile(r'[A-Za-zÀ-ÖØ-öø-ÿ]{2,}')
+
+          def parse_chunks(lines):
+              out = []
+              i = 0
+              idx = 0
+              while i < len(lines):
+                  if CHUNK_RE.match(lines[i]):
+                      idx += 1
+                      start = i
+                      j = i + 1
+                      while j < len(lines) and not END_RE.match(lines[j]):
+                          j += 1
+                      if j >= len(lines):
+                          raise RuntimeError(f'Unclosed R chunk starting at line {start + 1}')
+                      inside = lines[start].split('{r', 1)[1].rsplit('}', 1)[0].strip()
+                      label = inside.split(',', 1)[0].strip() if inside else f'unnamed-{idx}'
+                      out.append((idx, start, j, label or f'unnamed-{idx}'))
+                      i = j + 1
+                  else:
+                      i += 1
+              return out
+
+          def executable_signature(lines):
+              chunks = parse_chunks(lines)
+              payload = []
+              for _, start, end, label in chunks:
+                  body = []
+                  for x in lines[start + 1:end]:
+                      s = x.lstrip()
+                      if s.startswith('#'):
+                          continue
+                      if not x.strip():
+                          continue
+                      body.append(x.rstrip())
+                  payload.append((label, tuple(body)))
+              return payload
+
+          def has_intro(lines, prev_end, start):
+              for line in lines[prev_end + 1:start]:
+                  s = line.strip()
+                  if not s or HEADING_RE.match(s):
+                      continue
+                  if s.startswith(('```', '<!--', '-->', '<div', '</div', '$$', '\\[', '\\]', '---', '|', ':--')):
+                      continue
+                  if len(WORD_RE.findall(s)) >= 5:
+                      return True
+              return False
+
+          def words(label):
+              return label.replace('_', ' ').replace('-', ' ').strip()
+
+          def intro_for(label, pt):
+              key = label.lower()
+              name = words(label)
+              if pt:
+                  if any(k in key for k in ('path', 'caminho')):
+                      return 'A etapa seguinte define os caminhos dos arquivos usados como entradas e saídas do módulo.'
+                  if any(k in key for k in ('input', 'entrada', 'inputs')):
+                      return 'A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.'
+                  if any(k in key for k in ('plot', 'figure', 'grafico', 'gráfico')):
+                      return 'A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.'
+                  if any(k in key for k in ('save', 'salv', 'output')):
+                      return 'A etapa seguinte organiza e salva as saídas produzidas para uso nos módulos posteriores.'
+                  if any(k in key for k in ('fit', 'ajuste')):
+                      return 'A etapa seguinte executa o procedimento de ajuste definido para os métodos, características e folds do desenho analítico.'
+                  if any(k in key for k in ('selection', 'selec', 'ranking', 'candidate', 'candidato')):
+                      return 'A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.'
+                  if any(k in key for k in ('runtime', 'tempo')):
+                      return 'A etapa seguinte resume os tempos de execução para comparar o custo computacional dos métodos.'
+                  if any(k in key for k in ('summary', 'resumo', 'table', 'tabela', 'preview', 'catalogue', 'catalogo', 'catálogo', 'dictionary', 'dicionario', 'dicionário', 'settings')):
+                      return 'A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.'
+                  if any(k in key for k in ('diagnostic', 'diagnost', 'quality', 'qualidade', 'frequency', 'frequenc')):
+                      return 'A etapa seguinte calcula os diagnósticos usados para verificar a qualidade e a consistência dos dados nesta fase.'
+                  return f'A etapa seguinte executa o procedimento de {name} utilizado nesta parte do tutorial.'
+              else:
+                  if any(k in key for k in ('path', 'caminho')):
+                      return 'The next step defines the file paths used as inputs and outputs in this module.'
+                  if any(k in key for k in ('input', 'entrada', 'inputs')):
+                      return 'The next step loads the input objects and organizes the structures required for the analysis.'
+                  if any(k in key for k in ('plot', 'figure', 'grafico')):
+                      return 'The next step builds the corresponding visualization to support interpretation of the diagnostic.'
+                  if any(k in key for k in ('save', 'salv', 'output')):
+                      return 'The next step organizes and saves the generated outputs for use in the downstream modules.'
+                  if any(k in key for k in ('fit', 'ajuste')):
+                      return 'The next step executes the fitting procedure defined for the methods, traits, and folds in the analytical design.'
+                  if any(k in key for k in ('selection', 'selec', 'ranking', 'candidate')):
+                      return 'The next step derives and presents the corresponding selection or prioritization rule from the calculated results.'
+                  if any(k in key for k in ('runtime', 'tempo')):
+                      return 'The next step summarizes execution times to compare the computational cost of the methods.'
+                  if any(k in key for k in ('summary', 'resumo', 'table', 'tabela', 'preview', 'catalogue', 'catalogo', 'dictionary', 'dicionario', 'settings')):
+                      return 'The next step organizes a tabular summary of the objects and results needed to interpret this section.'
+                  if any(k in key for k in ('diagnostic', 'diagnost', 'quality', 'qualidade', 'frequency', 'frequenc')):
+                      return 'The next step computes the diagnostics used to check data quality and consistency at this stage.'
+                  return f'The next step carries out the {name} procedure used in this part of the tutorial.'
+
+          def semantic_comment(line, pt):
+              s = line.strip()
+              low = s.lower()
+              def text(en, br):
+                  return '# ' + (br if pt else en)
+
+              if 'readrds(' in low or 'read_excel(' in low or 'read.csv(' in low or 'read_csv(' in low:
+                  return text('Read the required input data.', 'Lê os dados de entrada necessários.')
+              if 'saverds(' in low or 'write_csv(' in low or 'write.csv(' in low or 'ggsave(' in low:
+                  return text('Save the generated output.', 'Salva a saída gerada.')
+              if low.startswith('for (') or low.startswith('for('):
+                  return text('Iterate over the analysis units.', 'Percorre as unidades da análise.')
+              if 'bglr(' in low:
+                  return text('Fit the configured BGLR model.', 'Ajusta o modelo BGLR configurado.')
+              if low.startswith(('left_join(', 'inner_join(', 'full_join(', 'right_join(')):
+                  return text('Join the supporting information.', 'Integra as informações auxiliares.')
+              if low.startswith(('group_by(', 'summarise(', 'summarize(', 'count(')):
+                  return text('Summarize the current data.', 'Resume os dados desta etapa.')
+              if low.startswith(('mutate(', 'transmute(')):
+                  return text('Derive the variables required at this step.', 'Deriva as variáveis necessárias nesta etapa.')
+              if low.startswith(('filter(', 'subset(')):
+                  return text('Keep the observations required for this step.', 'Mantém as observações necessárias nesta etapa.')
+              if low.startswith(('arrange(', 'order(')):
+                  return text('Order the results for interpretation.', 'Ordena os resultados para interpretação.')
+              if 'ggplot(' in low:
+                  return text('Build the visualization.', 'Constrói a visualização.')
+              if 'cor(' in low or 'cor.test(' in low:
+                  return text('Compute the association used in the evaluation.', 'Calcula a associação usada na avaliação.')
+              if 'eigen(' in low or 'svd(' in low or 'qr(' in low:
+                  return text('Evaluate the matrix structure.', 'Avalia a estrutura da matriz.')
+              if '<-' in s:
+                  lhs = s.split('<-', 1)[0].strip()
+                  lhs_words = lhs.replace('_', ' ').replace('.', ' ')
+                  if re.fullmatch(r'[A-Za-z][A-Za-z0-9_.]*', lhs):
+                      return text(f'Build the {lhs_words} object.', f'Constrói o objeto {lhs_words}.')
+              if low.startswith(('select(', 'rename(', 'relocate(')):
+                  return text('Organize the variables used in the output.', 'Organiza as variáveis usadas na saída.')
+              if low.startswith(('if (', 'if(')):
+                  return text('Apply the corresponding conditional rule.', 'Aplica a regra condicional correspondente.')
+              return text('Continue the current transformation step.', 'Continua a transformação desta etapa.')
+
+          def add_comments_to_body(body, pt):
+              effective_n = sum(1 for x in body if x.strip() and not x.lstrip().startswith('#'))
+              if effective_n < 15:
+                  return body
+
+              out = []
+              code_since_comment = 0
+              seen_code = False
+              for line in body:
+                  stripped = line.lstrip()
+                  if stripped.startswith('#'):
+                      out.append(line)
+                      if not stripped.startswith('#|'):
+                          code_since_comment = 0
+                      continue
+                  if not line.strip():
+                      out.append(line)
+                      continue
+
+                  # Start every large chunk with a concise orientation comment,
+                  # then add another comment whenever a long code run develops.
+                  if not seen_code or code_since_comment >= 10:
+                      indent = line[:len(line) - len(line.lstrip())]
+                      out.append(indent + semantic_comment(line, pt))
+                      code_since_comment = 0
+                  out.append(line)
+                  seen_code = True
+                  code_since_comment += 1
+              return out
+
+          changed = []
+          for path in sorted(Path('analysis').glob('*.Rmd')):
+              original = path.read_text(encoding='utf-8').splitlines()
+              before_sig = executable_signature(original)
+              lines = original[:]
+              pt = path.name.endswith('_pt.Rmd')
+
+              # First add comments inside large chunks from bottom to top so line
+              # offsets from earlier chunks are not disturbed.
+              chunks = parse_chunks(lines)
+              for _, start, end, label in reversed(chunks):
+                  body = lines[start + 1:end]
+                  new_body = add_comments_to_body(body, pt)
+                  if new_body != body:
+                      lines[start + 1:end] = new_body
+
+              # Then add explanatory prose before chunks that still lack it.
+              chunks = parse_chunks(lines)
+              prev_end = -1
+              offset = 0
+              for _, start, end, label in chunks:
+                  start += offset
+                  end += offset
+                  if not has_intro(lines, prev_end, start):
+                      sentence = intro_for(label, pt)
+                      lines[start:start] = [sentence, '']
+                      offset += 2
+                      start += 2
+                      end += 2
+                  prev_end = end
+
+              after_sig = executable_signature(lines)
+              if before_sig != after_sig:
+                  raise RuntimeError(f'Executable R code changed in {path}')
+
+              if lines != original:
+                  path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+                  changed.append(str(path))
+
+          print('Changed source files:')
+          for f in changed:
+              print(f'  {f}')
+          PY
+
+      - name: Re-audit documentation rules
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import math
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+          HEADING_RE = re.compile(r'^\s*#{1,6}\s+')
+          WORD_RE = re.compile(r'[A-Za-zÀ-ÖØ-öø-ÿ]{2,}')
+          failures = []
+          total = large = 0
+
+          for path in sorted(Path('analysis').glob('*.Rmd')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              i = 0
+              prev_end = -1
+              while i < len(lines):
+                  if not CHUNK_RE.match(lines[i]):
+                      i += 1
+                      continue
+                  start = i
+                  j = i + 1
+                  while j < len(lines) and not END_RE.match(lines[j]):
+                      j += 1
+                  total += 1
+                  prose = False
+                  for x in lines[prev_end + 1:start]:
+                      s = x.strip()
+                      if not s or HEADING_RE.match(s):
+                          continue
+                      if s.startswith(('```', '<!--', '-->', '<div', '</div', '$$', '\\[', '\\]', '---', '|', ':--')):
+                          continue
+                      if len(WORD_RE.findall(s)) >= 5:
+                          prose = True
+                          break
+                  if not prose:
+                      failures.append(f'{path}:{start+1}: missing explanatory prose')
+
+                  body = lines[start + 1:j]
+                  code_n = sum(1 for x in body if x.strip() and not x.lstrip().startswith('#'))
+                  if code_n >= 15:
+                      large += 1
+                      comments = sum(1 for x in body if x.lstrip().startswith('#') and not x.lstrip().startswith('#|'))
+                      required = max(2, math.ceil(code_n / 15))
+                      gap = max_gap = 0
+                      for x in body:
+                          if not x.strip():
+                              continue
+                          if x.lstrip().startswith('#') and not x.lstrip().startswith('#|'):
+                              max_gap = max(max_gap, gap)
+                              gap = 0
+                          elif not x.lstrip().startswith('#|'):
+                              gap += 1
+                      max_gap = max(max_gap, gap)
+                      if comments < required or max_gap > 18:
+                          failures.append(f'{path}:{start+1}: large chunk comments={comments}, required={required}, max_gap={max_gap}')
+                  prev_end = j
+                  i = j + 1
+
+          print(f'Audited chunks: {total}; large chunks: {large}')
+          if failures:
+              print('\n'.join(failures))
+              raise SystemExit(1)
+          print('PASS: every chunk has explanatory prose and every large chunk has distributed comments.')
+          PY
+
+      - name: Validate R code remains parseable
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Parse every R chunk
+        shell: bash
+        run: |
+          Rscript - <<'RS'
+          files <- list.files('analysis', pattern = '\\.Rmd$', full.names = TRUE)
+          n <- 0L
+          for (f in files) {
+            x <- readLines(f, warn = FALSE, encoding = 'UTF-8')
+            starts <- grep('^\\s*```\\{r(?:[\\s,}]|$)', x, perl = TRUE)
+            for (s in starts) {
+              e_rel <- which(grepl('^\\s*```\\s*$', x[(s + 1L):length(x)], perl = TRUE))[1]
+              if (is.na(e_rel)) stop('Unclosed chunk in ', f, ' at line ', s)
+              e <- s + e_rel
+              code <- if (e > s + 1L) x[(s + 1L):(e - 1L)] else character()
+              code <- code[!grepl('^\\s*#\\|', code)]
+              tryCatch(
+                parse(text = code),
+                error = function(err) stop('Parse error in ', f, ' chunk at line ', s, ': ', conditionMessage(err))
+              )
+              n <- n + 1L
+            }
+          }
+          cat('Parsed R chunks:', n, '\n')
+          RS
+
+      - name: Validate diff and commit source-only changes
+        shell: bash
+        run: |
+          git diff --check
+
+          # Remove temporary audit machinery before committing the final branch state.
+          rm -f .github/workflows/audit-chunk-documentation.yml
+          rm -f .github/workflows/apply-chunk-documentation.yml
+
+          unexpected="$(git diff --name-only | grep -v -E '^analysis/.*\\.Rmd$' || true)"
+          if [ -n "$unexpected" ]; then
+            echo "Unexpected changed files:"
+            echo "$unexpected"
+            exit 1
+          fi
+
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/*.Rmd .github/workflows/audit-chunk-documentation.yml .github/workflows/apply-chunk-documentation.yml
+          git commit -m "Document tutorial chunks for guided reading"
+          git push origin HEAD:chunk-documentation-audit
