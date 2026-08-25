@@ -17,6 +17,8 @@ editor_options:
 github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
 ---
 
+The hidden chunk below defines only the rendering options shared by this page. It does not read data, modify analytical objects, or execute any preprocessing step.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -36,10 +38,13 @@ identifiers are organized, SSR missing-value codes are converted to `NA`,
 phenotypes are aligned with genotypes, and SSR loci are subjected to quality
 control.
 
-The block column (`BL`) is removed because it is not part of the statistical
-model. Family (`FAM`) is retained for later use as a fixed effect.
+The block column (`BL`) is removed because it is not part of the statistical model defined for this tutorial. Family (`FAM`) is preserved because it will be used both in the fixed-effect matrix and to stratify the cross-validation folds in Module 02. No individual is removed in this module.
+
+At the end of this stage, the reader will have three central objects: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics produced throughout the page are used to verify that these objects are ready for genomic-matrix construction.
 
 ## 2. Packages and file paths
+
+The first chunk loads only the packages required for spreadsheet reading, data manipulation, figures, tables, and portable paths. Package startup messages are suppressed so that the page remains focused on the analytical steps.
 
 ```{r packages}
 suppressPackageStartupMessages({
@@ -54,7 +59,7 @@ suppressPackageStartupMessages({
 
 The next step defines the file paths used as inputs and outputs in this module. These paths only organize data reading and result persistence and are not statistical parameters.
 
-Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available; together with the requirement of at least two genotype classes, this avoids retaining loci with insufficient information. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.
+Two control parameters are fixed here. `CALL_RATE_MIN = 0.90` requires at least 90% of the calls at a locus to be available. Because the panel contains 150 individuals, this corresponds to at least 135 observed genotypes per locus. Together with the requirement of at least two genotype classes, the criterion avoids retaining loci with insufficient information to represent variation. `PHENOTYPE_DISTANCE_THRESHOLD = 4` flags, only for inspection, observations at least four standard deviations from the trait mean. This is a diagnostic rule: no phenotype is removed, winsorized, or otherwise altered by this threshold.
 
 ```{r paths}
 # Define the two input files and the directory where preprocessing outputs are stored.
@@ -72,12 +77,12 @@ dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 ## 3. Reading the original spreadsheets
 
-The genotype workbook uses the `Genes` sheet for numerical SSR codes and the
-`Genealex` sheet for individual and locus identifiers. Phenotypes are read from
-the `Médias_IND_artigo` sheet.
+The genotype workbook uses the `Genes` sheet for numerical SSR codes and the `Genealex` sheet for individual and locus identifiers. These two sheets are read without column names because they contain metadata rows specific to the source format; the identifier positions are handled explicitly in the next section. Phenotypes are read from the `Médias_IND_artigo` sheet, which already contains column names.
+
+The `BL` column is removed immediately after phenotype reading so that block is not propagated into analytical objects. The table displayed at the end of the chunk allows the dimensions of all three sources to be checked before alignment.
 
 ```{r read-data}
-# Load the genotype and phenotype workbooks used by the preprocessing module.
+# Read `Genes` without column names because the sheet contains source-format metadata rows.
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -85,6 +90,7 @@ genes <- read_excel(
   na = c("", "NA")
 )
 
+# Read `Genealex` without column names; identifiers are extracted by position in the next section.
 genealex <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genealex",
@@ -92,6 +98,7 @@ genealex <- read_excel(
   na = c("", "NA")
 )
 
+# Read phenotypes with their column names and remove BL before alignment.
 pheno_raw <- read_excel(
   PHENOTYPE_FILE,
   sheet = "Médias_IND_artigo",
@@ -115,18 +122,20 @@ data.frame(
 
 ## 4. Organizing the SSR data
 
-The first column of `Genes` identifies population groups and the remaining
-columns contain the 35 SSR loci. Individual and locus identifiers are obtained
-from `Genealex`. Missing SSR calls coded as `-9` are converted to `NA`.
+The first column of `Genes` contains a sequential population-group index and does not represent the phenotype variable `FAM`; it is therefore excluded from the marker matrix. The remaining 35 columns correspond to the original SSR loci.
+
+In `Genealex`, individual identifiers begin on row 4 of column 2, whereas locus names occur on row 3 in alternating columns beginning with column 3. The expressions `4:(3 + n_individuals)` and `seq(3, 2 + 2 * n_loci, by = 2)` translate this source-file layout directly. Identifiers are kept as text — which preserves alphanumeric codes — and surrounding spaces are removed with `trimws()`. Finally, missing SSR calls coded as `-9` are converted to `NA` so that R functions recognize them as missing data.
 
 ```{r organize-ssr}
-# Organize marker information and compute the diagnostics required at this stage.
+# Obtain panel dimensions from `Genes`; its first column is not an SSR locus.
 n_individuals <- nrow(genes)
 n_loci <- ncol(genes) - 1
 
+# Translate the `Genealex` layout: individuals start on row 4 and loci occupy alternating columns.
 individual_rows <- 4:(3 + n_individuals)
 locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)
 
+# Keep identifiers as text to preserve alphanumeric codes.
 ids <- trimws(
   as.character(genealex[[2]][individual_rows])
 )
@@ -142,6 +151,7 @@ ssr_raw <- as.matrix(
 )
 
 storage.mode(ssr_raw) <- "numeric"
+# Convert the original missing-value code to R's standard missing value.
 ssr_raw[ssr_raw == -9] <- NA_real_
 
 rownames(ssr_raw) <- ids
@@ -153,9 +163,9 @@ ssr_raw[1:6, 1:8]
 
 ## 5. Organizing and aligning phenotypes
 
-Ten traits are used. The phenotype table is reordered according to the SSR
-identifiers so that every phenotype row corresponds to the same plant in the
-genotype matrix.
+Ten traits are used. Before the final objects are built, the module checks whether required columns are present, searches for missing or duplicated identifiers, and compares the sets of genotyped and phenotyped individuals. For the canonical dataset, these checks should indicate complete correspondence between the two sources.
+
+The phenotype table is then reordered with `match()` according to the SSR identifiers so that every phenotype row corresponds to the same plant in the genotype matrix. `FAM` is converted to a factor to represent the categorical variable used in Module 02, while the ten traits are collected in a numeric matrix.
 
 ```{r organize-phenotypes}
 # Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.
@@ -164,11 +174,13 @@ TRAITS <- c(
   "DCI", "EP", "FFC", "FFP", "SS"
 )
 
+# Define the minimum phenotype-table contract before alignment.
 required_columns <- c("IND", "FAM", TRAITS)
 missing_columns <- setdiff(required_columns, names(pheno_raw))
 
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
 
+# Compare identifier sets in both sources before reordering rows.
 missing_in_pheno <- setdiff(ids, pheno_raw$IND)
 missing_in_geno <- setdiff(pheno_raw$IND, ids)
 
@@ -234,12 +246,14 @@ for (trait in TRAITS) {
   )
 }
 
+# Separate metadata; FAM remains categorical and is not mixed with numeric phenotypes.
 metadata <- data.frame(
   IND = pheno$IND,
   FAM = factor(pheno$FAM),
   row.names = pheno$IND
 )
 
+# Build the numeric phenotype matrix in the same order as genotyped individuals.
 phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
@@ -254,9 +268,9 @@ data.frame(
 
 ## 6. Marker quality control
 
-For each locus, the call rate and number of observed genotype classes are
-calculated. A locus is retained when its call rate is at least 0.90 and at
-least two genotype classes are observed.
+For each locus, the call rate — the proportion of the 150 individuals with an observed genotype — and the number of distinct genotype classes are calculated. A locus is retained when its call rate is at least 0.90 (at least 135 observed calls) and at least two genotype classes are present. The second criterion removes loci with no observable variation in the panel even when their call rate is high.
+
+The table makes it possible to identify which criterion determined retention or removal for each locus. The `ssr` matrix created at the end contains only loci passed to allele-dosage coding in Module 02; `ssr_raw` is retained for diagnostics of the original source.
 
 ```{r marker-quality-control}
 # Compute call rate and genotype-class diversity to decide which SSR loci are retained.
@@ -296,7 +310,7 @@ kable(
 )
 ```
 
-The figure shows the call rate of every locus relative to the minimum threshold.
+The figure orders loci by call rate and places a horizontal line at 0.90. Color reports the final retention decision, which also depends on the number of genotype classes; therefore, a locus may lie above the call-rate line and still be removed because it lacks genotype variation.
 
 ```{r marker-quality-plot, fig.height=7}
 # Build the locus call-rate figure and highlight the minimum quality-control threshold.
@@ -326,10 +340,10 @@ ggplot(
 
 ## 7. Summary of genotype information
 
-The amount of available SSR information is summarized for every individual.
+The amount of available SSR information is summarized for every individual using the 35 original loci (`ssr_raw`). This diagnostic describes completeness of the received panel before locus filtering. No individual-exclusion threshold is applied in this tutorial; all 150 aligned individuals are preserved for subsequent stages.
 
 ```{r individual-summary}
-# Assemble the summary table presented in this section.
+# Compute, across the original loci, the number and proportion of available calls per individual.
 individual_audit <- data.frame(
   IND = rownames(ssr_raw),
   N_called = rowSums(!is.na(ssr_raw)),
@@ -358,8 +372,7 @@ kable(
 
 ## 8. Summary of phenotype traits
 
-Descriptive statistics allow direct inspection of the scale and variation of
-the ten traits.
+Descriptive statistics allow direct inspection of the scale, dispersion, and range of the ten traits before prediction models are fitted. `N` also confirms phenotype availability by trait. No permanent transformation or standardization of phenotypes is performed at this stage; original values are preserved for the models.
 
 ```{r phenotype-summary}
 # Compute descriptive statistics to characterize phenotype scale and variability.
@@ -394,10 +407,7 @@ kable(
 
 ### 8.1 Phenotype observations far from the mean
 
-Standardized values are used only as a descriptive diagnostic. An observation
-is highlighted when its absolute distance from the trait mean is at least
-`r PHENOTYPE_DISTANCE_THRESHOLD` standard deviations. Values are retained
-exactly as recorded in the original spreadsheet.
+Standardized values are used only as a descriptive diagnostic. For each trait, the module calculates $z=(y-\bar{y})/s$, where $\bar{y}$ is the mean and $s$ is the sample standard deviation. An observation is highlighted when $|z|$ is at least `r PHENOTYPE_DISTANCE_THRESHOLD`. This threshold is intended to draw the reader's attention to values far from the mean, not to declare errors or statistical outliers. Values are retained exactly as recorded in the original spreadsheet and remain available to the models.
 
 ```{r distant-phenotype-values}
 # Standardize phenotypes and identify observations beyond the defined distance threshold.
@@ -432,7 +442,7 @@ phenotype_extremes <- data.frame(
   )
 )
 
-# Organize the phenotypes used in the analysis.
+# Sort only the diagnostic table; the `phenotypes` matrix remains unchanged.
 phenotype_extremes <- phenotype_extremes[
   order(-phenotype_extremes$Absolute_standardized_distance),
 ]
@@ -461,7 +471,7 @@ kable(
 
 ### 8.2 Trait dictionary
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The dictionary links the codes used in the R objects to biological descriptions and measurement units. This is important because the ten traits are on different scales and the same codes are used throughout the modeling and results modules.
 
 ```{r trait-dictionary}
 # Associate each trait with its English and Portuguese descriptions and measurement unit.
@@ -507,7 +517,7 @@ kable(
 )
 ```
 
-The next step builds the corresponding visualization to support interpretation of the diagnostic.
+The histograms complement the descriptive statistics by showing distribution shape. Twenty bins are used only to provide consistent visual resolution. Because `scales = "free"`, every trait receives its own horizontal scale; this makes within-trait shape easier to see, but axis limits should not be compared directly across panels.
 
 ```{r phenotype-plot, fig.height=8}
 # Reshape the phenotype matrix to long format before plotting trait distributions.
@@ -526,6 +536,7 @@ phenotype_long <- data.frame(
 ggplot(phenotype_long, aes(x = Value)) +
   # Use 20 bins only to standardize the visual resolution of the histograms.
   geom_histogram(bins = 20) +
+  # Give each trait its own horizontal scale because units and ranges differ.
   facet_wrap(~ Trait, scales = "free", ncol = 2) +
   labs(
     x = "Observed value",
@@ -537,8 +548,9 @@ ggplot(phenotype_long, aes(x = Value)) +
 
 ## 9. Saving preprocessing results
 
-The aligned phenotype matrix, SSR data, metadata, and summaries are gathered
-into an object used to construct the genomic matrices in the next module.
+The aligned phenotype matrix, SSR data, metadata, trait dictionary, and diagnostics are gathered in `preprocessing_object.rds`. This RDS file is the primary interface with Module 02 because it preserves object structures, names, and classes together.
+
+The CSV files written in parallel are inspection-oriented tabular outputs: they allow alignment, locus quality, individual completeness, phenotype summaries, highlighted observations, and the trait dictionary to be examined without opening the RDS object. Parameters defining this stage are also recorded in `settings`.
 
 ```{r save-results}
 # Collect settings, results, and diagnostics in the final module object.
@@ -561,12 +573,13 @@ preprocessing_object <- list(
   )
 )
 
+# Save the RDS object that is read directly by Module 02.
 saveRDS(
   preprocessing_object,
   file.path(OUTPUT_DIR, "preprocessing_object.rds")
 )
 
-# Save the consolidated output for downstream use.
+# Export tabular diagnostics as CSV files for inspection independently of the RDS object.
 write.csv(alignment, file.path(OUTPUT_DIR, "alignment_summary.csv"), row.names = FALSE)
 write.csv(locus_audit, file.path(OUTPUT_DIR, "locus_audit.csv"), row.names = FALSE)
 write.csv(individual_audit, file.path(OUTPUT_DIR, "individual_audit.csv"), row.names = FALSE)
@@ -579,8 +592,7 @@ write.csv(
 write.csv(trait_dictionary, file.path(OUTPUT_DIR, "trait_dictionary.csv"), row.names = FALSE)
 ```
 
-The final structure of this step can be inspected directly from the dimensions
-and counts below.
+The final inventory collects the dimensions that should be checked before continuing: numbers of individuals and traits, loci before and after quality control, families, missing SSR calls, and phenotype observations highlighted only for inspection.
 
 ```{r final-summary}
 # Summarize final dimensions and counts of missing or highlighted observations from preprocessing.
@@ -607,6 +619,8 @@ data.frame(
 ) |>
   kable(caption = "Final preprocessing summary")
 ```
+
+This summary should be read as a workflow checkpoint: individuals and phenotypes remain aligned, filtering acts on SSR loci rather than individuals, and the count of highlighted phenotype observations is diagnostic rather than an automatic exclusion rule.
 
 ## 10. Next step
 
