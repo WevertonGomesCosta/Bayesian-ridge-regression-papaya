@@ -80,7 +80,7 @@ The dimensions of the three input tables show the coverage of the fitted
 analysis before the following derivations.
 
 ```{r input-summary}
-# Assemble the summary table presented in this section.
+# Summarize the dimensions and categories of the preprocessing object received by the module.
 data.frame(
   Output = c(
     "Trait × fold × method metrics",
@@ -92,7 +92,7 @@ data.frame(
     nrow(predictions),
     nrow(convergence)
   ),
-  # Record the `Traits` values that complete this structure.
+  # Count how many traits are represented in each input table.
   Traits = c(
     n_distinct(metrics$Trait),
     n_distinct(predictions$Trait),
@@ -195,7 +195,7 @@ model_comparison <- pooled_metrics |>
     log_weight = -0.5 * Delta_DIC,
     stable_weight = exp(log_weight - max(log_weight)),
     Wprob = stable_weight / sum(stable_weight),
-    # Define the `ER` values used in this structure.
+    # Compute the evidence ratio relative to the method with the largest Wprob in each trait.
     ER = max(Wprob) / Wprob
   ) |>
   ungroup() |>
@@ -247,7 +247,7 @@ The method with the best OOF predictive performance and the method with the
 smallest mean DIC are first identified separately for every trait.
 
 ```{r selection-winners}
-# Derive selection rankings or summaries from the predictive results.
+# Define the DIC threshold and identify the predictive and DIC winners for each trait.
 DIC_COMPETITIVE_THRESHOLD <- 2
 N_FOLDS <- matrices_object$settings$n_folds
 
@@ -336,7 +336,7 @@ folds, these standard errors are descriptive tolerances and are not interpreted
 as independent-sample inferential standard errors.
 
 ```{r selection-competitive-set}
-# Derive selection rankings or summaries from the predictive results.
+# Combine performance, DIC, and MCMC diagnostics to define the competitive set for each trait.
 model_selection_support <- model_comparison |>
   left_join(
     convergence_by_trait_method,
@@ -445,7 +445,7 @@ automatic_selections <- model_selection_support |>
   )
 
 # Final choice before attaching the selected method's metrics.
-# Derive the structure used to prioritize or summarize candidates.
+# Apply RR-BLUP priority within the automatic set and define the selected method.
 selection_spec <- predictive_winners |>
   select(Trait, Predictive_winner) |>
   left_join(automatic_selections, by = "Trait") |>
@@ -469,7 +469,7 @@ selection_spec <- predictive_winners |>
         RRBLUP_automatic_candidate,
         Convergence_review
       ),
-    # Record the `by` values that complete this structure.
+    # Match the selected method to the support table to append the indicators used in the decision.
     by = c("Trait", "Selected_method" = "Method")
   ) |>
   mutate(
@@ -590,7 +590,7 @@ selection gate.
 model_selection <- selection_spec |>
   left_join(
     selected_performance,
-    # Record the `by` values that complete this structure.
+    # Join selected-method performance using trait and method as keys.
     by = c("Trait", "Selected_method")
   ) |>
   left_join(predictive_winners, by = "Trait") |>
@@ -614,7 +614,7 @@ model_selection <- selection_spec |>
   ) |>
   arrange(match(Trait, traits))
 
-# Define the path or location associated with `oof_direction_summary`.
+# Count how many traits have positive or nonpositive OOF correlation.
 oof_direction_summary <- model_selection |>
   count(OOF_predictive_direction, name = "Traits") |>
   arrange(OOF_predictive_direction)
@@ -728,7 +728,7 @@ rrblup_heritability_by_fold <- rrblup_variance_components |>
   ) |>
   arrange(match(Trait, traits), Fold)
 
-# Summarize the results in `rrblup_heritability_summary`.
+# Retrieve the heritability summary derived in M04.
 rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   group_by(Trait) |>
   summarise(
@@ -761,7 +761,7 @@ Selection direction is applied to the genomic value only when the ranking is
 constructed. The original genomic value remains unchanged.
 
 ```{r selected-oof-genomic-values}
-# Build or check the matrices used for genomic prediction.
+# Define the desired selection direction and link OOF genomic values to the selected method for each trait.
 selection_objective_map <- c(
   MMCOM = "increase",
   PRODCOM = "increase",
@@ -828,7 +828,7 @@ configurable tutorial rule, not an estimated optimal selection intensity. For
 traits whose objective is to decrease, the score is the negative genomic value.
 
 ```{r genomic-ranking}
-# Build or check the matrices used for genomic prediction.
+# Orient genomic values by the selection objective and rank individuals within each trait.
 genomic_ranking <- selected_oof_genomic_values |>
   mutate(
     Selection_score = case_when(
@@ -843,14 +843,14 @@ genomic_ranking <- selected_oof_genomic_values |>
   ungroup() |>
   arrange(match(Trait, traits), Rank)
 
-# Derive the structure used to prioritize or summarize candidates.
+# Define the candidate proportion displayed in each exploratory ranking.
 SELECTION_PROPORTION <- 0.20
 
 positive_oof_traits <- model_selection |>
   filter(OOF_predictive_direction == "positive") |>
   pull(Trait)
 
-# Derive the structure used to prioritize or summarize candidates.
+# Compute how many individuals compose the prioritized proportion in each positive-OOF trait.
 selection_sizes <- genomic_ranking |>
   filter(Trait %in% positive_oof_traits) |>
   count(Trait, name = "N_available") |>
@@ -863,7 +863,7 @@ selection_sizes <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits))
 
-# Summarize the results in `selection_cutoff_summary`.
+# Record the cutoff score and genomic-value interval corresponding to each ranking.
 selection_cutoff_summary <- genomic_ranking |>
   filter(Trait %in% positive_oof_traits) |>
   inner_join(
@@ -958,7 +958,7 @@ recurrence_counts <- selected_individuals_by_trait |>
     .groups = "drop"
   )
 
-# Derive the structure used to prioritize or summarize candidates.
+# Join recurrence counts to metadata and compute recurrence frequency and class.
 multitrait_recurrence <- matrices_object$metadata |>
   select(IND, FAM) |>
   left_join(recurrence_counts, by = c("IND", "FAM")) |>
@@ -984,7 +984,7 @@ multitrait_recurrence <- matrices_object$metadata |>
   ) |>
   arrange(desc(N_traits), FAM, IND)
 
-# Derive the structure used to prioritize or summarize candidates.
+# Summarize how many individuals belong to each recurrence class.
 recurrence_distribution <- multitrait_recurrence |>
   count(N_traits, Recurrence_class, name = "N_individuals") |>
   mutate(
@@ -993,7 +993,7 @@ recurrence_distribution <- multitrait_recurrence |>
   ) |>
   arrange(desc(N_traits))
 
-# Derive the structure used to prioritize or summarize candidates.
+# Reshape trait-specific ranks to one row per recurrent candidate.
 candidate_rank_wide <- selected_individuals_by_trait |>
   semi_join(
     multitrait_recurrence |>
@@ -1007,7 +1007,7 @@ candidate_rank_wide <- selected_individuals_by_trait |>
     names_glue = "{Trait}_rank"
   )
 
-# Derive the structure used to prioritize or summarize candidates.
+# Retain candidates recurring in at least two traits and attach their trait-specific ranks.
 multitrait_candidates <- multitrait_recurrence |>
   filter(N_traits >= 2L) |>
   left_join(candidate_rank_wide, by = c("IND", "FAM")) |>
@@ -1045,7 +1045,7 @@ kable(
 The next step organizes and saves the generated outputs for use in the downstream modules.
 
 ```{r save-results}
-# Collect settings, results, and diagnostics in the final module object.
+# Save the tables derived by the module before assembling the consolidated RDS object.
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
 write.csv(model_selection_support, file.path(RESULTS_DIR, "model_selection_support.csv"), row.names = FALSE)
 write.csv(model_selection, file.path(RESULTS_DIR, "model_selection.csv"), row.names = FALSE)

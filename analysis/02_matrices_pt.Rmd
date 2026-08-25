@@ -98,7 +98,7 @@ A estrutura recebida do pré-processamento é mostrada antes da codificação do
 marcadores.
 
 ```{r resumo-entrada}
-# Define os caminhos e carrega o objeto de pré-processamento usado para construir as matrizes.
+# Resume as dimensões e categorias do objeto de pré-processamento recebido pelo módulo.
 data.frame(
   Item = c(
     "Indivíduos",
@@ -127,7 +127,7 @@ representa duas cópias do alelo 2. Uma coluna de dosagem é criada para cada
 alelo observado em cada loco mantido.
 
 ```{r codificacao-dosagens}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Expande cada loco multialélico em colunas de dosagem por alelo e registra a origem de cada coluna.
 retained_loci_full <- locus_audit_full$Locus[
   locus_audit_full$Keep_locus
 ]
@@ -201,7 +201,7 @@ São mantidos os alelos com frequência entre 0,05 e 0,95 e com variação de
 dosagem maior que zero.
 
 ```{r controle-frequencias-alelicas}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Calcula frequência e variabilidade das dosagens para filtrar colunas alélicas informativas.
 allele_audit_full$Allele_frequency <-
   colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
@@ -252,7 +252,7 @@ kable(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r grafico-frequencias-alelicas, fig.height=5}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Mostra a distribuição das frequências alélicas e os limites usados no filtro.
 ggplot(
   allele_audit_full,
   aes(
@@ -289,7 +289,7 @@ seguida, cada coluna é centralizada subtraindo sua média. A matriz resultante
 é denotada por \(\mathbf M\).
 
 ```{r matriz-marcadores}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Imputa dosagens ausentes pelas médias, centraliza as colunas e constrói a matriz de marcadores M.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -371,7 +371,7 @@ eigenvalues_G_full <- eigen(
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r resumo-matriz-g}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Resume o denominador, a diagonal, a simetria e o menor autovalor da matriz genômica G.
 data.frame(
   Quantidade = c(
     "Denominador sum 2p(1-p)",
@@ -505,7 +505,7 @@ kable(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r grafico-familias-folds, fig.height=7}
-# Constrói ou resume a estrutura dos folds da validação cruzada.
+# Reorganiza a tabela família × fold e constrói o gráfico de distribuição dos indivíduos.
 family_fold_long <- as.data.frame(family_fold_table)
 
 # Constrói o gráfico usado na interpretação.
@@ -547,7 +547,7 @@ cv_folds |>
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r grafico-relacionamento-genomico, fig.height=8}
-# Constrói ou verifica as matrizes usadas na predição genômica.
+# Converte G para formato longo e constrói o mapa de calor do relacionamento genômico.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individuo_1", "Individuo_2", "Relacionamento")
 
@@ -585,7 +585,7 @@ colunas de dosagem não representem 72 dimensões independentes. O resumo abaixo
 mostra dimensões, postos e propriedades numéricas das matrizes obtidas.
 
 ```{r diagnostico-matrizes}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Verifica dimensões, postos, dependências lineares e propriedades numéricas de X, M e G.
 theoretical_rank_M <- sum(
   table(
     allele_audit_full$Locus[
@@ -611,7 +611,6 @@ dosage_sum_error <- numeric(length(locus_names))
 
 for (j in seq_along(locus_names)) {
   # Seleciona as colunas de dosagem pertencentes ao mesmo loco.
-  # Identifica as colunas de dosagem retidas que pertencem ao loco corrente.
   locus_columns <- allele_audit_full$Marker[
     allele_audit_full$Keep_allele &
       allele_audit_full$Locus == locus_names[j]
@@ -696,7 +695,7 @@ kable(
 A etapa seguinte organiza e salva as saídas produzidas para uso nos módulos posteriores.
 
 ```{r salvamento-objetos-matriciais}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Reúne matrizes, metadados, frequências e folds no objeto persistido pelo módulo.
 matrices_object <- list(
   ids = ids,
   metadata = metadata,

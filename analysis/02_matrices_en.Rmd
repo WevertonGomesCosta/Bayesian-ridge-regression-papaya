@@ -96,7 +96,7 @@ CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 The structure received from preprocessing is shown before marker coding.
 
 ```{r input-summary}
-# Assemble the summary table presented in this section.
+# Summarize the dimensions and categories of the preprocessing object received by the module.
 data.frame(
   Item = c(
     "Individuals",
@@ -199,7 +199,7 @@ with frequencies between 0.05 and 0.95 and nonzero dosage variation are
 retained.
 
 ```{r allele-frequency-control}
-# Organize marker information and compute the diagnostics required at this stage.
+# Compute dosage frequency and variability to retain informative allele columns.
 allele_audit_full$Allele_frequency <-
   colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
@@ -250,7 +250,7 @@ kable(
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r allele-frequency-plot, fig.height=5}
-# Organize marker information and compute the diagnostics required at this stage.
+# Display the allele-frequency distribution and the thresholds used by the filter.
 ggplot(
   allele_audit_full,
   aes(
@@ -287,7 +287,7 @@ column is then centered by subtracting its mean. The resulting matrix is
 denoted by \(\mathbf M\).
 
 ```{r marker-matrix}
-# Organize marker information and compute the diagnostics required at this stage.
+# Impute missing dosages by column means, center the columns, and construct marker matrix M.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -501,7 +501,7 @@ kable(
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r family-fold-plot, fig.height=7}
-# Build or summarize the cross-validation fold structure.
+# Reshape the family-by-fold table and build the individual-distribution figure.
 family_fold_long <- as.data.frame(family_fold_table)
 
 # Build the figure used for interpretation.
@@ -543,7 +543,7 @@ cv_folds |>
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r genomic-relationship-plot, fig.height=8}
-# Build or check the matrices used for genomic prediction.
+# Reshape G to long format and build the genomic-relationship heatmap.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individual_1", "Individual_2", "Relationship")
 
@@ -580,7 +580,7 @@ columns do not represent 72 independent dimensions. The summary below shows
 dimensions, ranks, and numerical properties of the matrices obtained.
 
 ```{r matrix-diagnostics}
-# Build or check the matrices used for genomic prediction.
+# Check dimensions, ranks, linear dependencies, and numerical properties of X, M, and G.
 theoretical_rank_M <- sum(
   table(
     allele_audit_full$Locus[
@@ -606,7 +606,6 @@ dosage_sum_error <- numeric(length(locus_names))
 
 for (j in seq_along(locus_names)) {
   # Select dosage columns belonging to the same locus.
-  # Identify retained dosage columns that belong to the current locus.
   locus_columns <- allele_audit_full$Marker[
     allele_audit_full$Keep_allele &
       allele_audit_full$Locus == locus_names[j]
@@ -691,7 +690,7 @@ kable(
 The next step organizes and saves the generated outputs for use in the downstream modules.
 
 ```{r save-matrix-objects}
-# Build or check the matrices used for genomic prediction.
+# Collect matrices, metadata, frequencies, and folds in the object persisted by the module.
 matrices_object <- list(
   ids = ids,
   metadata = metadata,

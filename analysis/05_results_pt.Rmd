@@ -68,7 +68,7 @@ model_comparison <- m04$model_comparison
 model_selection <- m04$model_selection
 selected_fold_diagnostics <- m04$selected_fold_diagnostics
 runtime_summary <- m04$runtime
-# Resume os resultados no objeto `rrblup_heritability_summary`.
+# Recupera o resumo de herdabilidade derivado no M04.
 rrblup_heritability_summary <- m04$rrblup_heritability_summary
 selection_objectives <- m04$selection_objectives
 selection_proportion <- m04$selection_proportion
@@ -80,7 +80,7 @@ recurrence_distribution <- m04$recurrence_distribution
 multitrait_candidates <- m04$multitrait_candidates
 selected_oof_correlations <- m04$selected_oof_correlations
 
-# Constrói `method_labels` com a informação necessária para a operação seguinte.
+# Define os rótulos legíveis dos métodos usados nas tabelas e figuras.
 method_labels <- c(
   RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
@@ -96,7 +96,7 @@ selection_objective_labels <- c(
   decrease = "Diminuir"
 )
 
-# Constrói `method_colors` com a informação necessária para a operação seguinte.
+# Define a paleta fixa usada para distinguir os métodos nas figuras.
 method_colors <- c(
   RRBLUP = "#3366CC",
   BayesA = "#DC3912",
@@ -173,7 +173,7 @@ kable(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r predictive-correlation-figure, fig.width=13, fig.height=10}
-# Calcula as correlações usadas para comparar características ou resultados.
+# Ordena os métodos e constrói o gráfico de correlação OOF por característica.
 predictive_plot <- model_comparison |>
   mutate(Method = factor(Method, levels = methods)) |>
   # Constrói o gráfico usado na interpretação.
@@ -231,7 +231,7 @@ final_results_summary <- model_selection |>
       TRUE ~ Decision_code
     ),
     Selection_status_label = case_when(
-      # Define os valores de `Selection_status` usados nesta estrutura.
+      # Traduz o status interno de seleção para o rótulo apresentado ao leitor.
       Selection_status == "rule_based_selected" ~
         "Seleção baseada na regra",
       Selection_status == "provisional_review_required" ~
@@ -246,7 +246,7 @@ final_results_summary <- model_selection |>
     Selection_status_label,
     RRBLUP_preference_applied,
     Predictive_winner = Predictive_winner_label,
-    # Define os valores de `DIC_winner` usados nesta estrutura.
+    # Mantém o vencedor por DIC com o rótulo legível do método.
     DIC_winner = DIC_winner_label,
     Predictive_loss,
     r,
@@ -276,7 +276,7 @@ Para cada característica são mostradas a cadeia posterior de \(\mu\), sua méd
 acumulada e a densidade posterior no primeiro fold do método selecionado.
 
 ```{r selected-mu-data}
-# Prepara os objetos necessários para executar os cálculos desta etapa.
+# Converte o burn-in para a escala das amostras salvas e prepara os traces e densidades posteriores de mu.
 burn_in_saved <-
   models_object$settings$burn_in /
   models_object$settings$thin
@@ -329,7 +329,7 @@ for (trait_index in seq_along(traits)) {
     Running_mean = running_mean[keep_index]
   )
 
-  # Constrói `density_object` com a informação necessária para a operação seguinte.
+  # Estima a densidade posterior de mu para o método selecionado nesta característica.
   density_object <- density(posterior_mu, n = 512)
 
   density_parts[[trait_index]] <- data.frame(
@@ -424,7 +424,7 @@ ggsave(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r selected-fold-figure, fig.width=12, fig.height=10}
-# Constrói ou resume a estrutura dos folds da validação cruzada.
+# Acrescenta rótulos aos resultados por fold e constrói a figura de estabilidade do método selecionado.
 fold_stability_display <- selected_fold_diagnostics |>
   mutate(
     Method_label = unname(method_labels[Method]),
@@ -532,7 +532,7 @@ kable(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
-# Calcula as correlações usadas para comparar características ou resultados.
+# Reorganiza a matriz de correlações OOF e constrói o mapa de calor entre características.
 correlation_long <- as.data.frame(
   as.table(selected_oof_correlations)
 )
@@ -542,7 +542,7 @@ names(correlation_long) <- c(
   "Correlation"
 )
 
-# Constrói `correlation_long` com a informação necessária para a operação seguinte.
+# Formata os rótulos das correlações exibidos nas células do mapa de calor.
 correlation_long <- correlation_long |>
   mutate(
     Correlation_label = replace(
@@ -552,7 +552,7 @@ correlation_long <- correlation_long |>
     )
   )
 
-# Constrói `correlation_plot` com a informação necessária para a operação seguinte.
+# Constrói o mapa de calor das correlações entre valores genômicos OOF.
 correlation_plot <- ggplot(
   correlation_long,
   aes(x = Trait_1, y = Trait_2, fill = Correlation)
@@ -567,7 +567,7 @@ correlation_plot <- ggplot(
     mid = "white",
     high = "#3366CC",
     midpoint = 0,
-    # Registra os valores de `limits` que completam esta estrutura.
+    # Mantém a escala de cores fixa no intervalo teórico de correlação [-1, 1].
     limits = c(-1, 1)
   ) +
   labs(
@@ -606,7 +606,7 @@ cross-fitted, e não valores genéticos finais de um modelo reajustado com todos
 os fenótipos.
 
 ```{r proportional-selection-table}
-# Deriva os rankings ou resumos de seleção a partir dos resultados preditivos.
+# Integra objetivo de seleção, evidência OOF e tamanho do ranking exploratório de cada característica.
 selection_sizes_display <- selection_sizes |>
   left_join(
     selection_objectives |>
@@ -667,7 +667,7 @@ selected_individuals_by_trait |>
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r recurrence-distribution-table}
-# Monta a tabela-resumo apresentada nesta seção.
+# Traduz as classes de recorrência e prepara sua distribuição para apresentação.
 recurrence_class_labels <- c(
   high_4plus = "Alta (>=4)",
   intermediate_3 = "Intermediária (3)",
@@ -676,7 +676,7 @@ recurrence_class_labels <- c(
   none_0 = "Nenhuma (0)"
 )
 
-# Deriva a estrutura usada para priorizar ou resumir os candidatos.
+# Traduz as classes de recorrência e calcula a distribuição apresentada na tabela.
 recurrence_distribution_display <- recurrence_distribution |>
   mutate(
     Classe = unname(
@@ -700,7 +700,7 @@ kable(
 A etapa seguinte deriva e apresenta a regra de seleção ou priorização correspondente a partir dos resultados já calculados.
 
 ```{r recurrent-candidates-table}
-# Deriva os rankings ou resumos de seleção a partir dos resultados preditivos.
+# Mantém os candidatos recorrentes em pelo menos três características para a tabela principal.
 main_multitrait_candidates <- multitrait_candidates |>
   filter(N_traits >= 3L) |>
   mutate(
