@@ -1,0 +1,38 @@
+name: Fix Module 01 validator target
+
+on:
+  push:
+    branches:
+      - didactic-m01-standard
+    paths:
+      - '.github/workflows/fix-m01-validator.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Correct exact English reader phrase
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/m01-didactic-standard.yml')
+          text = p.read_text(encoding='utf-8')
+          old = '''en = en.replace("This threshold is used to draw the reader's attention to values far from the mean, not to declare errors or statistical outliers.", 'This threshold highlights values far from the mean; it does not declare errors or statistical outliers.')'''
+          new = '''en = en.replace("This threshold is intended to draw the reader's attention to values far from the mean, not to declare errors or statistical outliers.", 'This threshold highlights values far from the mean; it does not declare errors or statistical outliers.')'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one validator target, found {text.count(old)}')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name "WevertonGomesCosta"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add .github/workflows/m01-didactic-standard.yml
+          git commit -m "Correct Module 01 validation phrase"
+          git push origin HEAD:didactic-m01-standard
