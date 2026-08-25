@@ -73,7 +73,7 @@ gerados nesta etapa são gravados em `output/models/`, enquanto as cadeias
 nativas do BGLR ficam organizadas em `output/models/bglr/`.
 
 ```{r inputs}
-# Constrói o objeto MATRICES FILE.
+# Executa o bloco de cálculo correspondente a esta etapa do módulo.
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
 OUTPUT_DIR <- here("output", "models")
 BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
@@ -85,9 +85,9 @@ matrices_object <- readRDS(MATRICES_FILE)
 
 ids <- matrices_object$ids
 metadata <- matrices_object$metadata
+# Organiza os fenótipos usados na análise.
 phenotypes <- matrices_object$phenotypes
 trait_dictionary <- matrices_object$trait_dictionary
-# Constrói o objeto X.
 X <- matrices_object$X
 M <- matrices_object$M
 G <- matrices_object$G
@@ -226,7 +226,7 @@ BL_LAMBDA_TYPE <- "FIXED"
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r mcmc-settings-table}
-# Continua a transformação desta etapa.
+# Reúne os parâmetros MCMC em uma tabela de referência.
 data.frame(
   Configuracao = c(
     "Iterações",
@@ -236,8 +236,8 @@ data.frame(
     "R2",
     "Probabilidade de efeito zero no BayesB2"
   ),
+  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
-    # Continua a transformação desta etapa.
     N_ITER,
     BURN_IN,
     THIN,
@@ -254,7 +254,7 @@ data.frame(
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r model-catalogue}
-# Constrói o objeto method names.
+# Define os métodos comparados, seus rótulos e a estrutura genômica usada em cada ajuste.
 method_names <- c(
   "RRBLUP", "BayesA", "BayesB", "BayesB2",
   "BayesC", "BL", "GBLUP"
@@ -266,11 +266,11 @@ method_labels <- c(
   BayesB = "BayesB",
   BayesB2 = "BayesB2",
   BayesC = "BayesC",
-  # Continua a transformação desta etapa.
   BL = "Lasso Bayesiano",
   GBLUP = "GBLUP"
 )
 
+# Monta a tabela apresentada nesta seção.
 data.frame(
   Metodo = unname(method_labels[method_names]),
   Componente_BGLR = c(
@@ -278,7 +278,7 @@ data.frame(
     "BayesC", "BL", "RKHS"
   ),
   Entrada_genomica = c("M", "M", "M", "M", "M", "M", "G"),
-  # Continua a transformação desta etapa.
+  # Organiza o componente `Estrutura` desta estrutura.
   Estrutura = c(
     "Variância Gaussiana comum para todos os efeitos de marcadores",
     "Variâncias específicas por marcador",
@@ -289,7 +289,6 @@ data.frame(
     "Valores genômicos estruturados pela matriz G"
   )
 ) |>
-  # Continua a transformação desta etapa.
   kable(caption = "Métodos de predição genômica avaliados")
 ```
 
@@ -416,7 +415,7 @@ O termo de família é comum aos sete métodos. Em seguida, cada modelo recebe o
 componente genômico correspondente.
 
 ```{r eta-specifications}
-# Constrói o objeto family term.
+# Define o efeito fixo de família e o componente genômico específico de cada método.
 family_term <- list(
   X = X_fixed,
   model = "FIXED"
@@ -428,18 +427,17 @@ ETA_models <- list(
     genomic = list(X = M, model = "BRR")
   ),
   BayesA = list(
-    # Continua a transformação desta etapa.
     fixed = family_term,
     genomic = list(X = M, model = "BayesA")
   ),
   BayesB = list(
     fixed = family_term,
+    # Organiza o componente `genomic` desta estrutura.
     genomic = list(X = M, model = "BayesB")
   ),
   BayesB2 = list(
     fixed = family_term,
     genomic = list(
-      # Continua a transformação desta etapa.
       X = M,
       model = "BayesB",
       probIn = BAYESB2_PROB_IN,
@@ -448,9 +446,9 @@ ETA_models <- list(
   ),
   BayesC = list(
     fixed = family_term,
+    # Organiza o componente `genomic` desta estrutura.
     genomic = list(X = M, model = "BayesC")
   ),
-  # Continua a transformação desta etapa.
   BL = list(
     fixed = family_term,
     genomic = list(
@@ -461,7 +459,6 @@ ETA_models <- list(
     )
   ),
   GBLUP = list(
-    # Continua a transformação desta etapa.
     fixed = family_term,
     genomic = list(K = G, model = "RKHS")
   )
@@ -474,7 +471,7 @@ As mesmas sete especificações são aplicadas às dez características e aos ci
 folds. Uma semente determinística é atribuída a cada combinação.
 
 ```{r run-design}
-# Constrói o objeto run design.
+# Combina características, folds e métodos e atribui uma semente reprodutível a cada ajuste.
 run_design <- expand.grid(
   Trait = traits,
   Fold = seq_len(matrices_object$settings$n_folds),
@@ -482,11 +479,11 @@ run_design <- expand.grid(
   stringsAsFactors = FALSE
 )
 
+# Organiza a estrutura da validação cruzada e dos ajustes.
 run_design <- run_design[
   order(
     match(run_design$Trait, traits),
     run_design$Fold,
-    # Continua a transformação desta etapa.
     match(run_design$Method, method_names)
   ),
 ]
@@ -498,7 +495,6 @@ run_design$Run_id <- paste(
   run_design$Trait,
   paste0("F", run_design$Fold),
   run_design$Method,
-  # Continua a transformação desta etapa.
   sep = "_"
 )
 
@@ -516,7 +512,7 @@ Antes do laço, são definidos os arquivos que contêm as cadeias escalares
 utilizadas posteriormente nos diagnósticos MCMC.
 
 ```{r trace-specifications}
-# Constrói o objeto genomic trace suffix.
+# Mapeia os arquivos e parâmetros das cadeias usados nos diagnósticos MCMC.
 genomic_trace_suffix <- c(
   RRBLUP = "ETA_genomic_varB.dat",
   BayesA = "ETA_genomic_ScaleBayesA.dat",
@@ -527,8 +523,8 @@ genomic_trace_suffix <- c(
   GBLUP = "ETA_genomic_varU.dat"
 )
 
+# Prepara as informações usadas nos diagnósticos das cadeias MCMC.
 genomic_trace_header <- c(
-  # Continua a transformação desta etapa.
   RRBLUP = FALSE,
   BayesA = FALSE,
   BayesB = TRUE,
@@ -540,7 +536,6 @@ genomic_trace_header <- c(
 
 genomic_trace_column <- c(
   RRBLUP = 1L,
-  # Continua a transformação desta etapa.
   BayesA = 1L,
   BayesB = 2L,
   BayesB2 = 2L,
@@ -549,10 +544,10 @@ genomic_trace_column <- c(
   GBLUP = 1L
 )
 
+# Prepara as informações usadas nos diagnósticos das cadeias MCMC.
 genomic_trace_parameter <- c(
   RRBLUP = "Marker_variance",
   BayesA = "Scale",
-  # Continua a transformação desta etapa.
   BayesB = "Scale",
   BayesB2 = "Scale",
   BayesC = "Marker_variance",
@@ -565,7 +560,6 @@ A etapa seguinte executa o procedimento de ajuste definido para os métodos, car
 
 ```{r fit-models, eval=FALSE}
 # Listas que recebem as saídas de cada ajuste.
-# Constrói o objeto metric parts.
 metric_parts <- vector("list", nrow(run_design))
 prediction_parts <- vector("list", nrow(run_design))
 genomic_value_parts <- vector("list", nrow(run_design))
@@ -613,6 +607,7 @@ for (run_index in seq_len(nrow(run_design))) {
   run_warning_messages <- character(0)
   fit_start <- proc.time()[["elapsed"]]
 
+  # Cria `fit` para uso nas etapas seguintes deste bloco.
   fit <- withCallingHandlers(
     BGLR::BGLR(
       y = y_model,
@@ -621,7 +616,6 @@ for (run_index in seq_len(nrow(run_design))) {
       nIter = N_ITER,
       burnIn = BURN_IN,
       thin = THIN,
-      # Continua a transformação desta etapa.
       R2 = R2_PRIOR,
       saveAt = save_prefix,
       verbose = FALSE,
@@ -632,7 +626,6 @@ for (run_index in seq_len(nrow(run_design))) {
         run_warning_messages,
         conditionMessage(w)
       )
-      # Continua a transformação desta etapa.
       invokeRestart("muffleWarning")
     }
   )
@@ -674,7 +667,6 @@ for (run_index in seq_len(nrow(run_design))) {
     Predicted = predicted_validation,
     Fixed_component = fixed_component[validation_index],
     Genomic_component = genomic_component[validation_index]
-  # Continua a transformação desta etapa.
   )
 
   # Parâmetros específicos aparecem quando disponíveis no modelo ajustado.
@@ -692,7 +684,6 @@ for (run_index in seq_len(nrow(run_design))) {
     Validation_n = length(validation_index),
     Correlation = cor(observed_validation, predicted_validation),
     RMSE = sqrt(mean((observed_validation - predicted_validation)^2)),
-    # Continua a transformação desta etapa.
     MAE = mean(abs(observed_validation - predicted_validation)),
     Prediction_bias = mean(predicted_validation - observed_validation),
     Regression_slope =
@@ -702,8 +693,8 @@ for (run_index in seq_len(nrow(run_design))) {
     Effective_parameters = fit$fit$pD,
     Log_likelihood_at_posterior_mean = fit$fit$logLikAtPostMean,
     Posterior_mean = fit$mu,
+    # Organiza o componente `Posterior_mean_SD` desta estrutura.
     Posterior_mean_SD = c(fit$SD.mu, NA_real_)[1],
-    # Continua a transformação desta etapa.
     Residual_variance = fit$varE,
     Residual_variance_SD = c(fit$SD.varE, NA_real_)[1],
     BL_lambda = bl_lambda,
@@ -714,7 +705,6 @@ for (run_index in seq_len(nrow(run_design))) {
       fixed = TRUE
     )),
     Lambda_update_warning_count = sum(grepl(
-      # Continua a transformação desta etapa.
       "lambda was not updated",
       run_warning_messages,
       fixed = TRUE
@@ -772,7 +762,6 @@ for (run_index in seq_len(nrow(run_design))) {
     Run_id = run_id,
     Trait = trait_name,
     Fold = fold_number,
-    # Continua a transformação desta etapa.
     Method = method_name,
     Parameter = parameter_names,
     Retained_samples = nrow(trace_matrix),
@@ -796,7 +785,7 @@ alimentam os diagnósticos e os módulos seguintes. A consolidação abaixo é a
 continuação direta de `fit-models`.
 
 ```{r assemble-fit-results, eval=FALSE}
-# Constrói o objeto cv metrics by fold.
+# Executa o bloco de cálculo correspondente a esta etapa do módulo.
 cv_metrics_by_fold <- bind_rows(metric_parts)
 cv_predictions <- bind_rows(prediction_parts)
 genomic_values_by_fold <- bind_rows(genomic_value_parts)
@@ -809,12 +798,12 @@ write.csv(
 )
 
 write.csv(
-  # Continua a transformação desta etapa.
   cv_predictions,
   file.path(OUTPUT_DIR, "cv_predictions.csv"),
   row.names = FALSE
 )
 
+# Salva a saída consolidada para uso posterior.
 write.csv(
   genomic_values_by_fold,
   file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
@@ -822,7 +811,6 @@ write.csv(
 )
 
 write.csv(
-  # Continua a transformação desta etapa.
   cv_metrics_by_fold,
   file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
   row.names = FALSE
@@ -841,7 +829,7 @@ As tabelas produzidas pelo ajuste são lidas de `output/models/` para os
 diagnósticos e resumos apresentados a seguir.
 
 ```{r combine-results}
-# Lê os dados de entrada necessários.
+# Carrega as tabelas consolidadas produzidas pelos ajustes para os diagnósticos seguintes.
 cv_metrics_by_fold <- read.csv(
   file.path(OUTPUT_DIR, "cv_metrics_by_fold.csv"),
   check.names = FALSE
@@ -852,9 +840,9 @@ cv_predictions <- read.csv(
   check.names = FALSE
 )
 
+# Organiza o componente genômico estimado para cada indivíduo.
 genomic_values_by_fold <- read.csv(
   file.path(OUTPUT_DIR, "genomic_values_by_fold.csv"),
-  # Continua a transformação desta etapa.
   check.names = FALSE
 )
 
@@ -912,7 +900,7 @@ cv_metrics_by_fold |>
 A quantidade de resultados produzidos também pode ser conferida diretamente.
 
 ```{r output-size-summary}
-# Continua a transformação desta etapa.
+# Monta a tabela-resumo apresentada nesta seção.
 data.frame(
   Saida = c(
     "Ajustes",
@@ -920,10 +908,10 @@ data.frame(
     "Valores genômicos por fold",
     "Cadeias escalares avaliadas"
   ),
+  # Organiza o componente `Linhas` desta estrutura.
   Linhas = c(
     nrow(cv_metrics_by_fold),
     nrow(cv_predictions),
-    # Continua a transformação desta etapa.
     nrow(genomic_values_by_fold),
     nrow(convergence_diagnostics)
   )
@@ -943,7 +931,7 @@ como indicadores de inspeção da cadeia. Valores de ESS inferiores a 1.000 ou
 automática de exclusão do modelo.
 
 ```{r convergence-summary}
-# Constrói o objeto convergence diagnostics.
+# Aplica os critérios de revisão e resume os diagnósticos de convergência por método.
 convergence_diagnostics <- convergence_diagnostics |>
   mutate(
     Review_flag =
@@ -951,11 +939,11 @@ convergence_diagnostics <- convergence_diagnostics |>
       abs(Geweke_Z) > GEWEKE_REVIEW_THRESHOLD
   )
 
+# Prepara as informações usadas nos diagnósticos das cadeias MCMC.
 convergence_summary <- convergence_diagnostics |>
   group_by(Method) |>
   summarise(
     Runs = n_distinct(Run_id),
-    # Continua a transformação desta etapa.
     Parameters_reviewed = n(),
     Parameters_flagged = sum(Review_flag),
     Runs_with_flags = n_distinct(Run_id[Review_flag]),
@@ -968,13 +956,13 @@ convergence_summary <- convergence_diagnostics |>
 convergence_summary$Metodo <-
   unname(method_labels[convergence_summary$Method])
 
-# Continua a transformação desta etapa.
 convergence_summary |>
   select(
     Metodo, Runs, Parameters_reviewed,
     Parameters_flagged, Runs_with_flags,
     Minimum_ESS, Median_ESS, Maximum_absolute_Geweke
   ) |>
+  # Formata a tabela para exibição no tutorial.
   kable(
     digits = 3,
     caption = "Resumo dos diagnósticos MCMC por método"
@@ -1004,7 +992,7 @@ de revisão, o resumo por método é gravado e o objeto final é reunido para us
 nos módulos seguintes.
 
 ```{r save-results, eval=FALSE}
-# Constrói o objeto analysis settings.
+# Agrupa configurações, resultados e diagnósticos no objeto final do módulo.
 analysis_settings <- list(
   n_iter = N_ITER,
   burn_in = BURN_IN,
@@ -1015,7 +1003,6 @@ analysis_settings <- list(
   bayesb2_prob_in = BAYESB2_PROB_IN,
   bayesb2_counts = BAYESB2_COUNTS,
   bl_lambda_type = BL_LAMBDA_TYPE,
-  # Continua a transformação desta etapa.
   bl_n_linear_terms = BL_N_LINEAR_TERMS,
   bl_component_R2 = BL_COMPONENT_R2,
   bl_msx = BL_MSX,
@@ -1026,8 +1013,8 @@ analysis_settings <- list(
   methods = method_names
 )
 
+# Cria `model_catalogue` para uso nas etapas seguintes deste bloco.
 model_catalogue <- data.frame(
-  # Continua a transformação desta etapa.
   Method = method_names,
   Label = c(
     "RR-BLUP", "BayesA", "BayesB", "BayesB2",
@@ -1037,8 +1024,8 @@ model_catalogue <- data.frame(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
+  # Organiza o componente `Genomic_input` desta estrutura.
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
-  # Continua a transformação desta etapa.
   stringsAsFactors = FALSE
 )
 
@@ -1051,10 +1038,10 @@ write.csv(
 write.csv(
   convergence_summary,
   file.path(OUTPUT_DIR, "convergence_summary.csv"),
-  # Continua a transformação desta etapa.
   row.names = FALSE
 )
 
+# Salva a saída consolidada para uso posterior.
 saveRDS(
   list(
     settings = analysis_settings,
@@ -1063,7 +1050,6 @@ saveRDS(
     trait_dictionary = trait_dictionary,
     predictions = cv_predictions,
     genomic_values_by_fold = genomic_values_by_fold,
-    # Continua a transformação desta etapa.
     metrics_by_fold = cv_metrics_by_fold,
     convergence_diagnostics = convergence_diagnostics
   ),

@@ -63,7 +63,7 @@ suppressPackageStartupMessages({
 The next step loads the input objects and organizes the structures required for the analysis.
 
 ```{r input-object}
-# Build the PREPROCESSING FILE object.
+# Execute the calculation block corresponding to this stage of the module.
 PREPROCESSING_FILE <- here(
   "output",
   "preprocessing",
@@ -76,7 +76,7 @@ OUTPUT_DIR <- here(
 )
 
 N_FOLDS <- 5L
-# Build the SEED CV object.
+# Create `SEED_CV` for use in the following steps of this block.
 SEED_CV <- 20260723L
 ALLELE_FREQUENCY_MIN <- 0.05
 
@@ -90,14 +90,13 @@ phenotypes <- preprocessing$phenotypes
 ssr_raw <- preprocessing$ssr_raw
 locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
-# Build the CALL RATE MIN object.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
 The structure received from preprocessing is shown before marker coding.
 
 ```{r input-summary}
-# Continue the current transformation step.
+# Assemble the summary table presented in this section.
 data.frame(
   Item = c(
     "Individuals",
@@ -106,9 +105,9 @@ data.frame(
     "Retained SSR loci",
     "Families"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
-    # Continue the current transformation step.
     ncol(phenotypes),
     ncol(ssr_raw),
     sum(locus_audit_full$Keep_locus),
@@ -126,7 +125,7 @@ allele 2. One dosage column is created for every observed allele at each
 retained locus.
 
 ```{r allele-dosage-coding}
-# Build the retained loci full object.
+# Organize marker information and compute the diagnostics required at this stage.
 retained_loci_full <- locus_audit_full$Locus[
   locus_audit_full$Keep_locus
 ]
@@ -139,7 +138,6 @@ ssr_full <- ssr_raw[
 
 dosage_parts_full <- list()
 allele_map_parts_full <- list()
-# Build the marker counter full object.
 marker_counter_full <- 0L
 
 for (j in seq_len(ncol(ssr_full))) {
@@ -167,6 +165,7 @@ for (j in seq_len(ncol(ssr_full))) {
       as.numeric(allele_2 == allele)
     dosage[is.na(codes)] <- NA_real_
 
+    # Create `marker_name` for use in the following steps of this block.
     marker_name <- paste0(
       colnames(ssr_full)[j],
       "__A",
@@ -174,7 +173,6 @@ for (j in seq_len(ncol(ssr_full))) {
     )
 
     dosage_parts_full[[marker_counter_full]] <- dosage
-    # Continue the current transformation step.
     allele_map_parts_full[[marker_counter_full]] <- data.frame(
       Locus = colnames(ssr_full)[j],
       Allele = allele,
@@ -187,7 +185,6 @@ dosage_full_raw <- do.call(cbind, dosage_parts_full)
 allele_audit_full <- bind_rows(allele_map_parts_full)
 
 rownames(dosage_full_raw) <- ids
-# Continue the current transformation step.
 colnames(dosage_full_raw) <- allele_audit_full$Marker
 rownames(allele_audit_full) <- NULL
 
@@ -202,7 +199,7 @@ with frequencies between 0.05 and 0.95 and nonzero dosage variation are
 retained.
 
 ```{r allele-frequency-control}
-# Continue the current transformation step.
+# Organize marker information and compute the diagnostics required at this stage.
 allele_audit_full$Allele_frequency <-
   colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
@@ -217,7 +214,6 @@ for (j in seq_len(ncol(dosage_full_raw))) {
 
 allele_audit_full$Dosage_sd <- dosage_sd_full
 
-# Continue the current transformation step.
 allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Allele_frequency) &
   allele_audit_full$Allele_frequency >= ALLELE_FREQUENCY_MIN &
@@ -225,24 +221,24 @@ allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Dosage_sd) &
   allele_audit_full$Dosage_sd > 0
 
+# Create `retained_markers_full` for use in the following steps of this block.
 retained_markers_full <- allele_audit_full$Marker[
   allele_audit_full$Keep_allele
 ]
 
 dosage_full <- dosage_full_raw[
-  # Continue the current transformation step.
   ,
   retained_markers_full,
   drop = FALSE
 ]
 
+# Summarize the results in `allele_summary_full`.
 allele_summary_full <- allele_audit_full |>
   group_by(Locus) |>
   summarise(
     Observed_alleles = n(),
     Retained_alleles = sum(Keep_allele),
     .groups = "drop"
-  # Continue the current transformation step.
   )
 
 kable(
@@ -254,7 +250,7 @@ kable(
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r allele-frequency-plot, fig.height=5}
-# Build the visualization.
+# Organize marker information and compute the diagnostics required at this stage.
 ggplot(
   allele_audit_full,
   aes(
@@ -265,10 +261,10 @@ ggplot(
   geom_histogram(
     bins = 20,
     position = "identity",
-    # Continue the current transformation step.
     alpha = 0.7
   ) +
   geom_vline(
+    # Organize the `xintercept` component of this structure.
     xintercept = c(
       ALLELE_FREQUENCY_MIN,
       1 - ALLELE_FREQUENCY_MIN
@@ -276,7 +272,6 @@ ggplot(
     linetype = 2
   ) +
   labs(
-    # Continue the current transformation step.
     x = "Allele frequency",
     y = "Allele-dosage columns",
     fill = "Retained",
@@ -292,7 +287,7 @@ column is then centered by subtracting its mean. The resulting matrix is
 denoted by \(\mathbf M\).
 
 ```{r marker-matrix}
-# Build the marker means full object.
+# Organize marker information and compute the diagnostics required at this stage.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -373,7 +368,7 @@ eigenvalues_G_full <- eigen(
 The next step organizes a tabular summary of the objects and results needed to interpret this section.
 
 ```{r genomic-relationship-summary}
-# Continue the current transformation step.
+# Build or check the matrices used for genomic prediction.
 data.frame(
   Quantity = c(
     "Denominator sum 2p(1-p)",
@@ -381,10 +376,10 @@ data.frame(
     "Maximum symmetry difference",
     "Smallest eigenvalue"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     denominator_full,
     mean(diag(G_full)),
-    # Continue the current transformation step.
     max(abs(G_full - t(G_full))),
     min(eigenvalues_G_full)
   )
@@ -429,7 +424,7 @@ each family are distributed evenly across folds, and a fixed seed preserves the
 same allocation across executions.
 
 ```{r cross-validation-folds}
-# Continue the current transformation step.
+# Build or summarize the cross-validation fold structure.
 set.seed(SEED_CV)
 
 family <- droplevels(metadata$FAM)
@@ -464,7 +459,6 @@ for (family_level in levels(family)) {
   )
 }
 
-# Build the fold sizes object.
 fold_sizes <- tabulate(folds, nbins = N_FOLDS)
 
 family_fold_table <- table(
@@ -472,13 +466,13 @@ family_fold_table <- table(
   Fold = folds
 )
 
+# Create `family_balance` for use in the following steps of this block.
 family_balance <- apply(family_fold_table, 1, max) -
   apply(family_fold_table, 1, min)
 
 cv_folds <- data.frame(
   IND = ids,
   FAM = as.character(metadata$FAM),
-  # Continue the current transformation step.
   Fold = folds
 )
 
@@ -491,7 +485,6 @@ fold_summary <- data.frame(
 kable(
   fold_summary,
   col.names = c("Fold", "Training N", "Validation N"),
-  # Continue the current transformation step.
   caption = "Sample sizes in cross-validation"
 )
 ```
@@ -508,9 +501,10 @@ kable(
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r family-fold-plot, fig.height=7}
-# Build the family fold long object.
+# Build or summarize the cross-validation fold structure.
 family_fold_long <- as.data.frame(family_fold_table)
 
+# Build the figure used for interpretation.
 ggplot(
   family_fold_long,
   aes(
@@ -520,7 +514,6 @@ ggplot(
   )
 ) +
   geom_tile() +
-  # Continue the current transformation step.
   geom_text(aes(label = Freq)) +
   labs(
     x = "Fold",
@@ -550,10 +543,11 @@ cv_folds |>
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r genomic-relationship-plot, fig.height=8}
-# Build the G long object.
+# Build or check the matrices used for genomic prediction.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individual_1", "Individual_2", "Relationship")
 
+# Build the figure used for interpretation.
 ggplot(
   G_long,
   aes(
@@ -562,7 +556,6 @@ ggplot(
     fill = Relationship
   )
 ) +
-  # Continue the current transformation step.
   geom_raster() +
   scale_x_discrete(breaks = NULL) +
   scale_y_discrete(breaks = NULL) +
@@ -587,7 +580,7 @@ columns do not represent 72 independent dimensions. The summary below shows
 dimensions, ranks, and numerical properties of the matrices obtained.
 
 ```{r matrix-diagnostics}
-# Build the theoretical rank M object.
+# Build or check the matrices used for genomic prediction.
 theoretical_rank_M <- sum(
   table(
     allele_audit_full$Locus[
@@ -600,7 +593,6 @@ maximum_M_column_mean <- max(abs(colMeans(M_full)))
 
 G_reconstructed <- tcrossprod(M_full) / denominator_full
 maximum_G_reconstruction_difference <- max(
-  # Continue the current transformation step.
   abs(G_full - G_reconstructed)
 )
 
@@ -614,6 +606,7 @@ dosage_sum_error <- numeric(length(locus_names))
 
 for (j in seq_along(locus_names)) {
   # Select dosage columns belonging to the same locus.
+  # Create `locus_columns` for use in the following steps of this block.
   locus_columns <- allele_audit_full$Marker[
     allele_audit_full$Keep_allele &
       allele_audit_full$Locus == locus_names[j]
@@ -630,20 +623,19 @@ for (j in seq_along(locus_names)) {
         ]
       ) - 2
     )
-  # Continue the current transformation step.
   )
 }
 
 maximum_dosage_sum_error <- max(dosage_sum_error)
 
 matrix_inventory <- data.frame(
+  # Organize the `Item` component of this structure.
   Item = c(
     "Individuals",
     "Rows of X",
     "Columns of X",
     "Rank of X",
     "Rows of M",
-    # Continue the current transformation step.
     "Columns of M",
     "Rank of M",
     "Theoretical rank of M",
@@ -654,18 +646,17 @@ matrix_inventory <- data.frame(
     "Columns of G",
     "Rank of G",
     "Folds",
-    # Continue the current transformation step.
     "Training individuals per fold",
     "Validation individuals per fold",
     "Maximum symmetry difference of G",
     "Mean diagonal of G",
     "Smallest eigenvalue of G"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     nrow(X),
     ncol(X),
-    # Evaluate the matrix structure.
     qr(X)$rank,
     nrow(M_full),
     ncol(M_full),
@@ -676,7 +667,6 @@ matrix_inventory <- data.frame(
     maximum_G_reconstruction_difference,
     nrow(G_full),
     ncol(G_full),
-    # Evaluate the matrix structure.
     qr(G_full)$rank,
     N_FOLDS,
     length(ids) - unique(fold_sizes),
@@ -687,8 +677,8 @@ matrix_inventory <- data.frame(
   )
 )
 
+# Format the table for display in the tutorial.
 kable(
-  # Continue the current transformation step.
   matrix_inventory,
   digits = 8,
   col.names = c("Item", "Value"),
@@ -701,7 +691,7 @@ kable(
 The next step organizes and saves the generated outputs for use in the downstream modules.
 
 ```{r save-matrix-objects}
-# Build the matrices object object.
+# Build or check the matrices used for genomic prediction.
 matrices_object <- list(
   ids = ids,
   metadata = metadata,
@@ -712,18 +702,17 @@ matrices_object <- list(
   G = G_full,
   cv_folds = cv_folds,
   fold_summary = fold_summary,
-  # Continue the current transformation step.
   locus_audit = locus_audit_full,
   allele_audit = allele_audit_full,
   marker_means = marker_means_full,
   allele_frequencies = allele_frequencies_full,
   denominator = denominator_full,
+  # Organize the `settings` component of this structure.
   settings = list(
     n_folds = N_FOLDS,
     seed_cv = SEED_CV,
     call_rate_min = CALL_RATE_MIN,
     allele_frequency_min = ALLELE_FREQUENCY_MIN,
-    # Continue the current transformation step.
     fixed_effects = "FAM"
   )
 )
@@ -733,10 +722,10 @@ saveRDS(
   file.path(OUTPUT_DIR, "matrices_object.rds")
 )
 
+# Save the consolidated output for downstream use.
 write.csv(cv_folds, file.path(OUTPUT_DIR, "cv_folds.csv"), row.names = FALSE)
 write.csv(fold_summary, file.path(OUTPUT_DIR, "fold_summary.csv"), row.names = FALSE)
 write.csv(
-  # Continue the current transformation step.
   allele_audit_full,
   file.path(OUTPUT_DIR, "allele_audit_full.csv"),
   row.names = FALSE

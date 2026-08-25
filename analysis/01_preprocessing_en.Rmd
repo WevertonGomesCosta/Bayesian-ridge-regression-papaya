@@ -72,7 +72,7 @@ The genotype workbook uses the `Genes` sheet for numerical SSR codes and the
 the `Médias_IND_artigo` sheet.
 
 ```{r read-data}
-# Read the required input data.
+# Execute the calculation block corresponding to this stage of the module.
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -84,7 +84,6 @@ genealex <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genealex",
   col_names = FALSE,
-  # Continue the current transformation step.
   na = c("", "NA")
 )
 
@@ -116,7 +115,7 @@ columns contain the 35 SSR loci. Individual and locus identifiers are obtained
 from `Genealex`. Missing SSR calls coded as `-9` are converted to `NA`.
 
 ```{r organize-ssr}
-# Build the n individuals object.
+# Organize marker information and compute the diagnostics required at this stage.
 n_individuals <- nrow(genes)
 n_loci <- ncol(genes) - 1
 
@@ -130,7 +129,6 @@ ids <- trimws(
 locus_names <- trimws(
   as.character(
     unlist(genealex[3, locus_columns], use.names = FALSE)
-  # Continue the current transformation step.
   )
 )
 
@@ -155,7 +153,7 @@ identifiers so that every phenotype row corresponds to the same plant in the
 genotype matrix.
 
 ```{r organize-phenotypes}
-# Build the TRAITS object.
+# Organize the phenotype data and apply the preprocessing rules defined for this stage.
 TRAITS <- c(
   "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
   "DCI", "EP", "FFC", "FFP", "SS"
@@ -170,18 +168,17 @@ missing_in_pheno <- setdiff(ids, pheno_raw$IND)
 missing_in_geno <- setdiff(pheno_raw$IND, ids)
 
 alignment <- data.frame(
-  # Continue the current transformation step.
   Check = c(
     "Genotyped individuals",
     "Phenotyped individuals",
     "Missing from phenotype data",
     "Missing from genotype data"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     nrow(pheno_raw),
     length(missing_in_pheno),
-    # Continue the current transformation step.
     length(missing_in_geno)
   )
 )
@@ -191,10 +188,10 @@ kable(
   caption = "Alignment between genotype and phenotype data"
 )
 
+# Summarize the results in `identifier_summary`.
 identifier_summary <- data.frame(
   Check = c(
     "Missing genotype identifiers",
-    # Continue the current transformation step.
     "Duplicated genotype identifiers",
     "Missing locus names",
     "Duplicated locus names",
@@ -202,10 +199,10 @@ identifier_summary <- data.frame(
     "Duplicated phenotype identifiers",
     "Missing required phenotype columns"
   ),
+  # List the values corresponding to the table entries.
   Value = c(
     sum(is.na(ids) | ids == ""),
     sum(duplicated(ids)),
-    # Continue the current transformation step.
     sum(is.na(locus_names) | locus_names == ""),
     sum(duplicated(locus_names)),
     sum(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
@@ -217,7 +214,6 @@ identifier_summary <- data.frame(
 kable(
   identifier_summary,
   caption = "Summary of identifiers and required columns"
-# Continue the current transformation step.
 )
 
 # Reorder phenotypes to the same sequence as genotyped individuals.
@@ -239,7 +235,6 @@ metadata <- data.frame(
   row.names = pheno$IND
 )
 
-# Build the phenotypes object.
 phenotypes <- as.matrix(pheno[, TRAITS])
 storage.mode(phenotypes) <- "numeric"
 rownames(phenotypes) <- pheno$IND
@@ -259,7 +254,7 @@ calculated. A locus is retained when its call rate is at least 0.90 and at
 least two genotype classes are observed.
 
 ```{r marker-quality-control}
-# Build the genotype classes object.
+# Organize marker information and compute the diagnostics required at this stage.
 genotype_classes <- integer(ncol(ssr_raw))
 
 for (j in seq_len(ncol(ssr_raw))) {
@@ -276,13 +271,13 @@ locus_audit <- data.frame(
   N_genotype_classes = genotype_classes
 )
 
-# Continue the current transformation step.
 rownames(locus_audit) <- NULL
 
 locus_audit$Keep_locus <-
   locus_audit$Call_rate >= CALL_RATE_MIN &
   locus_audit$N_genotype_classes >= 2
 
+# Create `ssr` for use in the following steps of this block.
 ssr <- ssr_raw[
   ,
   locus_audit$Keep_locus,
@@ -290,7 +285,6 @@ ssr <- ssr_raw[
 ]
 
 kable(
-  # Continue the current transformation step.
   locus_audit,
   digits = 3,
   caption = "Quality control of SSR loci"
@@ -300,7 +294,7 @@ kable(
 The figure shows the call rate of every locus relative to the minimum threshold.
 
 ```{r marker-quality-plot, fig.height=7}
-# Build the visualization.
+# Organize marker information and compute the diagnostics required at this stage.
 ggplot(
   locus_audit,
   aes(
@@ -311,7 +305,7 @@ ggplot(
 ) +
   geom_col() +
   geom_hline(
-    # Continue the current transformation step.
+    # Define the `yintercept` values used in this structure.
     yintercept = CALL_RATE_MIN,
     linetype = 2
   ) +
@@ -322,7 +316,6 @@ ggplot(
     fill = "Retained",
     title = "Call rate of SSR loci"
   ) +
-  # Continue the current transformation step.
   theme_bw()
 ```
 
@@ -331,7 +324,7 @@ ggplot(
 The amount of available SSR information is summarized for every individual.
 
 ```{r individual-summary}
-# Build the individual audit object.
+# Assemble the summary table presented in this section.
 individual_audit <- data.frame(
   IND = rownames(ssr_raw),
   N_called = rowSums(!is.na(ssr_raw)),
@@ -342,9 +335,9 @@ rownames(individual_audit) <- NULL
 
 individual_call_rate_summary <- data.frame(
   Measure = c("Minimum", "Mean", "Median", "Maximum"),
+  # Organize the `Call_rate` component of this structure.
   Call_rate = c(
     min(individual_audit$Call_rate),
-    # Continue the current transformation step.
     mean(individual_audit$Call_rate),
     median(individual_audit$Call_rate),
     max(individual_audit$Call_rate)
@@ -364,7 +357,7 @@ Descriptive statistics allow direct inspection of the scale and variation of
 the ten traits.
 
 ```{r phenotype-summary}
-# Build the phenotype sd object.
+# Organize the phenotype data and apply the preprocessing rules defined for this stage.
 phenotype_sd <- numeric(ncol(phenotypes))
 phenotype_minimum <- numeric(ncol(phenotypes))
 phenotype_maximum <- numeric(ncol(phenotypes))
@@ -375,9 +368,9 @@ for (j in seq_len(ncol(phenotypes))) {
   phenotype_maximum[j] <- max(phenotypes[, j])
 }
 
+# Summarize the results in `phenotype_summary`.
 phenotype_summary <- data.frame(
   Trait = colnames(phenotypes),
-  # Continue the current transformation step.
   N = colSums(!is.na(phenotypes)),
   Mean = colMeans(phenotypes),
   SD = phenotype_sd,
@@ -390,7 +383,6 @@ rownames(phenotype_summary) <- NULL
 kable(
   phenotype_summary,
   digits = 3,
-  # Continue the current transformation step.
   caption = "Summary of phenotype traits"
 )
 ```
@@ -403,7 +395,7 @@ is highlighted when its absolute distance from the trait mean is at least
 exactly as recorded in the original spreadsheet.
 
 ```{r distant-phenotype-values}
-# Build the phenotype means object.
+# Organize the phenotype data and apply the preprocessing rules defined for this stage.
 phenotype_means <- colMeans(phenotypes)
 phenotype_standard_deviations <- numeric(ncol(phenotypes))
 
@@ -417,7 +409,7 @@ phenotype_standardized <- scale(
   scale = phenotype_standard_deviations
 )
 
-# Build the extreme positions object.
+# Create `extreme_positions` for use in the following steps of this block.
 extreme_positions <- which(
   abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD,
   arr.ind = TRUE
@@ -429,22 +421,22 @@ phenotype_extremes <- data.frame(
   Value = phenotypes[extreme_positions],
   Trait_mean = phenotype_means[extreme_positions[, "col"]],
   Trait_SD = phenotype_standard_deviations[extreme_positions[, "col"]],
-  # Continue the current transformation step.
   Standardized_value = phenotype_standardized[extreme_positions],
   Absolute_standardized_distance = abs(
     phenotype_standardized[extreme_positions]
   )
 )
 
+# Organize the phenotypes used in the analysis.
 phenotype_extremes <- phenotype_extremes[
   order(-phenotype_extremes$Absolute_standardized_distance),
 ]
 rownames(phenotype_extremes) <- NULL
 
 kable(
-  # Continue the current transformation step.
   phenotype_extremes,
   digits = 3,
+  # Organize the `col.names` component of this structure.
   col.names = c(
     "Individual",
     "Trait",
@@ -453,7 +445,6 @@ kable(
     "Trait SD",
     "Standardized value",
     "Absolute standardized distance"
-  # Continue the current transformation step.
   ),
   caption = paste0(
     "Phenotype observations at least ",
@@ -468,7 +459,7 @@ kable(
 The next step organizes a tabular summary of the objects and results needed to interpret this section.
 
 ```{r trait-dictionary}
-# Build the trait dictionary object.
+# Execute the calculation block corresponding to this stage of the module.
 trait_dictionary <- data.frame(
   Trait = TRAITS,
   Description_en = c(
@@ -479,29 +470,28 @@ trait_dictionary <- data.frame(
     "Fruit diameter",
     "Internal-cavity diameter",
     "Mean pulp thickness",
-    # Continue the current transformation step.
     "External fruit firmness",
     "Internal pulp firmness",
     "Soluble solids"
   ),
+  # Organize the `Description_pt` component of this structure.
   Description_pt = c(
     "Massa média de frutos comerciais",
     "Produção de frutos comerciais",
     "Produção de frutos defeituosos",
     "Comprimento do fruto",
     "Diâmetro do fruto",
-    # Continue the current transformation step.
     "Diâmetro da cavidade interna",
     "Espessura média da polpa",
     "Firmeza externa do fruto",
     "Firmeza interna da polpa",
     "Sólidos solúveis"
   ),
+  # Organize the `Unit` component of this structure.
   Unit = c(
     "kg", "kg", "kg", "cm", "cm",
     "cm", "cm", "N", "N", "°Brix"
   )
-# Continue the current transformation step.
 )
 
 rownames(trait_dictionary) <- NULL
@@ -515,7 +505,7 @@ kable(
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r phenotype-plot, fig.height=8}
-# Build the phenotype long object.
+# Organize the phenotype data and apply the preprocessing rules defined for this stage.
 phenotype_long <- data.frame(
   IND = rownames(phenotypes),
   phenotypes,
@@ -527,7 +517,7 @@ phenotype_long <- data.frame(
     values_to = "Value"
   )
 
-# Build the visualization.
+# Build the figure used for interpretation.
 ggplot(phenotype_long, aes(x = Value)) +
   geom_histogram(bins = 20) +
   facet_wrap(~ Trait, scales = "free", ncol = 2) +
@@ -545,7 +535,7 @@ The aligned phenotype matrix, SSR data, metadata, and summaries are gathered
 into an object used to construct the genomic matrices in the next module.
 
 ```{r save-results}
-# Build the preprocessing object object.
+# Collect settings, results, and diagnostics in the final module object.
 preprocessing_object <- list(
   ids = ids,
   metadata = metadata,
@@ -556,8 +546,8 @@ preprocessing_object <- list(
   individual_audit = individual_audit,
   phenotype_summary = phenotype_summary,
   phenotype_extremes = phenotype_extremes,
-  # Continue the current transformation step.
   trait_dictionary = trait_dictionary,
+  # Organize the `settings` component of this structure.
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
@@ -568,9 +558,9 @@ preprocessing_object <- list(
 saveRDS(
   preprocessing_object,
   file.path(OUTPUT_DIR, "preprocessing_object.rds")
-# Continue the current transformation step.
 )
 
+# Save the consolidated output for downstream use.
 write.csv(alignment, file.path(OUTPUT_DIR, "alignment_summary.csv"), row.names = FALSE)
 write.csv(locus_audit, file.path(OUTPUT_DIR, "locus_audit.csv"), row.names = FALSE)
 write.csv(individual_audit, file.path(OUTPUT_DIR, "individual_audit.csv"), row.names = FALSE)
@@ -580,7 +570,6 @@ write.csv(
   file.path(OUTPUT_DIR, "phenotype_extreme_values.csv"),
   row.names = FALSE
 )
-# Save the generated output.
 write.csv(trait_dictionary, file.path(OUTPUT_DIR, "trait_dictionary.csv"), row.names = FALSE)
 ```
 
@@ -588,7 +577,7 @@ The final structure of this step can be inspected directly from the dimensions
 and counts below.
 
 ```{r final-summary}
-# Continue the current transformation step.
+# Assemble the summary table presented in this section.
 data.frame(
   Item = c(
     "Individuals",
@@ -599,7 +588,7 @@ data.frame(
     "Missing SSR calls",
     "Highlighted phenotype observations"
   ),
-  # Continue the current transformation step.
+  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     ncol(phenotypes),
@@ -610,7 +599,6 @@ data.frame(
     nrow(phenotype_extremes)
   )
 ) |>
-  # Continue the current transformation step.
   kable(caption = "Final preprocessing summary")
 ```
 
