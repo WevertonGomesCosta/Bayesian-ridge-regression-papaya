@@ -19,6 +19,8 @@ editor_options:
 github-repo: WevertonGomesCosta/Bayesian-ridge-regression-papaya
 ---
 
+The hidden chunk below defines only page-wide rendering options. It does not fit models, read results, or run MCMC chains.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -58,6 +60,8 @@ Bayesian Lasso (BL), and GBLUP. All models are fitted with BGLR
 
 ## 2. Packages, inputs, and output directories
 
+The first chunk loads the packages used for Bayesian fitting (`BGLR`), chain diagnostics (`coda`), tabular manipulation, and page construction. No model is fitted at this stage.
+
 ```{r packages}
 suppressPackageStartupMessages({
   library(BGLR)
@@ -95,7 +99,7 @@ cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
 ```
 
-The structure received from the previous module can be inspected directly.
+The following table acts as a checkpoint between Modules 02 and 03. It confirms that phenotypes, `X`, `M`, `G`, and the fold table have compatible dimensions before any fit; no object is filtered or reconstructed in this chunk.
 
 ```{r input-summary}
 data.frame(
@@ -111,6 +115,8 @@ data.frame(
 ```
 
 ## 3. Statistical model
+
+The ten traits are continuous and are fitted with `response_type = "gaussian"`. The specification below therefore describes the conditional mean used by BGLR together with a residual term for the Gaussian response. The same intercept and family structure is retained across methods; what changes is the probabilistic representation of the genomic component.
 
 For each trait, the common model is
 
@@ -128,8 +134,9 @@ the family fixed effect, \(\mathbf g\) is the genomic component, and
 
 ### 3.1 Intercept and family fixed effect
 
-BGLR fits an intercept automatically. Therefore, the intercept column created
-in Module 02 is removed from `X` before the family term is specified.
+BGLR fits an intercept automatically. Therefore, the intercept column created in Module 02 is removed from `X` before the family term is specified. The remaining columns are the `FAM` contrasts produced by `model.matrix()` in Module 02; no new family coding is created here.
+
+The chunk below only removes the redundant column and displays the family columns that enter the predictor.
 
 ```{r family-fixed-effect}
 X_fixed <- X[
@@ -175,9 +182,7 @@ N\left(\mathbf 0,\mathbf G\sigma_g^2\right).
 
 ## 4. Cross-validation
 
-The five folds defined in Module 02 are used without reconstruction. Each fold
-contains 30 validation individuals and 120 training individuals while
-preserving family representation.
+The five folds defined in Module 02 are used without reconstruction. Each fold contains 30 validation individuals and 120 training individuals while preserving family representation. The table below only retrieves this fixed partition; using exactly the same folds for every method makes comparisons paired with respect to validation individuals.
 
 ```{r cv-summary}
 kable(
@@ -233,7 +238,7 @@ GEWEKE_REVIEW_THRESHOLD <- 2
 BL_LAMBDA_TYPE <- "FIXED"
 ```
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The table summarizes the choices controlling MCMC sampling. With 1,000,000 iterations and `thin = 4`, BGLR writes 250,000 scalar draws; the first 50,000 correspond to the 200,000-iteration burn-in, leaving 200,000 saved draws for the downstream diagnostics. These counts are derived from the three chain parameters.
 
 ```{r mcmc-settings-table}
 # Collect the MCMC settings in a reference table.
@@ -261,7 +266,7 @@ data.frame(
 
 ## 6. Genomic prediction methods
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The following table is a map between the name used in the tutorial, the corresponding BGLR component, and the genomic input supplied to the fit. Six methods operate directly on `M`; GBLUP uses `G`. The subsections that follow explain how the prior or genomic representation changes across methods.
 
 ```{r model-catalogue}
 # Define the compared methods, display labels, and genomic structure used by each fit.
@@ -394,7 +399,7 @@ BL_LAMBDA_SQUARED <-
 BL_LAMBDA <- sqrt(BL_LAMBDA_SQUARED)
 ```
 
-The next step organizes a tabular summary of the objects and results needed to interpret this section.
+The table makes explicit the calibration leading to the fixed lambda. `MSx` summarizes the quadratic scale of `M`, `Global R2` is the value passed to BGLR, and `BL R2` is the share used in this calibration because the predictor contains two linear terms. The resulting `Lambda0` is then reused without trait- or fold-specific tuning.
 
 ```{r bl-lambda-table}
 data.frame(
@@ -416,13 +421,11 @@ predictive metric is used to determine \(\lambda\).
 
 ### 6.7 GBLUP
 
-GBLUP uses the genomic relationship matrix `G`. In BGLR, this structure is
-specified through an `RKHS` component with `K = G`.
+GBLUP uses the genomic relationship matrix `G`. In BGLR, this structure is implemented through an `RKHS` component with `K = G`. Although the component is named `RKHS`, the supplied kernel here is exactly the genomic relationship matrix, so the term represents genomic values with covariance proportional to `G`, consistent with the model in Section 3.2.
 
 ## 7. BGLR model specifications
 
-The family term is common to all seven methods. Each model then receives its
-corresponding genomic component.
+The family term is common to all seven methods. Each model then receives its corresponding genomic component. In `ETA_models`, `fixed` identifies the family term and `genomic` identifies the term that differentiates methods. `X = M` is used for marker regressions, whereas `K = G` is used for GBLUP. Only BayesB2 and BL receive additional arguments because their parameterizations were explicitly fixed in the preceding sections.
 
 ```{r eta-specifications}
 # Define the fixed family effect and the method-specific genomic component.
@@ -477,8 +480,7 @@ ETA_models <- list(
 
 ## 8. Trait, fold, and method combinations
 
-The same seven specifications are applied to all ten traits and five folds. A
-deterministic seed is assigned to each combination.
+The same seven specifications are applied to all ten traits and five folds. Their Cartesian product creates 350 rows: 50 fits per method, corresponding to ten traits across five folds. After the combinations are placed in a stable order, every row receives a sequential run number, a unique seed, and a readable `Run_id`. The seed controls reproducibility of that chain only; it does not alter the folds.
 
 ```{r run-design}
 # Combine traits, folds, and methods and assign a reproducible seed to each fit.
@@ -515,11 +517,9 @@ run_design |>
 
 ## 9. Fitting the 350 models
 
-The block below iterates over the trait, fold, and method combinations. Short
-comments highlight the main steps of each fit.
+The block below iterates over the trait, fold, and method combinations. Before the loop, the tutorial maps the native BGLR scalar files used for diagnostics. `genomic_trace_suffix` identifies the file, `genomic_trace_header` states whether it has a header, `genomic_trace_column` selects the scalar column, and `genomic_trace_parameter` supplies the label shown downstream.
 
-Before the loop, the native files containing the scalar chains used in the
-MCMC diagnostics are identified.
+The selected chain is one representative scalar quantity for each specification, not an exhaustive diagnostic of every marker effect. For BL, lambda is fixed and has no updated chain, so the second diagnostic uses `mu.dat` and is labelled as the intercept; it must not be interpreted as a genomic-component chain.
 
 ```{r trace-specifications}
 # Map the chain files and parameters used in the MCMC diagnostics.
@@ -566,7 +566,9 @@ genomic_trace_parameter <- c(
 )
 ```
 
-The next step executes the fitting procedure defined for the methods, traits, and folds in the analytical design.
+The `fit-models` chunk contains the complete procedure for reproducing all 350 fits, but remains `eval=FALSE` in the page. This prevents routine tutorial rendering from restarting the MCMC chains and overwriting their files. For a full reproduction from scratch, this is the block that must be run deliberately after Modules 01 and 02 have produced their objects.
+
+For each run, the code masks only the 30 phenotypes in the current fold, calls `BGLR()` with the corresponding specification, records elapsed time and warnings, recovers predictions for the masked individuals, and decomposes `yHat` into intercept, fixed family effect, and genomic component. The scalar files written by BGLR include saved draws from burn-in iterations, so the code explicitly removes the first `BURN_IN_SAVED_SAMPLES` rows before computing ESS and Geweke diagnostics.
 
 ```{r fit-models, eval=FALSE}
 # Lists that collect the outputs from each fit.
@@ -835,8 +837,7 @@ write.csv(
 
 ## 10. Predictions, genomic values, and fold-level metrics
 
-The tables produced by model fitting are read from `output/models/` for the
-diagnostics and summaries presented below.
+Because the fitting chunks remain disabled during rendering, tables previously produced by the complete fitting procedure are read from `output/models/`. This allows the inspection and presentation sections of the page to be rebuilt without running all 350 chains again.
 
 ```{r combine-results}
 # Load the consolidated fitting tables used by the downstream diagnostics.
@@ -880,8 +881,9 @@ so that
 \mathbf x_{Fi}'\widehat{\boldsymbol\beta}_F.
 \]
 
-A subset of the OOF predictions allows the output structure to be inspected
-directly.
+The prediction table contains only individuals from the fold that was masked in each fit, so every row is an OOF prediction. In contrast, `genomic_values_by_fold` stores the genomic component calculated for all 150 individuals in every fit; downstream modules must respect fold context when constructing cross-fitted values.
+
+A subset of the OOF predictions directly shows the decomposition into observed value, total prediction, fixed family component, and genomic component.
 
 ```{r prediction-preview}
 cv_predictions |>
@@ -893,8 +895,9 @@ cv_predictions |>
   kable(digits = 4, caption = "Example of out-of-fold predictions")
 ```
 
-Fold-level metrics include correlation, RMSE, MAE, bias, calibration slope,
-DIC, and the effective number of parameters.
+Predictive metrics are computed only for the 30 masked individuals in each fold. `Correlation` is the Pearson correlation between observed and predicted values; RMSE and MAE summarize error magnitude in trait units; `Prediction_bias = mean(Predicted - Observed)` has ideal value 0; and `Regression_slope = cov(Observed, Predicted) / var(Predicted)` is the slope from regressing observed on predicted values, with reference value 1.
+
+DIC and `Effective_parameters` (`pD`) have a different role: they are posterior fit-complexity criteria derived from the observed training phenotypes, not OOF predictive metrics. Lower DIC indicates a better fit-complexity tradeoff only among models fitted to the same response and comparable data; DIC should not be directly compared across traits on different scales.
 
 ```{r metrics-preview}
 cv_metrics_by_fold |>
@@ -907,7 +910,7 @@ cv_metrics_by_fold |>
   kable(digits = 4, caption = "Example of fold-level model metrics")
 ```
 
-The number of results produced can also be inspected directly.
+The following table is a structural check of the loop. Expected totals are 350 metric rows, 10,500 OOF predictions (350 fits × 30 individuals), 52,500 fold-specific genomic values (350 × 150), and 700 scalar chains reviewed (two per fit). Different totals would indicate an incomplete execution or inconsistent consolidation.
 
 ```{r output-size-summary}
 # Assemble the summary table presented in this section.
@@ -931,13 +934,9 @@ data.frame(
 
 ## 11. MCMC diagnostics
 
-For every fit, the residual-variance chain and one scalar chain representative
-of the model are examined. For BL, because \(\lambda\) is fixed, the second
-diagnostic uses the intercept chain.
+For every fit, the residual-variance chain and one scalar chain representative of the specification are examined. For BL, because \(\lambda\) is fixed, the intercept chain is used as the second diagnostic. This section therefore evaluates 700 scalar chains but does not claim to establish convergence of every marker coefficient or other latent quantity individually.
 
-Effective sample size (ESS) and the Geweke statistic are used as chain
-inspection indicators. ESS values below 1,000 or \(|Z_{Geweke}|>2\) are
-highlighted for review but are not automatic model-exclusion rules.
+Effective sample size (ESS) summarizes the amount of approximately independent information after accounting for autocorrelation; larger values are preferable. The Geweke statistic contrasts means from early and late parts of the post-burn-in chain; values near zero are more compatible with stability. `ESS < 1000` and \(|Z_{Geweke}|>2\) are screening thresholds for inspection only, not formal tests of model validity or automatic exclusion criteria. Graphical diagnostics and chain context remain necessary when a flag is raised.
 
 ```{r convergence-summary}
 # Apply the review criteria and summarize convergence diagnostics by method.
@@ -978,7 +977,7 @@ convergence_summary |>
   )
 ```
 
-The chains highlighted by these diagnostics can be inspected directly below.
+The table below lists only chains that cross at least one screening threshold. A flagged row identifies the trait–fold–method combination and parameter that deserves inspection; by itself, it does not imply that all predictions from that fit are invalid.
 
 ```{r convergence-flags}
 convergence_diagnostics |>
@@ -996,9 +995,7 @@ convergence_diagnostics |>
 
 ## 12. Saving diagnostics and the final object
 
-After the diagnostics, the convergence table is updated with the review
-indicators, the method-level summary is written, and the final object is
-assembled for use by the following modules.
+After the diagnostics, the convergence table is updated with review flags, the method-level summary is saved, and the final object is assembled for downstream modules. Like model fitting, this chunk remains `eval=FALSE` during rendering: it should be run when the primary tables are regenerated so that `models_object.rds` is updated consistently with those outputs.
 
 ```{r save-results, eval=FALSE}
 # Collect settings, results, and diagnostics in the final module object.
