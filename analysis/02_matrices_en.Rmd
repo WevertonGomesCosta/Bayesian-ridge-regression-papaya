@@ -63,7 +63,7 @@ suppressPackageStartupMessages({
 The next step loads the input objects and organizes the structures required for the analysis.
 
 ```{r input-object}
-# Execute the calculation block corresponding to this stage of the module.
+# Define paths and load the preprocessing object used to construct the genomic matrices.
 PREPROCESSING_FILE <- here(
   "output",
   "preprocessing",
@@ -76,7 +76,7 @@ OUTPUT_DIR <- here(
 )
 
 N_FOLDS <- 5L
-# Create `SEED_CV` for use in the following steps of this block.
+# Fix the seed used to create family-stratified folds.
 SEED_CV <- 20260723L
 ALLELE_FREQUENCY_MIN <- 0.05
 
@@ -165,7 +165,7 @@ for (j in seq_len(ncol(ssr_full))) {
       as.numeric(allele_2 == allele)
     dosage[is.na(codes)] <- NA_real_
 
-    # Create `marker_name` for use in the following steps of this block.
+    # Create a unique identifier for each locus-allele combination.
     marker_name <- paste0(
       colnames(ssr_full)[j],
       "__A",
@@ -221,7 +221,7 @@ allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Dosage_sd) &
   allele_audit_full$Dosage_sd > 0
 
-# Create `retained_markers_full` for use in the following steps of this block.
+# Select allele columns that pass the frequency and dosage-variation filters.
 retained_markers_full <- allele_audit_full$Marker[
   allele_audit_full$Keep_allele
 ]
@@ -264,7 +264,7 @@ ggplot(
     alpha = 0.7
   ) +
   geom_vline(
-    # Organize the `xintercept` component of this structure.
+    # Mark the lower and upper allele-frequency thresholds in the figure.
     xintercept = c(
       ALLELE_FREQUENCY_MIN,
       1 - ALLELE_FREQUENCY_MIN
@@ -466,7 +466,7 @@ family_fold_table <- table(
   Fold = folds
 )
 
-# Create `family_balance` for use in the following steps of this block.
+# Quantify, within each family, the largest difference in individual counts across folds.
 family_balance <- apply(family_fold_table, 1, max) -
   apply(family_fold_table, 1, min)
 
@@ -606,7 +606,7 @@ dosage_sum_error <- numeric(length(locus_names))
 
 for (j in seq_along(locus_names)) {
   # Select dosage columns belonging to the same locus.
-  # Create `locus_columns` for use in the following steps of this block.
+  # Identify retained dosage columns that belong to the current locus.
   locus_columns <- allele_audit_full$Marker[
     allele_audit_full$Keep_allele &
       allele_audit_full$Locus == locus_names[j]
@@ -629,7 +629,7 @@ for (j in seq_along(locus_names)) {
 maximum_dosage_sum_error <- max(dosage_sum_error)
 
 matrix_inventory <- data.frame(
-  # Organize the `Item` component of this structure.
+  # List the items checked in the matrix inventory.
   Item = c(
     "Individuals",
     "Rows of X",
@@ -707,7 +707,7 @@ matrices_object <- list(
   marker_means = marker_means_full,
   allele_frequencies = allele_frequencies_full,
   denominator = denominator_full,
-  # Organize the `settings` component of this structure.
+  # Record parameters and thresholds required to reproduce this stage.
   settings = list(
     n_folds = N_FOLDS,
     seed_cv = SEED_CV,

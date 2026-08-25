@@ -92,7 +92,7 @@ data.frame(
     nrow(predictions),
     nrow(convergence)
   ),
-  # Organize the `Traits` component of this structure.
+  # Record the `Traits` values that complete this structure.
   Traits = c(
     n_distinct(metrics$Trait),
     n_distinct(predictions$Trait),
@@ -118,7 +118,7 @@ each trait × method combination. Each individual contributes one OOF
 prediction for every method.
 
 ```{r pooled-oof-metrics}
-# Execute the calculation block corresponding to this stage of the module.
+# Combine OOF predictions and compute aggregate predictive metrics by trait and method.
 pooled_metrics <- predictions |>
   group_by(Trait, Method) |>
   summarise(
@@ -186,7 +186,7 @@ ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 interpreted as a calibrated posterior probability of a model.
 
 ```{r model-comparison}
-# Execute the calculation block corresponding to this stage of the module.
+# Combine fold performance and DIC to build the quantities used for model comparison.
 model_comparison <- pooled_metrics |>
   left_join(fold_summary, by = c("Trait", "Method")) |>
   group_by(Trait) |>
@@ -469,7 +469,7 @@ selection_spec <- predictive_winners |>
         RRBLUP_automatic_candidate,
         Convergence_review
       ),
-    # Organize the `by` component of this structure.
+    # Record the `by` values that complete this structure.
     by = c("Trait", "Selected_method" = "Method")
   ) |>
   mutate(
@@ -519,7 +519,7 @@ Metrics and diagnostics for the method actually selected are then extracted
 from the support table.
 
 ```{r selected-performance}
-# Execute the calculation block corresponding to this stage of the module.
+# Extract predictive metrics, DIC, and diagnostics for the selected method in each trait.
 selected_performance <- model_selection_support |>
   inner_join(
     selection_spec |>
@@ -590,7 +590,7 @@ selection gate.
 model_selection <- selection_spec |>
   left_join(
     selected_performance,
-    # Organize the `by` component of this structure.
+    # Record the `by` values that complete this structure.
     by = c("Trait", "Selected_method")
   ) |>
   left_join(predictive_winners, by = "Trait") |>
@@ -886,7 +886,7 @@ selection_cutoff_summary <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits))
 
-# Create `selected_individuals_by_trait` for use in the following steps of this block.
+# Retain candidates included in the defined ranking proportion for each positive-OOF trait.
 selected_individuals_by_trait <- genomic_ranking |>
   inner_join(selection_sizes, by = "Trait") |>
   filter(Rank <= N_selected) |>
@@ -946,7 +946,7 @@ signals remain exploratory. No weights are used and no multi-trait selection
 index is constructed.
 
 ```{r multitrait-recurrence}
-# Execute the calculation block corresponding to this stage of the module.
+# Count individual recurrence across exploratory rankings for traits with positive OOF correlation.
 recurrence_counts <- selected_individuals_by_trait |>
   arrange(match(Trait, traits), Rank) |>
   group_by(IND, FAM) |>

@@ -64,7 +64,7 @@ suppressPackageStartupMessages({
 A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.
 
 ```{r objeto-entrada}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Define os caminhos e carrega o objeto de pré-processamento usado para construir as matrizes.
 PREPROCESSING_FILE <- here(
   "output",
   "preprocessing",
@@ -77,7 +77,7 @@ OUTPUT_DIR <- here(
 )
 
 N_FOLDS <- 5L
-# Cria `SEED_CV` para uso nas etapas seguintes deste bloco.
+# Fixa a semente usada para formar os folds estratificados por família.
 SEED_CV <- 20260723L
 ALLELE_FREQUENCY_MIN <- 0.05
 
@@ -98,7 +98,7 @@ A estrutura recebida do pré-processamento é mostrada antes da codificação do
 marcadores.
 
 ```{r resumo-entrada}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Define os caminhos e carrega o objeto de pré-processamento usado para construir as matrizes.
 data.frame(
   Item = c(
     "Indivíduos",
@@ -127,7 +127,7 @@ representa duas cópias do alelo 2. Uma coluna de dosagem é criada para cada
 alelo observado em cada loco mantido.
 
 ```{r codificacao-dosagens}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 retained_loci_full <- locus_audit_full$Locus[
   locus_audit_full$Keep_locus
 ]
@@ -167,7 +167,7 @@ for (j in seq_len(ncol(ssr_full))) {
       as.numeric(allele_2 == allele)
     dosage[is.na(codes)] <- NA_real_
 
-    # Cria `marker_name` para uso nas etapas seguintes deste bloco.
+    # Cria um identificador único para a combinação entre loco e alelo.
     marker_name <- paste0(
       colnames(ssr_full)[j],
       "__A",
@@ -201,7 +201,7 @@ São mantidos os alelos com frequência entre 0,05 e 0,95 e com variação de
 dosagem maior que zero.
 
 ```{r controle-frequencias-alelicas}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 allele_audit_full$Allele_frequency <-
   colMeans(dosage_full_raw, na.rm = TRUE) / 2
 
@@ -223,7 +223,7 @@ allele_audit_full$Keep_allele <-
   is.finite(allele_audit_full$Dosage_sd) &
   allele_audit_full$Dosage_sd > 0
 
-# Cria `retained_markers_full` para uso nas etapas seguintes deste bloco.
+# Seleciona as colunas alélicas que atendem aos filtros de frequência e variação de dosagem.
 retained_markers_full <- allele_audit_full$Marker[
   allele_audit_full$Keep_allele
 ]
@@ -252,7 +252,7 @@ kable(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r grafico-frequencias-alelicas, fig.height=5}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 ggplot(
   allele_audit_full,
   aes(
@@ -266,7 +266,7 @@ ggplot(
     alpha = 0.7
   ) +
   geom_vline(
-    # Organiza o componente `xintercept` desta estrutura.
+    # Marca no gráfico os limites inferior e superior da frequência alélica.
     xintercept = c(
       ALLELE_FREQUENCY_MIN,
       1 - ALLELE_FREQUENCY_MIN
@@ -289,7 +289,7 @@ seguida, cada coluna é centralizada subtraindo sua média. A matriz resultante
 é denotada por \(\mathbf M\).
 
 ```{r matriz-marcadores}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -371,7 +371,7 @@ eigenvalues_G_full <- eigen(
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r resumo-matriz-g}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 data.frame(
   Quantidade = c(
     "Denominador sum 2p(1-p)",
@@ -470,7 +470,7 @@ family_fold_table <- table(
   Fold = folds
 )
 
-# Cria `family_balance` para uso nas etapas seguintes deste bloco.
+# Quantifica, em cada família, a maior diferença no número de indivíduos entre folds.
 family_balance <- apply(family_fold_table, 1, max) -
   apply(family_fold_table, 1, min)
 
@@ -585,7 +585,7 @@ colunas de dosagem não representem 72 dimensões independentes. O resumo abaixo
 mostra dimensões, postos e propriedades numéricas das matrizes obtidas.
 
 ```{r diagnostico-matrizes}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 theoretical_rank_M <- sum(
   table(
     allele_audit_full$Locus[
@@ -611,7 +611,7 @@ dosage_sum_error <- numeric(length(locus_names))
 
 for (j in seq_along(locus_names)) {
   # Seleciona as colunas de dosagem pertencentes ao mesmo loco.
-  # Cria `locus_columns` para uso nas etapas seguintes deste bloco.
+  # Identifica as colunas de dosagem retidas que pertencem ao loco corrente.
   locus_columns <- allele_audit_full$Marker[
     allele_audit_full$Keep_allele &
       allele_audit_full$Locus == locus_names[j]
@@ -634,7 +634,7 @@ for (j in seq_along(locus_names)) {
 maximum_dosage_sum_error <- max(dosage_sum_error)
 
 matrix_inventory <- data.frame(
-  # Organiza o componente `Item` desta estrutura.
+  # Lista os itens verificados no inventário das matrizes.
   Item = c(
     "Indivíduos",
     "Linhas de X",
@@ -696,7 +696,7 @@ kable(
 A etapa seguinte organiza e salva as saídas produzidas para uso nos módulos posteriores.
 
 ```{r salvamento-objetos-matriciais}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 matrices_object <- list(
   ids = ids,
   metadata = metadata,
@@ -712,7 +712,7 @@ matrices_object <- list(
   marker_means = marker_means_full,
   allele_frequencies = allele_frequencies_full,
   denominator = denominator_full,
-  # Organiza o componente `settings` desta estrutura.
+  # Registra os parâmetros e limites necessários para reproduzir esta etapa.
   settings = list(
     n_folds = N_FOLDS,
     seed_cv = SEED_CV,

@@ -92,7 +92,7 @@ data.frame(
     nrow(predictions),
     nrow(convergence)
   ),
-  # Organiza o componente `Caracteristicas` desta estrutura.
+  # Registra os valores de `Caracteristicas` que completam esta estrutura.
   Caracteristicas = c(
     n_distinct(metrics$Trait),
     n_distinct(predictions$Trait),
@@ -118,7 +118,7 @@ de cada combinação característica × método. Cada indivíduo contribui uma �
 predição OOF para cada método.
 
 ```{r pooled-oof-metrics}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Combina as predições OOF e calcula as métricas preditivas agregadas por característica e método.
 pooled_metrics <- predictions |>
   group_by(Trait, Method) |>
   summarise(
@@ -187,7 +187,7 @@ ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 Ele não é interpretado como uma probabilidade posterior calibrada de um modelo.
 
 ```{r model-comparison}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Integra desempenho por fold e DIC para construir as medidas usadas na comparação dos métodos.
 model_comparison <- pooled_metrics |>
   left_join(fold_summary, by = c("Trait", "Method")) |>
   group_by(Trait) |>
@@ -470,7 +470,7 @@ selection_spec <- predictive_winners |>
         RRBLUP_automatic_candidate,
         Convergence_review
       ),
-    # Organiza o componente `by` desta estrutura.
+    # Registra os valores de `by` que completam esta estrutura.
     by = c("Trait", "Selected_method" = "Method")
   ) |>
   mutate(
@@ -520,7 +520,7 @@ As métricas e os diagnósticos do método efetivamente selecionado são então
 extraídos da tabela de suporte.
 
 ```{r selected-performance}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Extrai métricas preditivas, DIC e diagnósticos do método selecionado em cada característica.
 selected_performance <- model_selection_support |>
   inner_join(
     selection_spec |>
@@ -591,7 +591,7 @@ fracas; ela não é usada como filtro de seleção.
 model_selection <- selection_spec |>
   left_join(
     selected_performance,
-    # Organiza o componente `by` desta estrutura.
+    # Registra os valores de `by` que completam esta estrutura.
     by = c("Trait", "Selected_method")
   ) |>
   left_join(predictive_winners, by = "Trait") |>
@@ -888,7 +888,7 @@ selection_cutoff_summary <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits))
 
-# Cria `selected_individuals_by_trait` para uso nas etapas seguintes deste bloco.
+# Mantém, em cada característica com OOF positivo, os candidatos incluídos na proporção definida para o ranking.
 selected_individuals_by_trait <- genomic_ranking |>
   inner_join(selection_sizes, by = "Trait") |>
   filter(Rank <= N_selected) |>
@@ -948,7 +948,7 @@ positivos fracos permanecem exploratórios. Não são usados pesos e não é
 construído índice de seleção multicaracterística.
 
 ```{r multitrait-recurrence}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Conta a recorrência dos indivíduos entre os rankings exploratórios das características com OOF positivo.
 recurrence_counts <- selected_individuals_by_trait |>
   arrange(match(Trait, traits), Rank) |>
   group_by(IND, FAM) |>

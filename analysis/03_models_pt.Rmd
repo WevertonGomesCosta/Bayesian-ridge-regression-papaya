@@ -73,7 +73,7 @@ gerados nesta etapa são gravados em `output/models/`, enquanto as cadeias
 nativas do BGLR ficam organizadas em `output/models/bglr/`.
 
 ```{r inputs}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Define os caminhos de saída e carrega os objetos necessários para este módulo.
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
 OUTPUT_DIR <- here("output", "models")
 BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
@@ -278,7 +278,7 @@ data.frame(
     "BayesC", "BL", "RKHS"
   ),
   Entrada_genomica = c("M", "M", "M", "M", "M", "M", "G"),
-  # Organiza o componente `Estrutura` desta estrutura.
+  # Descreve a estrutura de efeitos adotada por cada método.
   Estrutura = c(
     "Variância Gaussiana comum para todos os efeitos de marcadores",
     "Variâncias específicas por marcador",
@@ -432,7 +432,7 @@ ETA_models <- list(
   ),
   BayesB = list(
     fixed = family_term,
-    # Organiza o componente `genomic` desta estrutura.
+    # Define o componente genômico desta especificação de modelo.
     genomic = list(X = M, model = "BayesB")
   ),
   BayesB2 = list(
@@ -446,7 +446,7 @@ ETA_models <- list(
   ),
   BayesC = list(
     fixed = family_term,
-    # Organiza o componente `genomic` desta estrutura.
+    # Define o componente genômico desta especificação de modelo.
     genomic = list(X = M, model = "BayesC")
   ),
   BL = list(
@@ -607,7 +607,7 @@ for (run_index in seq_len(nrow(run_design))) {
   run_warning_messages <- character(0)
   fit_start <- proc.time()[["elapsed"]]
 
-  # Cria `fit` para uso nas etapas seguintes deste bloco.
+  # Ajusta o modelo BGLR configurado e captura os avisos emitidos durante o ajuste.
   fit <- withCallingHandlers(
     BGLR::BGLR(
       y = y_model,
@@ -693,7 +693,7 @@ for (run_index in seq_len(nrow(run_design))) {
     Effective_parameters = fit$fit$pD,
     Log_likelihood_at_posterior_mean = fit$fit$logLikAtPostMean,
     Posterior_mean = fit$mu,
-    # Organiza o componente `Posterior_mean_SD` desta estrutura.
+    # Registra o desvio-padrão disponível para a média posterior do intercepto.
     Posterior_mean_SD = c(fit$SD.mu, NA_real_)[1],
     Residual_variance = fit$varE,
     Residual_variance_SD = c(fit$SD.varE, NA_real_)[1],
@@ -785,7 +785,7 @@ alimentam os diagnósticos e os módulos seguintes. A consolidação abaixo é a
 continuação direta de `fit-models`.
 
 ```{r assemble-fit-results, eval=FALSE}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Consolida as listas produzidas pelos ajustes em tabelas de métricas, predições, valores genômicos e diagnósticos.
 cv_metrics_by_fold <- bind_rows(metric_parts)
 cv_predictions <- bind_rows(prediction_parts)
 genomic_values_by_fold <- bind_rows(genomic_value_parts)
@@ -908,7 +908,7 @@ data.frame(
     "Valores genômicos por fold",
     "Cadeias escalares avaliadas"
   ),
-  # Organiza o componente `Linhas` desta estrutura.
+  # Conta o número de registros produzido em cada saída do módulo.
   Linhas = c(
     nrow(cv_metrics_by_fold),
     nrow(cv_predictions),
@@ -1013,7 +1013,7 @@ analysis_settings <- list(
   methods = method_names
 )
 
-# Cria `model_catalogue` para uso nas etapas seguintes deste bloco.
+# Registra os métodos, componentes BGLR e entradas genômicas usados nas especificações.
 model_catalogue <- data.frame(
   Method = method_names,
   Label = c(
@@ -1024,7 +1024,7 @@ model_catalogue <- data.frame(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
-  # Organiza o componente `Genomic_input` desta estrutura.
+  # Registra se cada método usa a matriz de dosagens M ou a matriz genômica G.
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
   stringsAsFactors = FALSE
 )

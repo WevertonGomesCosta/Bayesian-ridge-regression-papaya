@@ -73,7 +73,7 @@ marcadores SSR e a aba `Genealex` para os identificadores dos indivíduos e dos
 locos. Os fenótipos são lidos da aba `Médias_IND_artigo`.
 
 ```{r leitura-dados}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Carrega as planilhas genotípica e fenotípica que alimentam o pré-processamento.
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -155,7 +155,7 @@ com os identificadores da matriz SSR, de modo que cada linha fenotípica
 corresponda à mesma planta da linha genotípica.
 
 ```{r organizacao-fenotipos}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.
 TRAITS <- c(
   "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
   "DCI", "EP", "FFC", "FFP", "SS"
@@ -256,7 +256,7 @@ genotípicas observadas. Um loco é mantido quando apresenta taxa de chamada
 igual ou superior a 0,90 e pelo menos duas classes genotípicas.
 
 ```{r qualidade-marcadores}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Calcula taxa de chamada e diversidade de classes genotípicas para decidir quais locos SSR serão mantidos.
 genotype_classes <- integer(ncol(ssr_raw))
 
 for (j in seq_len(ncol(ssr_raw))) {
@@ -279,7 +279,7 @@ locus_audit$Keep_locus <-
   locus_audit$Call_rate >= CALL_RATE_MIN &
   locus_audit$N_genotype_classes >= 2
 
-# Cria `ssr` para uso nas etapas seguintes deste bloco.
+# Mantém na matriz SSR apenas os locos que passaram os critérios de qualidade.
 ssr <- ssr_raw[
   ,
   locus_audit$Keep_locus,
@@ -297,7 +297,7 @@ A figura permite visualizar a taxa de chamada de cada loco em relação ao limit
 mínimo utilizado.
 
 ```{r grafico-qualidade-marcadores, fig.height=7}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Calcula taxa de chamada e diversidade de classes genotípicas para decidir quais locos SSR serão mantidos.
 ggplot(
   locus_audit,
   aes(
@@ -327,7 +327,7 @@ ggplot(
 A quantidade de chamadas SSR disponíveis é resumida para cada indivíduo.
 
 ```{r resumo-individuos}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Calcula a quantidade e a proporção de chamadas SSR disponíveis para cada indivíduo.
 individual_audit <- data.frame(
   IND = rownames(ssr_raw),
   N_called = rowSums(!is.na(ssr_raw)),
@@ -338,7 +338,7 @@ rownames(individual_audit) <- NULL
 
 individual_call_rate_summary <- data.frame(
   Medida = c("Mínimo", "Média", "Mediana", "Máximo"),
-  # Organiza o componente `Call_rate` desta estrutura.
+  # Lista as taxas de chamada usadas no resumo por indivíduo.
   Call_rate = c(
     min(individual_audit$Call_rate),
     mean(individual_audit$Call_rate),
@@ -360,7 +360,7 @@ As estatísticas descritivas permitem verificar diretamente a escala e a
 variação das dez características.
 
 ```{r resumo-fenotipos}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Calcula estatísticas descritivas para caracterizar a escala e a variabilidade dos fenótipos.
 phenotype_sd <- numeric(ncol(phenotypes))
 phenotype_minimum <- numeric(ncol(phenotypes))
 phenotype_maximum <- numeric(ncol(phenotypes))
@@ -398,7 +398,7 @@ pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. Os valores são
 mantidos exatamente como registrados na planilha original.
 
 ```{r valores-fenotipicos-distantes}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Padroniza os fenótipos e identifica observações distantes da média segundo o limite definido.
 phenotype_means <- colMeans(phenotypes)
 phenotype_standard_deviations <- numeric(ncol(phenotypes))
 
@@ -412,7 +412,7 @@ phenotype_standardized <- scale(
   scale = phenotype_standard_deviations
 )
 
-# Cria `extreme_positions` para uso nas etapas seguintes deste bloco.
+# Localiza as observações cuja distância padronizada alcança o limite definido.
 extreme_positions <- which(
   abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD,
   arr.ind = TRUE
@@ -439,7 +439,7 @@ rownames(phenotype_extremes) <- NULL
 kable(
   phenotype_extremes,
   digits = 3,
-  # Organiza o componente `col.names` desta estrutura.
+  # Define os cabeçalhos apresentados na tabela de observações fenotípicas destacadas.
   col.names = c(
     "Indivíduo",
     "Característica",
@@ -462,7 +462,7 @@ kable(
 A etapa seguinte organiza um resumo tabular dos objetos e resultados necessários para a interpretação desta seção.
 
 ```{r dicionario-caracteristicas}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Associa a cada característica suas descrições em português e inglês e sua unidade de medida.
 trait_dictionary <- data.frame(
   Trait = TRAITS,
   Description_en = c(
@@ -477,7 +477,7 @@ trait_dictionary <- data.frame(
     "Internal pulp firmness",
     "Soluble solids"
   ),
-  # Organiza o componente `Description_pt` desta estrutura.
+  # Registra a descrição em português de cada característica.
   Description_pt = c(
     "Massa média de frutos comerciais",
     "Produção de frutos comerciais",
@@ -490,7 +490,7 @@ trait_dictionary <- data.frame(
     "Firmeza interna da polpa",
     "Sólidos solúveis"
   ),
-  # Organiza o componente `Unit` desta estrutura.
+  # Registra a unidade de medida de cada característica.
   Unit = c(
     "kg", "kg", "kg", "cm", "cm",
     "cm", "cm", "N", "N", "°Brix"
@@ -508,7 +508,7 @@ kable(
 A etapa seguinte constrói a visualização correspondente para facilitar a interpretação do diagnóstico.
 
 ```{r grafico-fenotipos, fig.height=8}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Reorganiza os fenótipos em formato longo e mostra suas distribuições em histogramas.
 phenotype_long <- data.frame(
   IND = rownames(phenotypes),
   phenotypes,
@@ -538,7 +538,7 @@ A matriz fenotípica alinhada, os dados SSR, os metadados e os resumos são
 reunidos em um objeto que será utilizado na construção das matrizes genômicas.
 
 ```{r salvamento-saidas}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Reúne os objetos do pré-processamento e grava as saídas usadas no módulo seguinte.
 preprocessing_object <- list(
   ids = ids,
   metadata = metadata,
@@ -550,7 +550,7 @@ preprocessing_object <- list(
   phenotype_summary = phenotype_summary,
   phenotype_extremes = phenotype_extremes,
   trait_dictionary = trait_dictionary,
-  # Organiza o componente `settings` desta estrutura.
+  # Registra os parâmetros e limites necessários para reproduzir esta etapa.
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
@@ -580,7 +580,7 @@ O resultado final desta etapa pode ser conferido diretamente pelas dimensões e
 contagens abaixo.
 
 ```{r inventario-final}
-# Executa o bloco de cálculo correspondente a esta etapa do módulo.
+# Prepara os objetos necessários para executar os cálculos desta etapa.
 data.frame(
   Item = c(
     "Indivíduos",

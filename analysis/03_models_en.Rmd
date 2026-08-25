@@ -73,7 +73,7 @@ module are written to `output/models/`, while the native BGLR chains are
 organized under `output/models/bglr/`.
 
 ```{r inputs}
-# Execute the calculation block corresponding to this stage of the module.
+# Define output paths and load the objects required by this module.
 MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
 OUTPUT_DIR <- here("output", "models")
 BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
@@ -276,7 +276,7 @@ data.frame(
     "BayesC", "BL", "RKHS"
   ),
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
-  # Organize the `Structure` component of this structure.
+  # Describe the effect structure adopted by each method.
   Structure = c(
     "Common Gaussian variance for all marker effects",
     "Marker-specific variances",
@@ -429,7 +429,7 @@ ETA_models <- list(
   ),
   BayesB = list(
     fixed = family_term,
-    # Organize the `genomic` component of this structure.
+    # Define the genomic component of this model specification.
     genomic = list(X = M, model = "BayesB")
   ),
   BayesB2 = list(
@@ -443,7 +443,7 @@ ETA_models <- list(
   ),
   BayesC = list(
     fixed = family_term,
-    # Organize the `genomic` component of this structure.
+    # Define the genomic component of this model specification.
     genomic = list(X = M, model = "BayesC")
   ),
   BL = list(
@@ -604,7 +604,7 @@ for (run_index in seq_len(nrow(run_design))) {
   run_warning_messages <- character(0)
   fit_start <- proc.time()[["elapsed"]]
 
-  # Create `fit` for use in the following steps of this block.
+  # Fit the configured BGLR model and capture warnings emitted during fitting.
   fit <- withCallingHandlers(
     BGLR::BGLR(
       y = y_model,
@@ -690,7 +690,7 @@ for (run_index in seq_len(nrow(run_design))) {
     Effective_parameters = fit$fit$pD,
     Log_likelihood_at_posterior_mean = fit$fit$logLikAtPostMean,
     Posterior_mean = fit$mu,
-    # Organize the `Posterior_mean_SD` component of this structure.
+    # Record the available standard deviation for the posterior intercept mean.
     Posterior_mean_SD = c(fit$SD.mu, NA_real_)[1],
     Residual_variance = fit$varE,
     Residual_variance_SD = c(fit$SD.varE, NA_real_)[1],
@@ -782,7 +782,7 @@ used by the diagnostics and downstream modules. The block below is the direct
 continuation of `fit-models`.
 
 ```{r assemble-fit-results, eval=FALSE}
-# Execute the calculation block corresponding to this stage of the module.
+# Consolidate fitting lists into metric, prediction, genomic-value, and diagnostic tables.
 cv_metrics_by_fold <- bind_rows(metric_parts)
 cv_predictions <- bind_rows(prediction_parts)
 genomic_values_by_fold <- bind_rows(genomic_value_parts)
@@ -905,7 +905,7 @@ data.frame(
     "Fold-level genomic values",
     "Scalar chains reviewed"
   ),
-  # Organize the `Rows` component of this structure.
+  # Count the number of records produced in each module output.
   Rows = c(
     nrow(cv_metrics_by_fold),
     nrow(cv_predictions),
@@ -1009,7 +1009,7 @@ analysis_settings <- list(
   methods = method_names
 )
 
-# Create `model_catalogue` for use in the following steps of this block.
+# Record the methods, BGLR components, and genomic inputs used by the specifications.
 model_catalogue <- data.frame(
   Method = method_names,
   Label = c(
@@ -1020,7 +1020,7 @@ model_catalogue <- data.frame(
     "BRR", "BayesA", "BayesB", "BayesB",
     "BayesC", "BL", "RKHS"
   ),
-  # Organize the `Genomic_input` component of this structure.
+  # Record whether each method uses dosage matrix M or genomic matrix G.
   Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
   stringsAsFactors = FALSE
 )

@@ -72,7 +72,7 @@ The genotype workbook uses the `Genes` sheet for numerical SSR codes and the
 the `Médias_IND_artigo` sheet.
 
 ```{r read-data}
-# Execute the calculation block corresponding to this stage of the module.
+# Load the genotype and phenotype workbooks used by the preprocessing module.
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -277,7 +277,7 @@ locus_audit$Keep_locus <-
   locus_audit$Call_rate >= CALL_RATE_MIN &
   locus_audit$N_genotype_classes >= 2
 
-# Create `ssr` for use in the following steps of this block.
+# Retain in the SSR matrix only loci that pass the quality-control criteria.
 ssr <- ssr_raw[
   ,
   locus_audit$Keep_locus,
@@ -335,7 +335,7 @@ rownames(individual_audit) <- NULL
 
 individual_call_rate_summary <- data.frame(
   Measure = c("Minimum", "Mean", "Median", "Maximum"),
-  # Organize the `Call_rate` component of this structure.
+  # List the call-rate values used in the individual summary.
   Call_rate = c(
     min(individual_audit$Call_rate),
     mean(individual_audit$Call_rate),
@@ -409,7 +409,7 @@ phenotype_standardized <- scale(
   scale = phenotype_standard_deviations
 )
 
-# Create `extreme_positions` for use in the following steps of this block.
+# Locate observations whose standardized distance reaches the defined threshold.
 extreme_positions <- which(
   abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD,
   arr.ind = TRUE
@@ -436,7 +436,7 @@ rownames(phenotype_extremes) <- NULL
 kable(
   phenotype_extremes,
   digits = 3,
-  # Organize the `col.names` component of this structure.
+  # Define the headers displayed in the table of highlighted phenotype observations.
   col.names = c(
     "Individual",
     "Trait",
@@ -459,7 +459,7 @@ kable(
 The next step organizes a tabular summary of the objects and results needed to interpret this section.
 
 ```{r trait-dictionary}
-# Execute the calculation block corresponding to this stage of the module.
+# Associate each trait with its English and Portuguese descriptions and measurement unit.
 trait_dictionary <- data.frame(
   Trait = TRAITS,
   Description_en = c(
@@ -474,7 +474,7 @@ trait_dictionary <- data.frame(
     "Internal pulp firmness",
     "Soluble solids"
   ),
-  # Organize the `Description_pt` component of this structure.
+  # Record the Portuguese description of each trait.
   Description_pt = c(
     "Massa média de frutos comerciais",
     "Produção de frutos comerciais",
@@ -487,7 +487,7 @@ trait_dictionary <- data.frame(
     "Firmeza interna da polpa",
     "Sólidos solúveis"
   ),
-  # Organize the `Unit` component of this structure.
+  # Record the measurement unit of each trait.
   Unit = c(
     "kg", "kg", "kg", "cm", "cm",
     "cm", "cm", "N", "N", "°Brix"
@@ -547,7 +547,7 @@ preprocessing_object <- list(
   phenotype_summary = phenotype_summary,
   phenotype_extremes = phenotype_extremes,
   trait_dictionary = trait_dictionary,
-  # Organize the `settings` component of this structure.
+  # Record parameters and thresholds required to reproduce this stage.
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
