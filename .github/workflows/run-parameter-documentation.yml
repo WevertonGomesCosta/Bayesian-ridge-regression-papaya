@@ -24,7 +24,7 @@ jobs:
           from pathlib import Path
           import subprocess
 
-          # Normalize English wording to the anchors used by the prepared transformation.
+          # Normalize English M04 wording to the anchors used by the prepared transformation.
           p=Path('analysis/04_results_en.Rmd')
           text=p.read_text(encoding='utf-8')
           normalizations=[
@@ -46,6 +46,29 @@ jobs:
                   raise RuntimeError(f'Expected English M04 sentence was not found exactly once: {actual[:70]}')
               text=text.replace(actual, expected, 1)
           p.write_text(text, encoding='utf-8')
+
+          # Normalize English M05 wording and fix the same recurrence grammar issue there.
+          p5=Path('analysis/05_results_en.Rmd')
+          text5=p5.read_text(encoding='utf-8')
+          normalizations5=[
+            (
+              '# Format the correlation labels displayed in the heatmap cells.\ncorrelation_long <- correlation_long |>',
+              '# Format the correlation labels displayed inside heatmap cells.\ncorrelation_long <- correlation_long |>'
+            ),
+            (
+              'The first individuals in each ranking show the resulting selection directly.',
+              'The first individuals in each ranking show the candidates prioritized by the\nexploratory rule.'
+            ),
+            (
+              'Recurrence summarizes, across traits with positive OOF correlation, how many\nplace each individual among the most favorable 20%.',
+              'Recurrence summarizes, across traits with positive OOF correlation, in how many\ntraits each individual appears among the most favorable 20%.'
+            )
+          ]
+          for actual, expected in normalizations5:
+              if text5.count(actual) != 1:
+                  raise RuntimeError(f'Expected English M05 sentence was not found exactly once: {actual[:70]}')
+              text5=text5.replace(actual, expected, 1)
+          p5.write_text(text5, encoding='utf-8')
 
           lines=Path('.github/workflows/apply-parameter-documentation.yml').read_text(encoding='utf-8').splitlines()
           collecting=False; body=[]
