@@ -40,7 +40,7 @@ The block column (`BL`) is removed because it is not part of the statistical mod
 
 Preprocessing produces three central objects for the following stages: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics verify the consistency of these objects before genomic-matrix construction.
 
-## 2. Packages and file paths
+## 2. Packages, files, and parameters
 
 The packages used in this module have distinct roles:
 
@@ -133,12 +133,29 @@ pheno_raw <- read_excel(
 ) |>
   select(-BL)
 
-# First rows of the SSR codes.
-genes[1:6, 1:6]
+```
 
-# First phenotype rows after removing BL.
-head(pheno_raw)
+The initial structure of `Genes` can be inspected in its first six rows and six columns:
 
+```{r genes-preview}
+as.data.frame(genes[1:6, 1:6]) |>
+  format_table(caption = "Preview of the Genes sheet")
+```
+
+The preview shows the raw genotype layout: the first column is a sequential index, and subsequent columns contain the SSR codes organized in the next section.
+
+The phenotype table is also inspected after `BL` is removed:
+
+```{r phenotype-preview}
+head(pheno_raw) |>
+  format_table(caption = "Preview of phenotype data")
+```
+
+The phenotype preview contains `IND`, `FAM`, and the ten traits used in the analysis. The absence of `BL` confirms that this column has already been removed before genotype–phenotype alignment.
+
+Finally, the dimensions of the three sources are compared:
+
+```{r data-dimensions}
 data.frame(
   Source = c("Genes", "Genealex", "Médias_IND_artigo without BL"),
   Rows = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
@@ -147,7 +164,7 @@ data.frame(
   format_table(caption = "Dimensions of the spreadsheets used in the analysis")
 ```
 
-The dimensions table confirms `r nrow(genes)` individuals in the `Genes` sheet and `r ncol(genes) - 1` columns corresponding to SSR loci, in addition to the first index column. The phenotype table contains `r nrow(pheno_raw)` individuals after removing `BL`. The `Genealex` sheet has its own metadata layout, so its dimensions should not be interpreted as a marker matrix.
+The dimensions table confirms `r nrow(genes)` individuals in `Genes` and `r ncol(genes) - 1` columns corresponding to SSR loci, in addition to the first index column. The phenotype table contains `r nrow(pheno_raw)` individuals. `Genealex` has its own metadata layout, so its dimensions should not be interpreted as a marker matrix.
 
 ## 4. Organizing the SSR data
 
@@ -159,7 +176,8 @@ In `Genealex`, each piece of information is located explicitly:
 2. **Locus columns.** Locus names are stored on row 3 in alternating columns beginning with column 3. These positions are obtained with `locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)`. The `seq()` function starts at column 3 and advances by two columns until all `n_loci` names are included.
 3. **Individual identifiers.** The expression `genealex[[2]][individual_rows]` selects column 2 only at the rows defined above. Then `as.character()` preserves alphanumeric identifiers and `trimws()` removes spaces before or after the code: `ids <- trimws(as.character(genealex[[2]][individual_rows]))`.
 4. **Locus names.** The expression `genealex[3, locus_columns]` selects row 3 only at the locus columns. `unlist(..., use.names = FALSE)` converts this selection to a vector, and `trimws(as.character(...))` ensures text names without surrounding spaces.
-5. **Missing calls.** After the numerical SSR matrix is formed, `ssr_raw[ssr_raw == -9] <- NA_real_` replaces `-9`, the missing-value code in the source file, with R's standard missing value (`NA`).
+5. **SSR matrix.** The expression `genes[, -1, drop = FALSE]` selects all rows and excludes the first column of `Genes`; the index `-1` means “all columns except the first”. `drop = FALSE` keeps the result two-dimensional. `as.matrix()` converts this selection to a matrix, and `storage.mode(ssr_raw) <- "numeric"` ensures that SSR codes are stored numerically.
+6. **Missing calls.** After the numerical SSR matrix is formed, `ssr_raw[ssr_raw == -9] <- NA_real_` replaces `-9`, the missing-value code in the source file, with R's standard missing value (`NA`).
 
 ```{r organize-ssr}
 # Obtain panel dimensions from `Genes`; its first column is not an SSR locus.
@@ -200,9 +218,15 @@ SSR codes represent the two alleles observed in each individual. For example, `1
 
 ## 5. Organizing and aligning phenotypes
 
-Ten traits are used. Before the final objects are built, the module checks whether required columns are present, searches for missing or duplicated identifiers, and compares the sets of genotyped and phenotyped individuals. For the analyzed dataset, these checks should indicate complete correspondence between the two sources.
+Ten traits are used. Before alignment, three checks prevent genotypes and phenotypes from being associated incorrectly:
 
-Phenotypes are then aligned with `match(ids, pheno_raw$IND)`. For every identifier in `ids`, `match()` returns its corresponding position in `pheno_raw$IND`. Those positions are used directly in `pheno_raw[match(ids, pheno_raw$IND), required_columns]`, which reorders phenotype rows to the same sequence as the SSR matrix. Thus, phenotype row *i* and genotype row *i* represent the same individual. After alignment, `FAM` is converted to a factor to represent the categorical variable used in Module 02, and the ten traits are collected in a numeric matrix.
+1. **Required columns.** `required_columns <- c("IND", "FAM", TRAITS)` collects the expected columns. `setdiff(required_columns, names(pheno_raw))` returns any that are absent from the spreadsheet; an empty result means that all required columns are present.
+2. **Individuals present in only one source.** `setdiff(ids, pheno_raw$IND)` identifies genotyped individuals without matching phenotypes, whereas `setdiff(pheno_raw$IND, ids)` performs the reverse comparison and identifies phenotyped individuals without genotypes.
+3. **Invalid or repeated identifiers.** `is.na()` and comparison with `""` identify missing or empty codes; `duplicated()` identifies repeated identifiers that would prevent unambiguous one-to-one matching.
+
+After these checks, phenotypes are aligned with `match(ids, pheno_raw$IND)`. For every identifier in `ids`, `match()` returns its corresponding position in `pheno_raw$IND`. Those positions are used directly in `pheno_raw[match(ids, pheno_raw$IND), required_columns]`, which reorders phenotype rows to the same sequence as the SSR matrix. Thus, phenotype row *i* and genotype row *i* represent the same individual.
+
+After alignment, `factor(pheno$FAM)` converts `FAM` to a categorical variable while preserving family levels. `as.matrix(pheno[, TRAITS])` selects the ten traits and gathers them in a matrix, and `storage.mode(phenotypes) <- "numeric"` ensures that their values are treated numerically in subsequent calculations.
 
 ```{r organize-phenotypes}
 # Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.
@@ -228,7 +252,6 @@ alignment <- data.frame(
     "Missing from phenotype data",
     "Missing from genotype data"
   ),
-  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     nrow(pheno_raw),
@@ -241,7 +264,11 @@ format_table(
   alignment,
   caption = "Alignment between genotype and phenotype data"
 )
+```
 
+The table confirms `r length(ids)` genotyped individuals and `r nrow(pheno_raw)` phenotyped individuals, with no individuals present in only one source. Alignment can therefore proceed without discarding plants.
+
+```{r identifier-checks}
 # Summarize the results in `identifier_summary`.
 identifier_summary <- data.frame(
   Check = c(
@@ -253,7 +280,6 @@ identifier_summary <- data.frame(
     "Duplicated phenotype identifiers",
     "Missing required phenotype columns"
   ),
-  # List the values corresponding to the table entries.
   Value = c(
     sum(is.na(ids) | ids == ""),
     sum(duplicated(ids)),
@@ -269,7 +295,11 @@ format_table(
   identifier_summary,
   caption = "Summary of identifiers and required columns"
 )
+```
 
+The consistency checks contain `r sum(identifier_summary$Value)` problematic occurrences in total. For the analyzed data, this confirms the absence of empty or duplicated identifiers, missing or duplicated locus names, and missing required phenotype columns.
+
+```{r phenotype-alignment}
 # Reorder phenotypes to the same sequence as genotyped individuals.
 pheno <- pheno_raw[
   match(ids, pheno_raw$IND),
@@ -303,7 +333,7 @@ data.frame(
   format_table(caption = "Number of individuals per family")
 ```
 
-The checks confirm `r length(ids)` individuals in both sources, with no individuals missing between genotype and phenotype data. Missing or duplicated identifiers and locus names are also evaluated before alignment. After reordering, `FAM` contains `r nlevels(metadata$FAM)` families, with family sizes ranging from `r min(table(metadata$FAM))` to `r max(table(metadata$FAM))` individuals.
+After reordering, `FAM` contains `r nlevels(metadata$FAM)` families, with family sizes ranging from `r min(table(metadata$FAM))` to `r max(table(metadata$FAM))` individuals. This distribution is used to stratify the five cross-validation folds in Module 02.
 
 ## 6. Marker quality control
 
@@ -456,7 +486,9 @@ All ten traits contain `r min(phenotype_summary$N)` available observations, conf
 
 ### 8.1 Phenotype observations far from the mean
 
-Standardized values are used only as a descriptive diagnostic. For each trait, the module calculates $z=(y-\bar{y})/s$, where $\bar{y}$ is the mean and $s$ is the sample standard deviation. An observation is highlighted when $|z|$ is at least `r PHENOTYPE_DISTANCE_THRESHOLD`. This threshold highlights values far from the mean; it does not declare errors or statistical outliers. Values are retained exactly as recorded in the original spreadsheet and remain available to the models.
+Standardized values are used only as a descriptive diagnostic. For each trait, $z=(y-\bar{y})/s$, where $y$ is the observed value, $\bar{y}$ is the trait mean, and $s$ is the sample standard deviation. The call `scale(phenotypes, center = phenotype_means, scale = phenotype_standard_deviations)` applies this transformation to every column of the phenotype matrix.
+
+Next, `abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD` compares the absolute standardized distance with the defined threshold, regardless of whether an observation is above or below the mean. `which(..., arr.ind = TRUE)` returns the row and column positions that satisfy the criterion; these positions recover the individual, trait, and original value. An observation is highlighted when $|z|$ is at least `r PHENOTYPE_DISTANCE_THRESHOLD`, but no value is removed or changed.
 
 ```{r distant-phenotype-values}
 # Standardize phenotypes and identify observations beyond the defined distance threshold.
@@ -500,7 +532,6 @@ rownames(phenotype_extremes) <- NULL
 format_table(
   phenotype_extremes,
   digits = 3,
-  # Define the headers displayed in the table of highlighted phenotype observations.
   col.names = c(
     "Individual",
     "Trait",
@@ -540,7 +571,6 @@ trait_dictionary <- data.frame(
     "Internal pulp firmness",
     "Soluble solids"
   ),
-  # Record the Portuguese description of each trait.
   Description_pt = c(
     "Massa média de frutos comerciais",
     "Produção de frutos comerciais",
@@ -553,7 +583,6 @@ trait_dictionary <- data.frame(
     "Firmeza interna da polpa",
     "Sólidos solúveis"
   ),
-  # Record the measurement unit of each trait.
   Unit = c(
     "kg", "kg", "kg", "cm", "cm",
     "cm", "cm", "N", "N", "°Brix"
@@ -570,7 +599,7 @@ format_table(
 
 The dictionary shows that production and mass are expressed in kg, fruit dimensions in cm, firmness in N, and soluble solids in °Brix. These different units explain why the numerical scales of the traits should not be compared directly.
 
-The histograms complement the descriptive statistics by showing distribution shape. Twenty bins are used only to provide consistent visual resolution. Because `scales = "free"`, every trait receives its own horizontal scale; this makes within-trait shape easier to see, but axis limits should not be compared directly across panels.
+The histograms complement the descriptive statistics by showing distribution shape. To build them, `pivot_longer(cols = -IND, names_to = "Trait", values_to = "Value")` changes the table from one column per trait to long format, in which each row records an individual, a trait, and its value. Twenty bins are used only to define histogram resolution. Because `scales = "free"`, every trait receives its own horizontal scale; this makes within-trait shape easier to see, but axis limits should not be compared directly across panels.
 
 ```{r phenotype-plot, fig.height=8}
 # Reshape the phenotype matrix to long format before plotting trait distributions.
@@ -661,7 +690,6 @@ data.frame(
     "Missing SSR calls",
     "Highlighted phenotype observations"
   ),
-  # List the values corresponding to the table entries.
   Value = c(
     length(ids),
     ncol(phenotypes),
@@ -675,7 +703,7 @@ data.frame(
   format_table(caption = "Final preprocessing summary")
 ```
 
-This summary should be read as a workflow checkpoint: individuals and phenotypes remain aligned, filtering acts on SSR loci rather than individuals, and the count of highlighted phenotype observations is diagnostic rather than an automatic exclusion rule.
+The summary confirms the conditions required before genomic-matrix construction: individuals and phenotypes remain aligned, filtering acts on SSR loci rather than individuals, and highlighted phenotype observations remain in the data because their identification is diagnostic only.
 
 ## 10. Next step
 
