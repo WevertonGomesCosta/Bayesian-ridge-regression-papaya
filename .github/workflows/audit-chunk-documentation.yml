@@ -1,0 +1,141 @@
+name: Audit chunk documentation
+
+on:
+  push:
+    branches:
+      - chunk-documentation-audit
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit R Markdown chunk documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import math
+          import re
+
+          CHUNK_RE = re.compile(r'^\s*```\{r(?:[\s,}]|$)')
+          END_RE = re.compile(r'^\s*```\s*$')
+          HEADING_RE = re.compile(r'^\s*#{1,6}\s+')
+          WORD_RE = re.compile(r'[A-Za-zÀ-ÖØ-öø-ÿ]{2,}')
+
+          def is_explanatory_line(line: str) -> bool:
+              s = line.strip()
+              if not s:
+                  return False
+              if HEADING_RE.match(s):
+                  return False
+              if s.startswith(('```', '<!--', '-->', '<div', '</div', '$$', '\\[', '\\]', '---')):
+                  return False
+              if s.startswith(('|', ':--')):
+                  return False
+              # Require sentence-like prose/list text rather than a bare label.
+              return len(WORD_RE.findall(s)) >= 5
+
+          def chunk_label(header: str, index: int) -> str:
+              inside = header.split('{r', 1)[1].rsplit('}', 1)[0].strip()
+              if not inside:
+                  return f'unnamed-{index}'
+              first = inside.split(',', 1)[0].strip()
+              return first or f'unnamed-{index}'
+
+          findings = []
+          totals = {'files': 0, 'chunks': 0, 'missing_intro': 0, 'large': 0, 'large_comment_gap': 0}
+
+          for path in sorted(Path('analysis').glob('*.Rmd')):
+              lines = path.read_text(encoding='utf-8').splitlines()
+              chunks = []
+              i = 0
+              idx = 0
+              while i < len(lines):
+                  if CHUNK_RE.match(lines[i]):
+                      idx += 1
+                      start = i
+                      j = i + 1
+                      while j < len(lines) and not END_RE.match(lines[j]):
+                          j += 1
+                      end = min(j, len(lines) - 1)
+                      chunks.append((idx, start, end, chunk_label(lines[start], idx)))
+                      i = j + 1
+                  else:
+                      i += 1
+
+              if not chunks:
+                  continue
+
+              totals['files'] += 1
+              totals['chunks'] += len(chunks)
+              prev_end = -1
+
+              for idx, start, end, label in chunks:
+                  between = lines[prev_end + 1:start]
+                  has_intro = any(is_explanatory_line(x) for x in between)
+                  body = lines[start + 1:end]
+                  effective = [x for x in body if x.strip() and not x.lstrip().startswith('#')]
+                  comments = [k for k, x in enumerate(body) if x.lstrip().startswith('#') and not x.lstrip().startswith('#|')]
+                  code_n = len(effective)
+                  is_large = code_n >= 15
+
+                  # For large chunks, require distributed short comments: at least
+                  # ceil(code_lines/15), minimum 2, and no run > 18 effective code lines
+                  # without a comment boundary.
+                  comment_ok = True
+                  max_gap = 0
+                  if is_large:
+                      totals['large'] += 1
+                      required = max(2, math.ceil(code_n / 15))
+                      comment_ok = len(comments) >= required
+
+                      gap = 0
+                      for x in body:
+                          if not x.strip():
+                              continue
+                          if x.lstrip().startswith('#') and not x.lstrip().startswith('#|'):
+                              max_gap = max(max_gap, gap)
+                              gap = 0
+                          elif not x.lstrip().startswith('#|'):
+                              gap += 1
+                      max_gap = max(max_gap, gap)
+                      if max_gap > 18:
+                          comment_ok = False
+
+                  issues = []
+                  if not has_intro:
+                      totals['missing_intro'] += 1
+                      issues.append('MISSING_INTRO')
+                  if is_large and not comment_ok:
+                      totals['large_comment_gap'] += 1
+                      issues.append('LARGE_NEEDS_COMMENTS')
+
+                  if issues:
+                      findings.append({
+                          'file': str(path),
+                          'line': start + 1,
+                          'label': label,
+                          'code_lines': code_n,
+                          'comment_lines': len(comments),
+                          'max_gap': max_gap if is_large else 0,
+                          'issues': ','.join(issues),
+                      })
+                  prev_end = end
+
+          print('=== CHUNK DOCUMENTATION AUDIT ===')
+          print(f"Files with R chunks: {totals['files']}")
+          print(f"Total chunks: {totals['chunks']}")
+          print(f"Chunks without explanatory prose: {totals['missing_intro']}")
+          print(f"Large chunks (>=15 effective R lines): {totals['large']}")
+          print(f"Large chunks needing distributed comments: {totals['large_comment_gap']}")
+          print()
+          print('file\tline\tchunk\tcode_lines\tcomments\tmax_gap\tissues')
+          for f in findings:
+              print(f"{f['file']}\t{f['line']}\t{f['label']}\t{f['code_lines']}\t{f['comment_lines']}\t{f['max_gap']}\t{f['issues']}")
+          PY
