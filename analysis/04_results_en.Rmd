@@ -243,12 +243,14 @@ retained as a provisional choice for review.
 
 ### 5.1 Predictive and DIC winners
 
-The method with the best OOF predictive performance and the method with the
-smallest mean DIC are first identified separately for every trait.
+First, the method with the best OOF predictive performance and the method with the lowest mean DIC are identified separately for each trait.
+
+The `Delta_DIC <= 2` cutoff is the operational rule used to regard fits as having similar DIC; it is not a formal test. The number of folds is not redefined in this module: `N_FOLDS` is recovered from the Module 02 object and is used only to calculate the descriptive one-standard-error tolerances.
 
 ```{r selection-winners}
-# Define the DIC threshold and identify the predictive and DIC winners for each trait.
+# Use Delta_DIC <= 2 as the operational cutoff for similar fit.
 DIC_COMPETITIVE_THRESHOLD <- 2
+# Recover the five Module 02 folds for the descriptive one-standard-error tolerances.
 N_FOLDS <- matrices_object$settings$n_folds
 
 # Best combination of correlation, RMSE, MAE, and DIC for each trait.
@@ -581,9 +583,7 @@ selected_performance |>
 ### 5.6 Final selection result and predictive evidence
 
 Finally, the selected method, predictive and DIC winners, OOF direction, and a
-nominal signal class are brought together for each trait. The nominal class is
-reported only to make weak positive correlations explicit; it is not used as a
-selection gate.
+nominal signal class are brought together for each trait. The nominal class is shown only to make weak positive correlations explicit; it is not used as a selection filter. The `r > 0` boundary separates only positive from nonpositive predictive direction; it is neither a significance test nor a minimum predictive-utility threshold.
 
 ```{r final-model-selection}
 # Combine the selected method, predictive and DIC winners, and OOF evidence in the final trait-level table.
@@ -601,11 +601,13 @@ model_selection <- selection_spec |>
       Selected_method == Predictive_winner,
     DIC_winner_agrees =
       Selected_method == DIC_winner,
+    # Use zero only as a direction boundary; r > 0 does not imply significance or minimum utility.
     OOF_predictive_direction = if_else(
       r > 0,
       "positive",
       "nonpositive"
     ),
+    # Keep p < 0.05 only as a descriptive nominal class, without filtering rankings.
     OOF_nominal_signal = case_when(
       r > 0 & p_value < 0.05 ~ "positive_nominal_p_lt_0.05",
       r > 0 ~ "positive_nominal_p_ge_0.05",
@@ -940,10 +942,9 @@ selected_individuals_by_trait |>
 
 ## 11. Recurrence across traits
 
-Recurrence is descriptive: among traits with positive OOF correlation, it counts
-how many place each individual among the most favorable 20%. Weak positive OOF
-signals remain exploratory. No weights are used and no multi-trait selection
-index is constructed.
+Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed.
+
+Recurrence classes are descriptive conventions: high for four or more traits, intermediate for three, broad for two, specific for one, and none for zero. The `multitrait_candidates` object retains individuals recurring in at least two traits so potentially useful information is not discarded before downstream presentation. These cutoffs organize the summary and are not statistical-significance thresholds.
 
 ```{r multitrait-recurrence}
 # Count individual recurrence across exploratory rankings for traits with positive OOF correlation.
@@ -974,6 +975,7 @@ multitrait_recurrence <- matrices_object$metadata |>
       TRUE ~ Mean_rank_present
     ),
     Selection_frequency = N_traits / length(positive_oof_traits),
+    # Classify recurrence by number of traits; these cutoffs are descriptive.
     Recurrence_class = case_when(
       N_traits >= 4L ~ "high_4plus",
       N_traits == 3L ~ "intermediate_3",
@@ -1009,6 +1011,7 @@ candidate_rank_wide <- selected_individuals_by_trait |>
 
 # Retain candidates recurring in at least two traits and attach their trait-specific ranks.
 multitrait_candidates <- multitrait_recurrence |>
+  # Retain in the complete object candidates present in at least two traits.
   filter(N_traits >= 2L) |>
   left_join(candidate_rank_wide, by = c("IND", "FAM")) |>
   arrange(desc(N_traits), FAM, IND)

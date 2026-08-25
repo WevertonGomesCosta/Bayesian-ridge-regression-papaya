@@ -48,7 +48,7 @@ suppressPackageStartupMessages({
 })
 ```
 
-The next step loads the input objects and organizes the structures required for the analysis.
+The next step loads the input objects and defines the visual standard for this module. Labels, colors, base font size, figure dimensions, and export resolution are presentation choices only: none enters performance, selection, or inferential calculations. The palette is held fixed so that each method keeps the same visual identity across figures.
 
 ```{r inputs-and-style}
 # Define output paths and load the objects required by this module.
@@ -107,6 +107,7 @@ method_colors <- c(
   GBLUP = "#DD4477"
 )
 
+# Use base font size 12 for readability; this choice does not alter any analytical result.
 project_theme <- theme_bw(base_size = 12) +
   theme(
     legend.position = "bottom",
@@ -529,6 +530,8 @@ kable(
 
 ## 9. Correlations among OOF genomic values
 
+Correlations are used without rounding in calculations and in the color scale. Because values are printed to two decimals in the heatmap, only the label of correlations with `|r| < 0.005` is displayed as zero to avoid showing `-0.00`; the original numeric value remains unchanged.
+
 The next step builds the corresponding visualization to support interpretation of the diagnostic.
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
@@ -542,7 +545,7 @@ names(correlation_long) <- c(
   "Correlation"
 )
 
-# Format the correlation labels displayed in the heatmap cells.
+# Set only the label of |r| < 0.005 to zero; the original correlation still drives analysis and color.
 correlation_long <- correlation_long |>
   mutate(
     Correlation_label = replace(
@@ -641,7 +644,7 @@ kable(
 )
 ```
 
-The first individuals in each ranking show the resulting selection directly.
+The next table shows only the first five individuals from each ranking as a reading preview. The value `n = 5` is a presentation choice; the complete ranking remains available in the object and derived files.
 
 ```{r proportional-selection-preview}
 selected_individuals_by_trait |>
@@ -660,6 +663,8 @@ selected_individuals_by_trait |>
 ```
 
 ## 11. Recurrence across traits
+
+The recurrence classes shown here are the same ones defined in Module 04. The complete object retains candidates present in at least two traits; to keep the main table compact, this module displays only intermediate or high recurrence, that is, candidates present in three or more traits. The `N_traits >= 3` cutoff is a presentation choice only and does not redefine the stored candidate set.
 
 The next step organizes a tabular summary of the objects and results needed to interpret this section.
 
@@ -697,7 +702,7 @@ kable(
 The next step derives and presents the corresponding selection or prioritization rule from the calculated results.
 
 ```{r recurrent-candidates-table}
-# Retain candidates recurring in at least three traits for the main table.
+# Show only intermediate/high recurrence (>=3) in the main table; the complete object retains >=2.
 main_multitrait_candidates <- multitrait_candidates |>
   filter(N_traits >= 3L) |>
   mutate(
@@ -725,8 +730,8 @@ kable(
 )
 ```
 
-Recurrence summarizes, across traits with positive OOF correlation, how many
-place each individual among the most favorable 20%. Recurrence that depends on
+Recurrence summarizes, across traits with positive OOF correlation, in how many
+traits each individual appears among the most favorable 20%. Recurrence that depends on
 weak positive OOF signals should remain exploratory. `N_traits`, selection
 frequency, and ranks are not combined into a multi-trait index.
 

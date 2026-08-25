@@ -244,12 +244,14 @@ preditivo é mantido como escolha provisória para revisão.
 
 ### 5.1 Vencedores preditivo e por DIC
 
-Primeiro são identificados, separadamente, o método com melhor desempenho
-preditivo OOF e o método com menor DIC médio em cada característica.
+Primeiro são identificados, separadamente, o método com melhor desempenho preditivo OOF e o método com menor DIC médio em cada característica.
+
+O limite `Delta_DIC <= 2` é a regra operacional adotada para considerar ajustes com DIC semelhante; ele não representa um teste formal. O número de folds não é redefinido neste módulo: `N_FOLDS` é recuperado do objeto do Módulo 02 e entra apenas no cálculo das tolerâncias descritivas de um erro-padrão.
 
 ```{r selection-winners}
-# Define o limite de DIC e identifica, para cada característica, os vencedores preditivo e por DIC.
+# Usa Delta_DIC <= 2 como limite operacional de similaridade de ajuste.
 DIC_COMPETITIVE_THRESHOLD <- 2
+# Recupera os cinco folds do Módulo 02 para calcular as tolerâncias descritivas de um erro-padrão.
 N_FOLDS <- matrices_object$settings$n_folds
 
 # Melhor combinação de correlação, RMSE, MAE e DIC para cada característica.
@@ -583,8 +585,7 @@ selected_performance |>
 
 Por fim, são reunidos o método selecionado, os vencedores preditivo e por DIC, a
 direção OOF e uma classe nominal do sinal de cada característica. A classe
-nominal é apresentada apenas para tornar explícitas correlações positivas
-fracas; ela não é usada como filtro de seleção.
+nominal é apresentada apenas para tornar explícitas correlações positivas fracas; ela não é usada como filtro de seleção. A fronteira `r > 0` separa apenas a direção preditiva positiva da não positiva; não constitui teste de significância nem limiar mínimo de utilidade preditiva.
 
 ```{r final-model-selection}
 # Reúne método selecionado, vencedores preditivo e por DIC e evidência OOF em uma tabela final por característica.
@@ -602,11 +603,13 @@ model_selection <- selection_spec |>
       Selected_method == Predictive_winner,
     DIC_winner_agrees =
       Selected_method == DIC_winner,
+    # Usa zero apenas como fronteira de direção; r > 0 não implica significância ou utilidade mínima.
     OOF_predictive_direction = if_else(
       r > 0,
       "positive",
       "nonpositive"
     ),
+    # Mantém p < 0,05 somente como classe nominal descritiva, sem filtrar os rankings.
     OOF_nominal_signal = case_when(
       r > 0 & p_value < 0.05 ~ "positive_nominal_p_lt_0.05",
       r > 0 ~ "positive_nominal_p_ge_0.05",
@@ -942,10 +945,9 @@ selected_individuals_by_trait |>
 
 ## 11. Recorrência entre características
 
-A recorrência é descritiva: entre as características com correlação OOF positiva,
-conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. Sinais OOF
-positivos fracos permanecem exploratórios. Não são usados pesos e não é
-construído índice de seleção multicaracterística.
+A recorrência é descritiva: entre as características com correlação OOF positiva, conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. Sinais OOF positivos fracos permanecem exploratórios. Não são usados pesos e não é construído índice de seleção multicaracterística.
+
+As classes de recorrência são convenções descritivas: alta para quatro ou mais características, intermediária para três, ampla para duas, específica para uma e nenhuma para zero. O objeto `multitrait_candidates` conserva indivíduos recorrentes em pelo menos duas características para não descartar informação potencialmente útil nos módulos seguintes. Esses pontos de corte organizam a apresentação e não são limiares de significância estatística.
 
 ```{r multitrait-recurrence}
 # Conta a recorrência dos indivíduos entre os rankings exploratórios das características com OOF positivo.
@@ -976,6 +978,7 @@ multitrait_recurrence <- matrices_object$metadata |>
       TRUE ~ Mean_rank_present
     ),
     Selection_frequency = N_traits / length(positive_oof_traits),
+    # Classifica a recorrência por número de características; os cortes são descritivos.
     Recurrence_class = case_when(
       N_traits >= 4L ~ "high_4plus",
       N_traits == 3L ~ "intermediate_3",
@@ -1011,6 +1014,7 @@ candidate_rank_wide <- selected_individuals_by_trait |>
 
 # Mantém candidatos recorrentes em pelo menos duas características e anexa seus ranks específicos.
 multitrait_candidates <- multitrait_recurrence |>
+  # Mantém no objeto completo candidatos presentes em pelo menos duas características.
   filter(N_traits >= 2L) |>
   left_join(candidate_rank_wide, by = c("IND", "FAM")) |>
   arrange(desc(N_traits), FAM, IND)

@@ -53,14 +53,19 @@ suppressPackageStartupMessages({
 })
 ```
 
-A etapa seguinte define os caminhos dos arquivos usados como entradas e saídas do módulo.
+A etapa seguinte define os caminhos dos arquivos usados como entradas e saídas do módulo. Esses caminhos apenas organizam a leitura e a persistência dos resultados e não constituem parâmetros estatísticos.
+
+Dois parâmetros de controle são fixados neste ponto. `CALL_RATE_MIN = 0.90` exige que pelo menos 90% das chamadas de um loco estejam disponíveis; em conjunto com a exigência de pelo menos duas classes genotípicas, esse limite evita manter locos com informação insuficiente. `PHENOTYPE_DISTANCE_THRESHOLD = 4` identifica, apenas para inspeção, observações a pelo menos quatro desvios-padrão da média da característica. Essa regra é diagnóstica: nenhum fenótipo é removido, winsorizado ou alterado por esse limite.
 
 ```{r caminhos}
+# Define os dois arquivos de entrada e a pasta em que o pré-processamento será salvo.
 GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
 PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
 OUTPUT_DIR <- here("output", "preprocessing")
 
+# Exige pelo menos 90% de chamadas disponíveis para manter um loco SSR.
 CALL_RATE_MIN <- 0.90
+# Usa quatro desvios-padrão somente como limiar de sinalização diagnóstica.
 PHENOTYPE_DISTANCE_THRESHOLD <- 4
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
@@ -522,6 +527,7 @@ phenotype_long <- data.frame(
 
 # Constrói o gráfico usado na interpretação.
 ggplot(phenotype_long, aes(x = Value)) +
+  # Usa 20 classes apenas para padronizar a resolução visual dos histogramas.
   geom_histogram(bins = 20) +
   facet_wrap(~ Trait, scales = "free", ncol = 2) +
   labs(

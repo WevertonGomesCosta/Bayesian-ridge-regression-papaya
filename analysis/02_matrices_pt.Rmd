@@ -61,7 +61,11 @@ suppressPackageStartupMessages({
 })
 ```
 
-A etapa seguinte carrega os objetos de entrada e organiza as estruturas necessárias para a análise.
+A etapa seguinte carrega o objeto de pré-processamento e fixa os parâmetros usados na construção das matrizes e da validação cruzada.
+
+São definidos cinco folds porque, com 150 indivíduos, a partição 5-fold produz 30 indivíduos de validação e 120 de treinamento em cada fold, mantendo a estratificação por família. Cada indivíduo aparece exatamente uma vez em validação; trata-se de uma única partição estratificada em cinco folds, e não de validação cruzada repetida. `SEED_CV = 20260723` serve apenas para reproduzir a mesma alocação dos indivíduos e não possui interpretação inferencial.
+
+O limite `ALLELE_FREQUENCY_MIN = 0.05` mantém colunas alélicas com frequência entre 0,05 e 0,95, desde que também apresentem variação de dosagem positiva. Assim, alelos muito raros ou praticamente fixados não entram em `M`. O limite de taxa de chamada é herdado do Módulo 01 para registrar a mesma regra de controle de qualidade; os locos já chegam a este módulo com essa decisão aplicada.
 
 ```{r objeto-entrada}
 # Define os caminhos e carrega o objeto de pré-processamento usado para construir as matrizes.
@@ -76,9 +80,11 @@ OUTPUT_DIR <- here(
   "matrices"
 )
 
+# Usa cinco folds: 30 indivíduos em validação e 120 em treinamento por fold.
 N_FOLDS <- 5L
-# Fixa a semente usada para formar os folds estratificados por família.
+# Fixa apenas a reprodutibilidade da alocação estratificada por família.
 SEED_CV <- 20260723L
+# Exclui alelos com frequência abaixo de 5% ou acima de 95%.
 ALLELE_FREQUENCY_MIN <- 0.05
 
 dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
@@ -91,6 +97,7 @@ phenotypes <- preprocessing$phenotypes
 ssr_raw <- preprocessing$ssr_raw
 locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
+# Recupera, para rastreabilidade, o limiar de taxa de chamada aplicado no Módulo 01.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
@@ -261,6 +268,7 @@ ggplot(
   )
 ) +
   geom_histogram(
+    # Usa 20 classes apenas para padronizar a resolução visual do histograma.
     bins = 20,
     position = "identity",
     alpha = 0.7
