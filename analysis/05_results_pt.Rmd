@@ -73,7 +73,7 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-O módulo consome dois objetos consolidados. `models_object.rds` fornece as configurações necessárias para localizar e interpretar as cadeias já salvas; `module04_results.rds` fornece todas as tabelas, decisões, rankings e correlações derivados no Módulo 04. O chunk também define o padrão visual. Rótulos, cores, tamanho-base de fonte, dimensões e resolução de exportação são escolhas exclusivamente de apresentação e não entram em cálculos de desempenho, seleção ou inferência. A paleta fixa mantém a identidade visual de cada método ao longo da página.
+O módulo consome dois objetos consolidados. `models_object.rds` fornece as configurações necessárias para localizar e interpretar as cadeias já salvas; `module04_results.rds` fornece todas as tabelas, decisões, rankings e correlações derivados no Módulo 04. Rótulos, cores, tamanho-base de fonte, dimensões e resolução de exportação são escolhas exclusivamente de apresentação e não entram em cálculos de desempenho, seleção ou inferência. A paleta fixa mantém a identidade visual de cada método ao longo da página.
 
 ```{r inputs-and-style}
 # Define os caminhos de saída e carrega os objetos necessários para este módulo.
@@ -121,6 +121,127 @@ selection_objective_labels <- c(
   decrease = "Diminuir"
 )
 
+# Deriva estatísticas usadas pela narrativa interpretativa e valida
+# sua consistência com os objetos científicos consolidados no Módulo 04.
+n_traits <- length(traits)
+n_methods <- length(methods)
+n_trait_method_combinations <- nrow(model_comparison)
+n_selected_traits <- nrow(model_selection)
+
+positive_oof_from_selection <- model_selection$Trait[
+  !is.na(model_selection$r) &
+    model_selection$r > 0
+]
+
+nonpositive_oof_traits <- setdiff(
+  traits,
+  positive_oof_from_selection
+)
+
+positive_oof_nonsignificant_traits <- model_selection$Trait[
+  !is.na(model_selection$r) &
+    model_selection$r > 0 &
+    !is.na(model_selection$p_value) &
+    model_selection$p_value >= 0.05
+]
+
+n_positive_oof_traits <- length(positive_oof_from_selection)
+
+n_available_values <- unique(selection_sizes$N_available)
+n_selected_values <- unique(selection_sizes$N_selected)
+
+highest_oof_trait <- model_comparison$Trait[
+  which.max(model_comparison$r)
+]
+
+format_list_pt <- function(x) {
+  x <- as.character(x)
+  n <- length(x)
+
+  if (n == 0L) {
+    return("nenhuma")
+  }
+
+  if (n == 1L) {
+    return(x)
+  }
+
+  paste0(
+    paste(x[-n], collapse = ", "),
+    " e ",
+    x[n]
+  )
+}
+
+method_order_present <- methods[
+  methods %in% model_selection$Selected_method
+]
+
+selected_method_summary <- paste(
+  vapply(
+    method_order_present,
+    function(method_name) {
+      paste0(
+        unname(method_labels[method_name]),
+        " para ",
+        format_list_pt(
+          model_selection$Trait[
+            model_selection$Selected_method == method_name
+          ]
+        )
+      )
+    },
+    character(1)
+  ),
+  collapse = "; "
+)
+
+stopifnot(
+  length(n_available_values) == 1L,
+  length(n_selected_values) == 1L,
+  n_trait_method_combinations == n_traits * n_methods,
+  n_selected_traits == n_traits,
+  !anyDuplicated(model_selection$Trait),
+  setequal(model_selection$Trait, traits),
+  all(!is.na(model_selection$r)),
+  setequal(
+    positive_oof_traits,
+    positive_oof_from_selection
+  ),
+  setequal(
+    selection_sizes$Trait,
+    positive_oof_traits
+  ),
+  all(
+    abs(
+      selection_sizes$Selection_proportion -
+        selection_proportion
+    ) < sqrt(.Machine$double.eps)
+  ),
+  all(
+    model_selection$Selected_method %in% names(method_labels)
+  ),
+  all(
+    model_selection$Selection_status ==
+      "rule_based_selected"
+  ),
+  nrow(selected_individuals_by_trait) ==
+    sum(selection_sizes$N_selected),
+  all(multitrait_candidates$N_traits >= 2L),
+  nrow(multitrait_candidates) ==
+    sum(
+      recurrence_distribution$N_individuals[
+        recurrence_distribution$N_traits >= 2L
+      ]
+    )
+)
+
+n_available <- n_available_values[[1]]
+n_selected_per_trait <- n_selected_values[[1]]
+n_trait_candidate_occurrences <-
+  nrow(selected_individuals_by_trait)
+n_recurrent_candidates <- nrow(multitrait_candidates)
+
 # Define a paleta fixa usada para distinguir os métodos nas figuras.
 method_colors <- c(
   RRBLUP = "#3366CC",
@@ -162,6 +283,8 @@ data.frame(
 ) |>
   tabela_html(caption = "Estrutura dos resultados apresentados neste módulo")
 ```
+
+A tabela confirma a cobertura completa da síntese: `r n_traits` características, `r n_methods` métodos e `r n_trait_method_combinations` combinações característica × método. Todas as `r n_selected_traits` características possuem um método selecionado e `r n_positive_oof_traits` apresentam correlação OOF positiva. As características fora desse conjunto positivo são: `r format_list_pt(nonpositive_oof_traits)`.
 
 ## 3. Comparação dos sete métodos
 
@@ -227,6 +350,8 @@ ggsave(
 )
 ```
 
+A comparação evidencia que a magnitude preditiva depende fortemente da característica. A maior correlação OOF observada na comparação ocorre em `r highest_oof_trait`, enquanto várias características permanecem em faixas bem menores. Em diversos painéis, os métodos apresentam resultados próximos dentro da mesma característica; por isso, a decisão permanece específica por característica e segue a regra hierárquica consolidada no Módulo 04, em vez de definir um único método global.
+
 ## 4. Métodos selecionados por característica
 
 A tabela seguinte não refaz a seleção. Ela traduz a decisão já consolidada no Módulo 04, mostrando lado a lado o método escolhido, o vencedor preditivo, o vencedor por DIC, a eventual preferência por RR-BLUP, o status da decisão e os principais indicadores OOF e MCMC. Uma linha com status provisório continua exigindo revisão mesmo que um método apareça na coluna de selecionado.
@@ -284,6 +409,8 @@ tabela_html(
   caption = "Métodos selecionados e diagnósticos por característica"
 )
 ```
+
+A decisão consolidada seleciona `r selected_method_summary`. Todas as escolhas permanecem com `Selection_status = rule_based_selected`. As características com correlação OOF não positiva — `r format_list_pt(nonpositive_oof_traits)` — não participam dos rankings exploratórios de candidatos.
 
 ## 5. Cadeias MCMC dos métodos selecionados
 
@@ -431,6 +558,8 @@ ggsave(
 )
 ```
 
+Os painéis de trace e densidade são, portanto, ilustrações da cadeia de `mu` usada pelos métodos selecionados no fold 1. Nenhuma seleção ou classificação de convergência é modificada por essas figuras; a avaliação de convergência continua baseada nos diagnósticos ESS e Geweke obtidos nos cinco folds no Módulo 03 e resumidos posteriormente.
+
 ## 6. Estabilidade entre folds
 
 Este gráfico devolve o foco à validação cruzada. Cada painel mostra as cinco correlações de validação do método selecionado; mudanças de sinal ou grande amplitude entre pontos sugerem instabilidade descritiva. Como os conjuntos de treinamento se sobrepõem e há somente cinco folds, a figura não representa teste formal de heterogeneidade nem intervalo de confiança.
@@ -471,6 +600,8 @@ ggsave(
   dpi = 300
 )
 ```
+
+A estabilidade por fold deve ser interpretada em conjunto com a correlação OOF agrupada. Amplitudes maiores ou mudanças de sinal têm maior relevância descritiva nas características cujo sinal agrupado já é fraco, mas não redefinem a seleção do método. Com apenas cinco folds e conjuntos de treinamento sobrepostos, essa variação permanece uma medida descritiva de estabilidade.
 
 ## 7. Tempo computacional
 
@@ -517,6 +648,8 @@ ggsave(
 )
 ```
 
+A ordenação dos tempos documenta apenas o custo computacional observado nesta execução. Tempo de ajuste não participa da regra de seleção dos métodos e não deve ser usado para substituir os critérios preditivos, de DIC ou de diagnóstico MCMC.
+
 ## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR
 
 A tabela reapresenta as quantidades derivadas no Módulo 04 para o RR-BLUP/BRR. `RRBLUP_H2` é um análogo de herdabilidade baseado na variância de marcadores do modelo, não uma estimativa clássica independente de herdabilidade no sentido restrito. `RRBLUP_predictive_accuracy` é a razão média \(r_f/\sqrt{H_f^2}\); por ser um índice derivado de estimativas amostrais, pode ser negativo ou exceder 1 e não deve ser interpretado como correlação necessariamente limitada a `[0, 1]`.
@@ -537,6 +670,8 @@ tabela_html(
   caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR"
 )
 ```
+
+Essas quantidades contextualizam a variabilidade capturada pelo RR-BLUP/BRR e a relação entre correlação preditiva e o análogo de herdabilidade. Elas não reordenam os métodos já selecionados e não devem ser convertidas em conclusões sobre herdabilidade clássica da população fora deste modelo.
 
 ## 9. Correlações entre valores genômicos OOF
 
@@ -604,9 +739,11 @@ ggsave(
 )
 ```
 
+O mapa de calor deve ser lido como associação entre escores OOF cross-fitted: valores positivos indicam tendência de ordenação na mesma direção entre duas características e valores negativos indicam direções opostas. Essas associações não constituem correlações genéticas de um modelo multivariado e não criam um critério adicional de seleção.
+
 ## 10. Ranking exploratório proporcional de candidatos por característica
 
-Os rankings são apresentados somente para características cujo método selecionado possui correlação OOF positiva. P-valores nominais são descritivos e não controlam a exibição; quando `p >= 0,05`, o ranking permanece explicitamente exploratório e não representa utilidade preditiva demonstrada. A proporção apresentada é `r sprintf("%.0f%%", 100 * selection_proportion)` por característica — 30 dos 150 indivíduos neste conjunto — e é uma regra configurável desta análise, não uma intensidade ótima estimada. Os escores são valores genômicos cross-fitted OOF, de modo que o fenótipo do próprio indivíduo não contribui para seu escore; ainda assim, eles não são valores genéticos finais de um modelo reajustado com todos os fenótipos.
+Os rankings são apresentados somente para características cujo método selecionado possui correlação OOF positiva. P-valores nominais são descritivos e não controlam a exibição; quando `p >= 0,05`, o ranking permanece explicitamente exploratório e não representa utilidade preditiva demonstrada. A proporção apresentada é `r sprintf("%.0f%%", 100 * selection_proportion)` por característica — `r n_selected_per_trait` dos `r n_available` indivíduos neste conjunto — e é uma regra configurável desta análise, não uma intensidade ótima estimada. Os escores são valores genômicos cross-fitted OOF, de modo que o fenótipo do próprio indivíduo não contribui para seu escore; ainda assim, eles não são valores genéticos finais de um modelo reajustado com todos os fenótipos.
 
 A tabela de tamanho do ranking é construída por duas junções. O primeiro `left_join()` acrescenta o objetivo de seleção de cada característica; o segundo acrescenta `r`, p-valor nominal e a classificação do sinal OOF. Como são `left_join()`, as características já presentes em `selection_sizes` permanecem como referência da apresentação. O p-valor é mostrado, mas não é usado para remover rankings.
 
@@ -665,6 +802,8 @@ selected_individuals_by_trait |>
     caption = "Cinco primeiros candidatos do ranking em cada característica com OOF positivo"
   )
 ```
+
+As `r n_positive_oof_traits` características com correlação OOF positiva produzem rankings, cada um contendo `r n_selected_per_trait` dos `r n_available` indivíduos, totalizando `r n_trait_candidate_occurrences` ocorrências característica × candidato antes de considerar recorrência. As características fora do conjunto de OOF positivo são: `r format_list_pt(nonpositive_oof_traits)`. Entre as características com direção OOF positiva, aquelas com p-valor nominal `>= 0,05` são: `r format_list_pt(positive_oof_nonsignificant_traits)`; portanto, esses sinais continuam explicitamente exploratórios.
 
 ## 11. Recorrência entre características
 
@@ -735,7 +874,9 @@ tabela_html(
 )
 ```
 
-Recorrência resume, entre as características com correlação OOF positiva, em quantas listas cada indivíduo aparece entre os 20% mais favoráveis. `Selection_frequency` usa como denominador o número de características com OOF positivo, não necessariamente as dez características originais. Recorrência sustentada por sinais OOF positivos fracos permanece exploratória. `N_traits`, frequência e rankings não são combinados em um índice multicaracterística; portanto, maior recorrência não demonstra superioridade conjunta em múltiplas características.
+Recorrência resume, entre as características com correlação OOF positiva, em quantas listas cada indivíduo aparece entre os `r sprintf("%.0f%%", 100 * selection_proportion)` mais favoráveis. `Selection_frequency` usa como denominador o número de características com OOF positivo, não necessariamente as `r n_traits` características originais. Recorrência sustentada por sinais OOF positivos fracos permanece exploratória. `N_traits`, frequência e rankings não são combinados em um índice multicaracterística; portanto, maior recorrência não demonstra superioridade conjunta em múltiplas características.
+
+No objeto completo do Módulo 04, `r n_recurrent_candidates` indivíduos são recorrentes em pelo menos duas características. A tabela principal desta página mostra apenas o subconjunto com recorrência em três ou mais características; essa redução de apresentação não modifica o conjunto científico armazenado nem cria um índice multicaracterística.
 
 ## 12. Síntese
 
