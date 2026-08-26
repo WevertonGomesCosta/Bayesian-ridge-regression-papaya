@@ -1,0 +1,37 @@
+name: Corrected final Module 02 explainability pass
+
+on:
+  push:
+    branches:
+      - final-m02-integral-audit
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.event.head_commit.message == 'Run corrected final Module 02 explainability pass'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final-m02-integral-audit
+          fetch-depth: 0
+      - name: Apply corrected refinements
+        run: python .github/scripts/m02_final_explainability_v2.py
+      - name: Validate and commit
+        shell: bash
+        run: |
+          git diff --check
+          changed=$(git diff --name-only)
+          expected=$'analysis/02_matrices_en.Rmd\nanalysis/02_matrices_pt.Rmd'
+          test "$changed" = "$expected"
+          grep -n 'qr(M_full).*rank' analysis/02_matrices_pt.Rmd
+          grep -n 'apply(family_fold_table, 1, max)' analysis/02_matrices_pt.Rmd
+          grep -n 'arrange(Fold, FAM, IND)' analysis/02_matrices_pt.Rmd
+          grep -n 'saveRDS()' analysis/02_matrices_pt.Rmd
+          git config user.name "Weverton Gomes da Costa"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd
+          git commit -m "Finalize Module 02 beginner-oriented explanations"
+          git push origin HEAD:final-m02-integral-audit
