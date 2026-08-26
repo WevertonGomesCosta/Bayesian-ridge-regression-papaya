@@ -1,0 +1,64 @@
+name: Final Module 02 integral didactic audit
+
+on:
+  push:
+    branches:
+      - final-m02-integral-audit
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.event.head_commit.message == 'Run Module 02 integral didactic audit'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: final-m02-integral-audit
+          fetch-depth: 0
+
+      - name: Apply didactic refinements
+        run: python .github/scripts/m02_integral_didactic_audit.py
+
+      - name: Validate scope and wording
+        shell: bash
+        run: |
+          git diff --check
+
+          changed=$(git diff --name-only)
+          expected=$'analysis/02_matrices_en.Rmd\nanalysis/02_matrices_pt.Rmd'
+          if [ "$changed" != "$expected" ]; then
+            echo "Unexpected changed files:"
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+
+          echo '=== residual implementation meta-text ==='
+          if grep -niE 'checkpoint between modules|ponto de controle entre os módulos|the reader|o leitor|hidden chunk|chunk oculto|first chunk|primeiro chunk|in this tutorial|neste tutorial|suppressPackageStartupMessages' analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd; then
+            echo 'Residual prohibited meta-text found.'
+            exit 1
+          fi
+
+          echo '=== direct dosage preview should be absent ==='
+          if grep -n '^dosage_full_raw\[1:6, 1:8\]$' analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd; then
+            echo 'Direct dosage preview remains.'
+            exit 1
+          fi
+
+          echo '=== key explanations ==='
+          grep -n 'floor(codes / 10)' analysis/02_matrices_pt.Rmd
+          grep -n 'do.call(cbind, dosage_parts_full)' analysis/02_matrices_pt.Rmd
+          grep -n 'sweep(dosage_full_imputed' analysis/02_matrices_pt.Rmd
+          grep -n 'tcrossprod(M_full)' analysis/02_matrices_pt.Rmd
+          grep -n 'tabulate(family_labels' analysis/02_matrices_pt.Rmd
+          grep -n 'rowSums(...) - 2' analysis/02_matrices_pt.Rmd
+
+      - name: Commit validated source revision
+        shell: bash
+        run: |
+          git config user.name "Weverton Gomes da Costa"
+          git config user.email "95870682+WevertonGomesCosta@users.noreply.github.com"
+          git add analysis/02_matrices_pt.Rmd analysis/02_matrices_en.Rmd
+          git commit -m "Complete integral didactic audit of Module 02"
+          git push origin HEAD:final-m02-integral-audit
