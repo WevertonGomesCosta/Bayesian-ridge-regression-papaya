@@ -136,7 +136,7 @@ trait_dictionary <- preprocessing$trait_dictionary
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
-Antes da codificação dos marcadores, a tabela seguinte confere a estrutura recebida do Módulo 01: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade e número de famílias. Ela funciona como ponto de controle entre os módulos; nenhum novo filtro é aplicado nessa conferência.
+Antes da codificação dos marcadores, a tabela seguinte confere a estrutura recebida do Módulo 01: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade e número de famílias. A comparação confirma que o objeto recebido contém a estrutura esperada; nenhum novo filtro é aplicado nessa etapa.
 
 ```{r resumo-entrada}
 # Resume as dimensões e categorias do objeto de pré-processamento recebido pelo módulo.
@@ -148,7 +148,6 @@ data.frame(
     "Locos SSR mantidos",
     "Famílias"
   ),
-  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
     length(ids),
     ncol(phenotypes),
@@ -167,6 +166,13 @@ A conferência mostra `r length(ids)` indivíduos, `r ncol(phenotypes)` caracter
 Cada código SSR contém dois rótulos alélicos. O código `12`, por exemplo, representa uma cópia do alelo 1 e uma cópia do alelo 2, enquanto `22` representa duas cópias do alelo 2. Para cada alelo observado em cada loco mantido, a dosagem de um indivíduo é calculada como a soma de duas funções indicadoras: uma para cada posição alélica do genótipo. Assim, a coluna assume 0, 1 ou 2 conforme o indivíduo carregue zero, uma ou duas cópias daquele alelo.
 
 Uma coluna é criada para cada combinação loco–alelo, e chamadas SSR ausentes permanecem como `NA` até a etapa de imputação. Antes de qualquer filtragem de colunas alélicas, as dosagens de todos os alelos de um loco diploide somam 2 para cada genótipo observado. Essa propriedade será usada posteriormente como diagnóstico da codificação.
+
+A codificação é construída em etapas que correspondem diretamente às operações do código:
+
+1. **Seleção dos locos mantidos.** `locus_audit_full$Locus[locus_audit_full$Keep_locus]` usa o vetor lógico `Keep_locus` para recuperar somente os nomes aprovados no controle de qualidade. Em seguida, `ssr_raw[, retained_loci_full, drop = FALSE]` mantém todas as linhas e apenas essas colunas; `drop = FALSE` preserva a estrutura matricial mesmo quando a seleção contém poucas colunas.
+2. **Separação dos dois alelos do código SSR.** Para um código como `12`, `floor(codes / 10)` retorna o algarismo das dezenas, isto é, o primeiro alelo (`1`). O operador `%%` devolve o resto da divisão inteira; assim, `codes %% 10` retorna o algarismo das unidades, correspondente ao segundo alelo (`2`).
+3. **Contagem das cópias de cada alelo.** As comparações `allele_1 == allele` e `allele_2 == allele` indicam se o alelo está presente em cada posição. `as.numeric()` converte `TRUE` em 1 e `FALSE` em 0; a soma das duas posições produz a dosagem 0, 1 ou 2. Quando o código SSR é ausente, a dosagem é mantida como `NA`.
+4. **Montagem da matriz.** Cada vetor de dosagem é armazenado em uma lista. Ao final, `do.call(cbind, dosage_parts_full)` combina esses vetores como colunas de uma única matriz, enquanto `bind_rows(allele_map_parts_full)` reúne os metadados que ligam cada coluna ao loco e ao alelo de origem.
 
 ```{r codificacao-dosagens}
 # Expande cada loco multialélico em colunas de dosagem por alelo e registra a origem de cada coluna.
@@ -232,8 +238,9 @@ rownames(dosage_full_raw) <- ids
 colnames(dosage_full_raw) <- allele_audit_full$Marker
 rownames(allele_audit_full) <- NULL
 
-# Exemplo das dosagens obtidas.
-dosage_full_raw[1:6, 1:8]
+# Mostra uma prévia das colunas de dosagem obtidas.
+as.data.frame(dosage_full_raw[1:6, 1:8]) |>
+  tabela_html(caption = "Prévia das dosagens alélicas")
 ```
 
 A codificação gera `r ncol(dosage_full_raw)` colunas de dosagem a partir dos `r ncol(ssr_full)` locos mantidos. Em cada coluna, os valores 0, 1 e 2 indicam o número de cópias do alelo identificado após `__A`; `NA` indica uma chamada SSR ausente. Um mesmo loco pode originar mais de duas colunas quando apresenta mais de dois alelos no painel.
@@ -243,6 +250,8 @@ A codificação gera `r ncol(dosage_full_raw)` colunas de dosagem a partir dos `
 A frequência de uma coluna alélica é calculada como a média das dosagens observadas dividida por 2, pois cada indivíduo diploide pode contribuir com duas cópias do alelo. O cálculo ignora `NA` nesta etapa, de modo que a frequência usa apenas chamadas disponíveis.
 
 São mantidas colunas com frequência entre 0,05 e 0,95 e desvio-padrão de dosagem positivo. Os limites inferior e superior são simétricos: removem alelos muito raros e colunas praticamente fixadas, enquanto `Dosage_sd > 0` garante variação observável. O filtro atua sobre colunas de dosagem alélica; ele não remove indivíduos.
+
+No código, `colMeans(dosage_full_raw, na.rm = TRUE) / 2` calcula simultaneamente a frequência de todas as colunas: `na.rm = TRUE` exclui chamadas ausentes do cálculo da média e a divisão por 2 converte a dosagem média, que varia de 0 a 2, em frequência alélica entre 0 e 1. O laço com `sd(..., na.rm = TRUE)` calcula o desvio-padrão de cada coluna. Por fim, `is.finite()` impede que resultados não finitos sejam aceitos antes de aplicar os limites de frequência e a condição `Dosage_sd > 0`.
 
 ```{r controle-frequencias-alelicas}
 # Calcula frequência e variabilidade das dosagens para filtrar colunas alélicas informativas.
@@ -333,9 +342,11 @@ As frequências observadas variam de `r sprintf("%.3f", min(allele_audit_full$Al
 
 ## 5. Matriz de marcadores
 
-As dosagens ausentes são substituídas pela média da respectiva coluna calculada no painel genotípico completo. Como a mesma média é subtraída na centralização, uma dosagem imputada pela média passa a valer exatamente zero em `M`: ela representa ausência de desvio em relação à frequência média da coluna, e não uma nova classe genotípica.
+As dosagens ausentes são substituídas pela média da respectiva coluna calculada no painel genotípico completo. `marker_means_full <- colMeans(dosage_full, na.rm = TRUE)` calcula uma média para cada coluna. Dentro do laço, `is.na(dosage_full_imputed[, j])` identifica as posições ausentes da coluna `j`, que recebem `marker_means_full[j]`.
 
-A matriz resultante é denotada por \(\mathbf M\). Suas colunas são centralizadas, mas não padronizadas para variância unitária. Como definido no objetivo, a imputação usa somente informação genotípica dos 150 candidatos; nenhum fenótipo de validação entra no cálculo.
+Depois da imputação, `sweep(dosage_full_imputed, 2, marker_means_full, FUN = "-")` centraliza as dosagens. O argumento `2` indica que a operação é feita por colunas, e `FUN = "-"` subtrai de cada valor a média correspondente. Como a mesma média foi usada na imputação, uma dosagem imputada passa a valer exatamente zero em `M`: ela representa ausência de desvio em relação à frequência média da coluna, e não uma nova classe genotípica.
+
+A matriz resultante é denotada por \(\mathbf M\). Suas colunas são centralizadas, mas não padronizadas para variância unitária. A imputação utiliza somente informação genotípica dos 150 candidatos; nenhum fenótipo de validação entra no cálculo.
 
 ```{r matriz-marcadores}
 # Imputa dosagens ausentes pelas médias, centraliza as colunas e constrói a matriz de marcadores M.
@@ -396,6 +407,8 @@ calculada por
 {\sum_j 2p_j(1-p_j)}.
 \]
 
+No código, `allele_frequencies_full <- marker_means_full / 2` recupera \(p_j\) porque a média da dosagem corresponde a \(2p_j\). `tcrossprod(M_full)` calcula diretamente \(\mathbf M\mathbf M^{\mathsf T}\), isto é, um produto entre indivíduos a partir das colunas centralizadas. A divisão por `denominator_full` aplica a escala definida na fórmula. Depois, `(G_full + t(G_full)) / 2` remove apenas pequenas diferenças numéricas entre elementos simétricos, e `eigen(..., symmetric = TRUE, only.values = TRUE)` obtém os autovalores usados no diagnóstico de semidefinição positiva.
+
 ```{r matriz-relacionamento}
 # Recupera p_j a partir da média da dosagem, que corresponde a 2p_j.
 allele_frequencies_full <- marker_means_full / 2
@@ -433,7 +446,6 @@ data.frame(
     "Máxima diferença de simetria",
     "Menor autovalor"
   ),
-  # Lista os valores correspondentes aos itens da tabela.
   Valor = c(
     denominator_full,
     mean(diag(G_full)),
@@ -482,7 +494,15 @@ indivíduos da população de melhoramento representada. Não se trata de um
 desenho leave-family-out e, portanto, o desempenho não representa famílias
 inteiramente novas.
 
-Os 150 indivíduos são divididos em cinco grupos de validação de 30 indivíduos. O algoritmo percorre uma família por vez: embaralha seus membros, ordena os folds pela carga total já acumulada, usa uma ordem aleatória apenas para desempatar cargas iguais, distribui os membros da família ciclicamente entre esses folds e atualiza a carga global. Esse procedimento combina dois objetivos: espalhar cada família entre os folds e manter os tamanhos totais equilibrados.
+Os 150 indivíduos são divididos em cinco grupos de validação de 30 indivíduos. A construção é feita família por família e pode ser acompanhada diretamente pelas funções usadas no código:
+
+1. `which(family == family_level)` localiza os indivíduos da família atual e `sample()` embaralha suas posições.
+2. `seq_len(N_FOLDS)` gera os números dos cinco folds. Uma segunda chamada a `sample()` cria uma ordem aleatória usada somente para desempatar folds com a mesma carga acumulada.
+3. `order(fold_load, match(seq_len(N_FOLDS), random_tie_order))` prioriza primeiro os folds menos preenchidos e usa a ordem aleatória apenas quando duas cargas são iguais.
+4. `rep(ordered_folds, length.out = length(family_indices))` repete ciclicamente essa ordem até produzir um rótulo de fold para cada membro da família.
+5. `tabulate(family_labels, nbins = N_FOLDS)` conta quantos indivíduos acabaram de ser enviados a cada fold e atualiza `fold_load`.
+
+Esse procedimento espalha os membros de cada família entre os folds ao mesmo tempo que mantém os tamanhos totais equilibrados.
 
 A semente fixa preserva exatamente a mesma partição entre execuções. A mesma tabela de folds será usada para todas as dez características e todos os métodos; portanto, diferenças entre modelos não decorrem de partições de validação diferentes.
 
@@ -571,7 +591,6 @@ O mapa de calor apresenta a mesma tabela família × fold de forma visual: cada 
 # Reorganiza a tabela família × fold e constrói o gráfico de distribuição dos indivíduos.
 family_fold_long <- as.data.frame(family_fold_table)
 
-# Constrói o gráfico usado na interpretação.
 ggplot(
   family_fold_long,
   aes(
@@ -619,7 +638,6 @@ O mapa de calor permite inspecionar a estrutura completa de `G`: a diagonal repr
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individuo_1", "Individuo_2", "Relacionamento")
 
-# Constrói o gráfico usado na interpretação.
 ggplot(
   G_long,
   aes(
@@ -646,7 +664,9 @@ O mapa de calor sintetiza os relacionamentos pareados presentes em `G`. Como a o
 
 Todas as colunas alélicas que atendem aos filtros declarados são mantidas; nenhuma categoria é descartada artificialmente apenas para impor posto completo. Quando todos os alelos de um loco permanecem representados, suas dosagens somam 2 em cada indivíduo diploide e existe uma dependência linear exata entre essas colunas. Por isso, coeficientes de alelos individuais não são interpretados isoladamente; os módulos seguintes se concentram nas predições e nos valores genômicos.
 
-No conjunto de dados analisado, as 72 colunas de dosagem não representam 72 dimensões independentes. O diagnóstico compara o posto observado de `M` com `sum(k_l - 1)`, em que `k_l` é o número de colunas alélicas mantidas no loco `l`; também verifica se a soma das dosagens por loco continua igual a 2, se a centralização de `M` é numericamente correta e se `G` pode ser reconstruída a partir de `M` e do mesmo denominador. Simetria, posto, diagonal e menor autovalor completam a checagem numérica de `G`.
+No conjunto de dados analisado, as 72 colunas de dosagem não representam 72 dimensões independentes. O posto teórico é calculado por `sum(table(...)- 1L)`: `table()` conta quantas colunas alélicas foram mantidas em cada loco, subtrair 1 fornece \(k_l-1\) para cada loco e `sum()` reúne essas contribuições. O posto observado de `M` é então comparado a esse valor.
+
+A propriedade diploide é verificada loco a loco com `rowSums(...) - 2`: `rowSums()` soma as dosagens alélicas mantidas de cada indivíduo e a diferença em relação a 2 deve ser numericamente nula. A centralização é verificada pelas médias das colunas de `M`, e `tcrossprod(M_full) / denominator_full` reconstrói `G` para comparação com a matriz armazenada. Simetria, posto, diagonal e menor autovalor completam a checagem numérica de `G`.
 
 ```{r diagnostico-matrizes}
 # Verifica dimensões, postos, dependências lineares e propriedades numéricas de X, M e G.
@@ -697,7 +717,6 @@ for (j in seq_along(locus_names)) {
 maximum_dosage_sum_error <- max(dosage_sum_error)
 
 matrix_inventory <- data.frame(
-  # Lista os itens verificados no inventário das matrizes.
   Item = c(
     "Indivíduos",
     "Linhas de X",
@@ -720,7 +739,6 @@ matrix_inventory <- data.frame(
     "Média da diagonal de G",
     "Menor autovalor de G"
   ),
-  # Lista os valores correspondentes aos itens da tabela.
   Value = c(
     length(ids),
     nrow(X),
@@ -745,7 +763,6 @@ matrix_inventory <- data.frame(
   )
 )
 
-# Exibe o inventário numérico das matrizes.
 tabela_html(
   matrix_inventory,
   digits = 8,
