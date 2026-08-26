@@ -5,9 +5,14 @@ script = script_path.read_text(encoding='utf-8')
 
 replacements = [
     (
-        'usa o método com o menor `Mean_fold_RMSE`',
-        'usa o método com a menor `Mean_fold_RMSE`',
-        'Portuguese one-SE anchor',
+        'A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds. Para cada característica, a tolerância de correlação usa o desvio-padrão entre folds do método com a maior `Mean_fold_r`, dividido por `sqrt(5)`; analogamente, a tolerância de RMSE usa o método com o menor `Mean_fold_RMSE`. A candidate must satisfy both tolerances simultaneously.',
+        'A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds. Para cada característica, a tolerância de correlação usa o desvio-padrão entre folds do método com a maior `Mean_fold_r`, dividido por `sqrt(5)`; analogamente, a tolerância de RMSE usa o método com a menor `Mean_fold_RMSE`. Um candidato precisa satisfazer simultaneamente as duas tolerâncias.',
+        'Portuguese full one-SE anchor',
+    ),
+    (
+        'A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds. Para cada característica, a tolerância de correlação usa o desvio-padrão entre folds do método com a maior `Mean_fold_r`, dividido por `sqrt(5)`; analogamente, a tolerância de RMSE usa o método com o menor `Mean_fold_RMSE`.',
+        'A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds. Para cada característica, a tolerância de correlação usa o desvio-padrão entre folds do método com a maior `Mean_fold_r`, dividido por `sqrt(5)`; analogamente, a tolerância de RMSE usa o método com a menor `Mean_fold_RMSE`.',
+        'Portuguese fallback one-SE anchor',
     ),
     (
         'These correlations describe associations among OOF genomic values produced by the selected method for each trait. Since different traits may use different methods and the values are cross-fitted, the matrix summarizes association among predicted scores rather than jointly estimated genetic covariance. It therefore should not be interpreted as a genetic-correlation matrix from a multivariate model.',
