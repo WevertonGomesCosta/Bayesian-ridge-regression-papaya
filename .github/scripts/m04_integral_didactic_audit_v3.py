@@ -19,6 +19,11 @@ replacements = [
         'These correlations describe associations among the OOF genomic values produced by the selected method for each trait. Because different traits may use different methods and the values are cross-fitted, the matrix summarizes associations among predictive scores rather than jointly estimated genetic covariance. It should therefore not be interpreted as a genetic-correlation matrix from a multivariate model.',
         'English correlation anchor',
     ),
+    (
+        '## 13. Saving results',
+        '## 13. Saving the results',
+        'English saving-results heading',
+    ),
 ]
 
 for old, new, label in replacements:
