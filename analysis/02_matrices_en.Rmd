@@ -376,7 +376,7 @@ M_full <- sweep(
 )
 ```
 
-The summary of `M` checks four basic properties. Its row count should match the 150 candidates; its column count is the number of retained allele-dosage columns; its rank reveals linear dependencies among columns; and the maximum absolute column mean should be close to zero, confirming numerical centering.
+The summary of `M` checks four basic properties. Its row count should match the 150 candidates; its column count is the number of retained allele-dosage columns; its rank reveals linear dependencies among columns; and the maximum absolute column mean should be close to zero, confirming numerical centering. The expression `qr(M_full)$rank` obtains rank from the QR decomposition: this value is the number of linearly independent directions represented by the columns of `M`.
 
 ```{r marker-matrix-summary}
 data.frame(
@@ -499,7 +499,7 @@ The 150 individuals are divided into five validation groups of 30 individuals. T
 4. `rep(ordered_folds, length.out = length(family_indices))` cycles through this order until one fold label is produced for every family member.
 5. `tabulate(family_labels, nbins = N_FOLDS)` counts how many individuals were just assigned to each fold and updates `fold_load`.
 
-This procedure spreads members of each family across folds while keeping total fold sizes balanced.
+This procedure spreads members of each family across folds while keeping total fold sizes balanced. After allocation, `apply(family_fold_table, 1, max)` and `apply(family_fold_table, 1, min)` compute, for each row of the table — that is, for each family — the largest and smallest counts across folds. The argument `1` specifies a row-wise operation; the difference between maximum and minimum forms `family_balance`.
 
 The fixed seed preserves exactly the same partition across executions. The same fold table is used for all ten traits and all methods, so differences among models cannot arise from different validation partitions.
 
@@ -615,7 +615,7 @@ The `cv_folds` table identifies which individuals are masked in each validation 
 
 `X`, `M`, and `G` remain fixed and include all 150 genotyped candidates, consistent with the transductive design defined at the start of the module. Consequently, every individual receives a prediction when its own phenotype is masked, producing an out-of-fold prediction downstream; this is not equivalent to predicting an external genotype population.
 
-The table below displays the first assignments after sorting by fold, family, and individual. It simply makes the structure of `cv_folds` concrete: the `Fold` column is the only information Module 03 uses to decide which phenotypes are masked in each validation round.
+The expression `cv_folds |> arrange(Fold, FAM, IND) |> head(15)` sorts the table first by fold, then by family and individual identifier, and retains the first 15 rows. `arrange()` defines this order and `head(15)` limits only the displayed preview; the `cv_folds` object still contains all 150 individuals. The `Fold` column is the information Module 03 uses to decide which phenotypes are masked in each validation round.
 
 ```{r fold-example}
 cv_folds |>
@@ -624,7 +624,7 @@ cv_folds |>
   format_table(caption = "Example of individual allocation to folds")
 ```
 
-The preview shows only 15 sorted rows to facilitate inspection. The complete `cv_folds` table retains all 150 individuals and is used directly in Module 03.
+The 15 displayed rows make the allocation structure visible without modifying `cv_folds`, which retains all 150 individuals and is used directly in Module 03.
 
 ## 10. Genomic relationship heatmap
 
@@ -772,7 +772,7 @@ The final inventory collects the preceding checks in one table. For the analyzed
 
 ## 12. Saving matrices and folds
 
-The `matrices_object.rds` file is the primary interface with Module 03: it gathers matrices, aligned phenotypes, metadata, frequencies, folds, and parameters in one object while preserving their classes. The CSV files are inspection-oriented outputs for checking fold allocation, sample-size summaries, allele-column audits, and the numerical inventory without opening the RDS object.
+The `matrices_object.rds` file gathers matrices, aligned phenotypes, metadata, frequencies, folds, and parameters in one object while preserving their classes. `saveRDS()` writes this list to a file that can be recovered intact with `readRDS()` in Module 03. The `write.csv(..., row.names = FALSE)` calls export fold, frequency, and diagnostic tables in tabular form; `row.names = FALSE` prevents an artificial row-number column from being added.
 
 ```{r save-matrix-objects}
 # Collect matrices, metadata, frequencies, and folds in the object persisted by the module.

@@ -377,7 +377,7 @@ M_full <- sweep(
 )
 ```
 
-O resumo de `M` verifica quatro propriedades básicas. O número de linhas deve coincidir com os 150 candidatos; o número de colunas corresponde às dosagens alélicas retidas; o posto revela as dependências lineares entre colunas; e a máxima média absoluta deve ficar próxima de zero, confirmando a centralização numérica.
+O resumo de `M` verifica quatro propriedades básicas. O número de linhas deve coincidir com os 150 candidatos; o número de colunas corresponde às dosagens alélicas retidas; o posto revela as dependências lineares entre colunas; e a máxima média absoluta deve ficar próxima de zero, confirmando a centralização numérica. A expressão `qr(M_full)$rank` obtém o posto a partir da decomposição QR: esse valor representa o número de direções linearmente independentes presentes nas colunas de `M`.
 
 ```{r resumo-matriz-m}
 data.frame(
@@ -502,7 +502,7 @@ Os 150 indivíduos são divididos em cinco grupos de validação de 30 indivídu
 4. `rep(ordered_folds, length.out = length(family_indices))` repete ciclicamente essa ordem até produzir um rótulo de fold para cada membro da família.
 5. `tabulate(family_labels, nbins = N_FOLDS)` conta quantos indivíduos acabaram de ser enviados a cada fold e atualiza `fold_load`.
 
-Esse procedimento espalha os membros de cada família entre os folds ao mesmo tempo que mantém os tamanhos totais equilibrados.
+Esse procedimento espalha os membros de cada família entre os folds ao mesmo tempo que mantém os tamanhos totais equilibrados. Depois da alocação, `apply(family_fold_table, 1, max)` e `apply(family_fold_table, 1, min)` calculam, para cada linha da tabela — isto é, para cada família — as maiores e menores contagens entre folds. O argumento `1` indica operação por linhas; a diferença entre máximo e mínimo forma `family_balance`.
 
 A semente fixa preserva exatamente a mesma partição entre execuções. A mesma tabela de folds será usada para todas as dez características e todos os métodos; portanto, diferenças entre modelos não decorrem de partições de validação diferentes.
 
@@ -618,7 +618,7 @@ A tabela `cv_folds` identifica quais indivíduos serão mascarados em cada rodad
 
 `X`, `M` e `G` permanecem fixas e incluem os 150 candidatos genotipados, de acordo com o cenário transdutivo descrito no início do módulo. Consequentemente, cada indivíduo recebe uma predição quando seu próprio fenótipo está mascarado, produzindo posteriormente uma predição out-of-fold; isso não equivale a predizer uma população genotípica externa.
 
-A tabela abaixo mostra as primeiras atribuições após ordenar por fold, família e indivíduo. Ela serve apenas para tornar a estrutura de `cv_folds` concreta: a coluna `Fold` é a única informação usada no Módulo 03 para decidir quais fenótipos serão mascarados em cada rodada.
+A expressão `cv_folds |> arrange(Fold, FAM, IND) |> head(15)` ordena a tabela primeiro por fold, depois por família e por identificador, e mantém as 15 primeiras linhas. `arrange()` define essa ordem e `head(15)` limita apenas a prévia apresentada; o objeto `cv_folds` continua contendo os 150 indivíduos. A coluna `Fold` é a informação usada no Módulo 03 para decidir quais fenótipos serão mascarados em cada rodada.
 
 ```{r exemplo-folds}
 cv_folds |>
@@ -627,7 +627,7 @@ cv_folds |>
   tabela_html(caption = "Exemplo da atribuição dos indivíduos aos folds")
 ```
 
-A prévia mostra apenas 15 linhas ordenadas para facilitar a inspeção. A tabela completa `cv_folds` mantém os 150 indivíduos e será usada diretamente no Módulo 03.
+As 15 linhas exibidas permitem verificar a estrutura da atribuição sem modificar `cv_folds`, que mantém os 150 indivíduos e será usado diretamente no Módulo 03.
 
 ## 10. Mapa de calor do relacionamento genômico
 
@@ -775,7 +775,7 @@ O inventário final reúne em uma única tabela as verificações anteriores. Pa
 
 ## 12. Gravação das matrizes e dos folds
 
-O arquivo `matrices_object.rds` é a interface principal com o Módulo 03: reúne matrizes, fenótipos alinhados, metadados, frequências, folds e parâmetros em um único objeto com suas classes preservadas. Os CSVs são saídas de inspeção para consultar a alocação dos folds, o resumo dos tamanhos amostrais, a auditoria das colunas alélicas e o inventário numérico sem precisar abrir o RDS.
+O arquivo `matrices_object.rds` reúne matrizes, fenótipos alinhados, metadados, frequências, folds e parâmetros em um único objeto com suas classes preservadas. `saveRDS()` grava essa lista em um arquivo que pode ser recuperado integralmente com `readRDS()` no Módulo 03. As chamadas `write.csv(..., row.names = FALSE)` exportam as tabelas de folds, frequências e diagnósticos em formato tabular; `row.names = FALSE` evita acrescentar uma coluna artificial com os números das linhas.
 
 ```{r salvamento-objetos-matriciais}
 # Reúne matrizes, metadados, frequências e folds no objeto persistido pelo módulo.
