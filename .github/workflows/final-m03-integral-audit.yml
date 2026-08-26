@@ -50,8 +50,9 @@ jobs:
               for label in heavy:
                   if extract(current, label) != extract(base, label):
                       raise SystemExit(f'heavy chunk changed: {path}::{label}')
-              if current.count('eval=FALSE') != 3:
-                  raise SystemExit(f'unexpected eval=FALSE count in {path}: {current.count("eval=FALSE")}')
+              eval_headers = re.findall(r"```\{r[^}]*eval=FALSE[^}]*\}", current)
+              if len(eval_headers) != 3:
+                  raise SystemExit(f'unexpected eval=FALSE chunk count in {path}: {len(eval_headers)}')
               bad = [
                   'suppressPackageStartupMessages',
                   'O chunk oculto', 'The hidden chunk',
@@ -65,7 +66,6 @@ jobs:
               for term in bad:
                   if term.lower() in current.lower():
                       raise SystemExit(f'residual meta wording in {path}: {term}')
-              # All public table calls must use the responsive helper.
               scrub = current.replace('knitr::kable(', '')
               if re.search(r'(?<![A-Za-z0-9_])kable\(', scrub):
                   raise SystemExit(f'direct kable() call remains in {path}')
@@ -73,8 +73,6 @@ jobs:
               if nav not in current:
                   raise SystemExit(f'missing next navigation in {path}')
 
-          changed = subprocess.check_output(['git', 'diff', '--name-only', 'origin/main...HEAD'], text=True).splitlines()
-          # The branch already contains temporary validation files; scientific/editorial output is checked again before PR cleanup.
           print('Validation passed for source files.')
           PY
 
