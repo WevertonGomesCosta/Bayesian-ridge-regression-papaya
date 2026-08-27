@@ -56,7 +56,7 @@ The packages used in this module have distinct roles:
 
 - `dplyr`: selects, transforms, and summarizes tabular data;
 - `tidyr`: reshapes data for diagnostics and figures;
-- `ggplot2`: builds allele-frequency, fold-distribution, and genomic-relationship figures;
+- `ggplot2`: builds allele-frequency and genomic-relationship figures;
 - `knitr`: formats tables in R Markdown documents;
 - `here`: builds project-relative file paths that do not depend on the local working directory.
 
@@ -166,12 +166,7 @@ Each SSR code contains two allele labels. For example, `12` represents one copy 
 
 One column is created for every locus–allele combination, and missing SSR calls remain `NA` until imputation. Before any allele-column filtering, dosages across all alleles at a diploid locus sum to 2 for every observed genotype. This property is later used as a coding diagnostic.
 
-The coding follows a sequence that maps directly to the operations in the code:
-
-1. **Select retained loci.** `locus_audit_full$Locus[locus_audit_full$Keep_locus]` uses the logical vector `Keep_locus` to recover only locus names that passed quality control. Then `ssr_raw[, retained_loci_full, drop = FALSE]` keeps every row and only those columns; `drop = FALSE` preserves a two-dimensional structure even when few columns are selected.
-2. **Separate the two alleles in an SSR code.** For a code such as `12`, `floor(codes / 10)` returns the tens digit, the first allele (`1`). The `%%` operator returns the remainder of integer division, so `codes %% 10` returns the units digit, the second allele (`2`).
-3. **Count copies of each allele.** The comparisons `allele_1 == allele` and `allele_2 == allele` indicate whether the allele occurs in each position. `as.numeric()` converts `TRUE` to 1 and `FALSE` to 0; summing both positions yields dosage 0, 1, or 2. If the SSR code is missing, dosage remains `NA`.
-4. **Assemble the matrix.** Each dosage vector is stored in a list. At the end, `do.call(cbind, dosage_parts_full)` combines these vectors as columns of one matrix, while `bind_rows(allele_map_parts_full)` combines the metadata linking each column to its source locus and allele.
+Coding proceeds across retained loci, identifies the alleles observed at each locus, and creates one dosage column for every locus–allele combination. Metadata preserve the correspondence between each column, its source locus, and the represented allele. The code below implements this expansion without removing individuals.
 
 ```{r allele-dosage-coding}
 # Organize marker information and compute the diagnostics required at this stage.
@@ -249,8 +244,6 @@ The coding produces `r ncol(dosage_full_raw)` dosage columns from the `r ncol(ss
 The frequency of an allele column is computed as the mean observed dosage divided by 2 because each diploid individual can contribute two copies of the allele. `NA` values are ignored here, so the frequency uses available genotype calls only.
 
 Columns are retained when frequency lies between 0.05 and 0.95 and dosage standard deviation is positive. The lower and upper limits are symmetric: they remove very rare alleles and nearly fixed columns, while `Dosage_sd > 0` guarantees observed variation. The filter acts on allele-dosage columns; it does not remove individuals.
-
-In the code, `colMeans(dosage_full_raw, na.rm = TRUE) / 2` computes frequencies for all columns at once: `na.rm = TRUE` excludes missing calls from the mean, and division by 2 converts mean dosage, which ranges from 0 to 2, into allele frequency between 0 and 1. The loop with `sd(..., na.rm = TRUE)` computes the standard deviation of each column. Finally, `is.finite()` prevents non-finite results from being accepted before the frequency limits and `Dosage_sd > 0` condition are applied.
 
 ```{r allele-frequency-control}
 # Compute dosage frequency and variability to retain informative allele columns.
@@ -341,9 +334,7 @@ Observed allele frequencies range from `r sprintf("%.3f", min(allele_audit_full$
 
 ## 5. Marker matrix
 
-Missing dosages are replaced by the mean of the corresponding column computed from the full genotype panel. `marker_means_full <- colMeans(dosage_full, na.rm = TRUE)` computes one mean per column. Inside the loop, `is.na(dosage_full_imputed[, j])` identifies missing positions in column `j`, which receive `marker_means_full[j]`.
-
-After imputation, `sweep(dosage_full_imputed, 2, marker_means_full, FUN = "-")` centers the dosages. The argument `2` specifies a column-wise operation, and `FUN = "-"` subtracts the corresponding mean from every value. Because the same mean was used for imputation, a mean-imputed dosage becomes exactly zero in `M`: it represents no deviation from the column average rather than a new genotype class.
+Missing dosages are imputed with the mean of the corresponding column computed from the full genotype panel. Each column is then centered by subtracting that same mean. Consequently, an imputed dosage becomes zero in `M`, indicating no deviation from the column mean rather than a new genotype class.
 
 The resulting matrix is denoted by \(\mathbf M\). Its columns are centered but are not standardized to unit variance. Imputation uses genotype information from all 150 candidates; no validation phenotype enters this calculation.
 
@@ -376,7 +367,7 @@ M_full <- sweep(
 )
 ```
 
-The summary of `M` checks four basic properties. Its row count should match the 150 candidates; its column count is the number of retained allele-dosage columns; its rank reveals linear dependencies among columns; and the maximum absolute column mean should be close to zero, confirming numerical centering. The expression `qr(M_full)$rank` obtains rank from the QR decomposition: this value is the number of linearly independent directions represented by the columns of `M`.
+The summary of `M` checks four basic properties: number of individuals, number of retained allele-dosage columns, matrix rank, and maximum absolute column mean. Rank represents the number of linearly independent directions in `M`, whereas an absolute mean close to zero confirms numerical centering.
 
 ```{r marker-matrix-summary}
 data.frame(
@@ -405,7 +396,7 @@ genomic relationship matrix is calculated as
 {\sum_j 2p_j(1-p_j)}.
 \]
 
-In the code, `allele_frequencies_full <- marker_means_full / 2` recovers \(p_j\) because mean dosage equals \(2p_j\). `tcrossprod(M_full)` directly computes \(\mathbf M\mathbf M^{\mathsf T}\), a product among individuals based on the centered columns. Dividing by `denominator_full` applies the scale defined in the equation. Then `(G_full + t(G_full)) / 2` removes only small numerical differences between symmetric elements, and `eigen(..., symmetric = TRUE, only.values = TRUE)` obtains the eigenvalues used to diagnose positive semidefiniteness.
+Allele frequencies used in the scaling are obtained from dosage means because mean dosage equals \(2p_j\). The product \(\mathbf M\mathbf M^{\mathsf T}\) summarizes relationships among individuals from the centered columns and is divided by the denominator defined above. The resulting matrix is numerically symmetrized before its eigenvalues are evaluated.
 
 ```{r genomic-relationship-matrix}
 # Recover p_j from the dosage mean, which equals 2p_j.
@@ -491,15 +482,9 @@ Family stratification targets prediction among individuals from the represented
 breeding population. It is not a leave-family-out design and therefore does
 not estimate predictive performance for entirely new families.
 
-The 150 individuals are divided into five validation groups of 30 individuals. The construction proceeds family by family and can be followed directly through the functions used in the code:
+The 150 individuals are distributed into five validation groups of 30 individuals. Allocation proceeds family by family: individuals within each family are shuffled and distributed among folds, with priority given to folds with the lowest accumulated number of individuals. This procedure maintains both family representation and balanced total fold sizes.
 
-1. `which(family == family_level)` locates individuals from the current family, and `sample()` shuffles their positions.
-2. `seq_len(N_FOLDS)` generates the five fold numbers. A second `sample()` call creates a random order used only to break ties among folds with equal accumulated load.
-3. `order(fold_load, match(seq_len(N_FOLDS), random_tie_order))` prioritizes less-filled folds first and uses the random order only when two loads are equal.
-4. `rep(ordered_folds, length.out = length(family_indices))` cycles through this order until one fold label is produced for every family member.
-5. `tabulate(family_labels, nbins = N_FOLDS)` counts how many individuals were just assigned to each fold and updates `fold_load`.
-
-This procedure spreads members of each family across folds while keeping total fold sizes balanced. After allocation, `apply(family_fold_table, 1, max)` and `apply(family_fold_table, 1, min)` compute, for each row of the table — that is, for each family — the largest and smallest counts across folds. The argument `1` specifies a row-wise operation; the difference between maximum and minimum forms `family_balance`.
+After allocation, within-family balance is summarized by the difference between the largest and smallest family count across the five folds. This diagnostic is stored in `family_balance` and directly measures the quality of the stratification.
 
 The fixed seed preserves exactly the same partition across executions. The same fold table is used for all ten traits and all methods, so differences among models cannot arise from different validation partitions.
 
@@ -582,40 +567,13 @@ format_table(
 
 The largest difference between the maximum and minimum count for the same family across folds is `r max(family_balance)` individual. This confirms that stratification distributes each family as evenly as its size permits.
 
-The heatmap displays the same family × fold table visually: every cell explicitly shows the number of individuals, while fill makes imbalances easier to spot. It is a diagnostic of the partition, not an additional measure of predictive performance.
-
-```{r family-fold-plot, fig.height=7}
-# Reshape the family-by-fold table and build the individual-distribution figure.
-family_fold_long <- as.data.frame(family_fold_table)
-
-ggplot(
-  family_fold_long,
-  aes(
-    x = factor(Fold),
-    y = Family,
-    fill = Freq
-  )
-) +
-  geom_tile() +
-  geom_text(aes(label = Freq)) +
-  labs(
-    x = "Fold",
-    y = "Family",
-    fill = "Individuals",
-    title = "Distribution of families across folds"
-  ) +
-  theme_bw()
-```
-
-The heatmap visually confirms the balance shown in the table: counts within a family differ by no more than the amount reported above. The figure describes fold composition and does not modify the partition.
-
 ## 9. Using the folds for model fitting
 
 The `cv_folds` table identifies which individuals are masked in each validation round. For fold `k`, the 30 individuals with `Fold == k` have their phenotypes replaced by `NA`, while the other 120 provide training phenotypes. This procedure is repeated for every trait and method.
 
 `X`, `M`, and `G` remain fixed and include all 150 genotyped candidates, consistent with the transductive design defined at the start of the module. Consequently, every individual receives a prediction when its own phenotype is masked, producing an out-of-fold prediction downstream; this is not equivalent to predicting an external genotype population.
 
-The expression `cv_folds |> arrange(Fold, FAM, IND) |> head(15)` sorts the table first by fold, then by family and individual identifier, and retains the first 15 rows. `arrange()` defines this order and `head(15)` limits only the displayed preview; the `cv_folds` object still contains all 150 individuals. The `Fold` column is the information Module 03 uses to decide which phenotypes are masked in each validation round.
+The table below shows a sample of the individual-to-fold assignments. The complete `cv_folds` object retains all 150 candidates and records the fold used in Module 03 to determine which phenotypes are masked in each validation round.
 
 ```{r fold-example}
 cv_folds |>
@@ -661,9 +619,9 @@ The heatmap summarizes pairwise relationships in `G`. Because individual order i
 
 All allele columns satisfying the declared filters are retained; no category is artificially discarded merely to force full rank. When all alleles at a locus remain represented, their dosages sum to 2 in each diploid individual and an exact linear dependency exists among those columns. Individual allele coefficients are therefore not interpreted in isolation; later modules focus on predictions and genomic values.
 
-In the analyzed dataset, the 72 dosage columns do not represent 72 independent dimensions. The structural rank bound imposed by within-locus dependencies is computed by `sum(table(...) - 1L)`: `table()` counts retained allele columns at each locus, subtracting 1 gives \(k_l-1\) for each locus, and `sum()` combines those contributions. This value is the maximum allowed by the within-locus dependencies when no additional linear dependencies occur across loci; the observed rank of `M` is then compared with this bound.
+In the analyzed data set, the 72 dosage columns do not represent 72 independent dimensions. When all alleles from the same locus are retained, their dosages contain a linear dependency imposed by diploidy. The structural rank bound of `M` sums the contribution \(k_l-1\) for each locus with \(k_l\) retained allele columns. The observed rank is compared with this bound to determine whether additional linear dependencies occur across loci.
 
-The diploid property is checked locus by locus with `rowSums(...) - 2`: `rowSums()` adds the retained allele dosages for each individual, and the difference from 2 should be numerically zero. Centering is checked through the column means of `M`, and `tcrossprod(M_full) / denominator_full` reconstructs `G` for comparison with the stored matrix. Symmetry, rank, diagonal, and smallest eigenvalue complete the numerical check of `G`.
+The diploid property is checked by confirming that allele dosages at each locus sum to 2 for every individual. Centering of `M` is evaluated through its column means, and `G` is reconstructed from `M` to confirm numerical consistency. Symmetry, rank, diagonal values, and the smallest eigenvalue complete the diagnostics of the genomic relationship matrix.
 
 ```{r matrix-diagnostics}
 # Check dimensions, ranks, linear dependencies, and numerical properties of X, M, and G.
@@ -760,19 +718,44 @@ matrix_inventory <- data.frame(
   )
 )
 
+# DISPLAY-ONLY START
+# The formatting below changes only the public table.
+# `matrix_inventory` remains numeric and is the object exported to CSV.
+matrix_inventory_display <- matrix_inventory
+
+integer_inventory_items <- matrix_inventory$Item[c(1:8, 12:17)]
+scientific_inventory_items <- matrix_inventory$Item[c(9:11, 18, 20)]
+
+matrix_inventory_display$Value <- vapply(
+  seq_len(nrow(matrix_inventory)),
+  function(i) {
+    item <- matrix_inventory$Item[i]
+    value <- matrix_inventory$Value[i]
+
+    if (item %in% integer_inventory_items) {
+      sprintf("%.0f", value)
+    } else if (item %in% scientific_inventory_items) {
+      format(value, scientific = TRUE, digits = 3)
+    } else {
+      sprintf("%.3f", value)
+    }
+  },
+  character(1)
+)
+
 format_table(
-  matrix_inventory,
-  digits = 8,
+  matrix_inventory_display,
   col.names = c("Item", "Value"),
   caption = "Summary of matrices and cross-validation"
 )
+# DISPLAY-ONLY END
 ```
 
 The final inventory collects the preceding checks in one table. For the analyzed data, `M` contains `r ncol(M_full)` columns and rank `r qr(M_full)$rank`, equal to the structural rank bound `r structural_rank_bound_M`; dosage sums within loci and reconstruction of `G` have maximum errors close to zero, and all five folds retain the same training and validation sizes.
 
 ## 12. Saving matrices and folds
 
-The `matrices_object.rds` file gathers matrices, aligned phenotypes, metadata, frequencies, folds, and parameters in one object while preserving their classes. `saveRDS()` writes this list to a file that can be recovered intact with `readRDS()` in Module 03. The `write.csv(..., row.names = FALSE)` calls export fold, frequency, and diagnostic tables in tabular form; `row.names = FALSE` prevents an artificial row-number column from being added.
+The `matrices_object.rds` file gathers the matrices, aligned phenotypes, metadata, frequencies, folds, and parameters required by Module 03. The main diagnostic tables are also exported as CSV files for independent inspection without modifying the objects used by the models.
 
 ```{r save-matrix-objects}
 # Collect matrices, metadata, frequencies, and folds in the object persisted by the module.
