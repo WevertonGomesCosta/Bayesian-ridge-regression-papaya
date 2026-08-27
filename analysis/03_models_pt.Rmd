@@ -124,7 +124,7 @@ cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
 ```
 
-A tabela seguinte confirma que os objetos recebidos do Módulo 02 possuem dimensões compatíveis antes de qualquer ajuste. `nrow()` conta os indivíduos representados em cada objeto e `ncol()` informa quantas características, efeitos, marcadores, indivíduos relacionados ou campos estão armazenados. Nenhum objeto é filtrado ou reconstruído nesta conferência.
+A tabela seguinte confirma que os objetos recebidos do Módulo 02 possuem dimensões compatíveis antes de qualquer ajuste. Nenhum objeto é filtrado ou reconstruído nesta conferência.
 
 ```{r input-summary}
 data.frame(
@@ -163,7 +163,7 @@ efeito fixo de família, \(\mathbf g\) é o componente genômico e
 
 O BGLR ajusta um intercepto automaticamente. Por isso, a coluna de intercepto criada no Módulo 02 é retirada de `X` antes da especificação do termo de família. As colunas restantes representam os contrastes de `FAM` produzidos por `model.matrix()` no Módulo 02; não se cria aqui uma nova codificação de família.
 
-A expressão `colnames(X) != "(Intercept)"` produz um vetor lógico que é `FALSE` somente para a coluna de intercepto. Esse vetor é usado em `X[, ..., drop = FALSE]` para manter todas as linhas e apenas as colunas de família; `drop = FALSE` preserva o resultado como matriz.
+
 
 ```{r family-fixed-effect}
 X_fixed <- X[
@@ -239,7 +239,7 @@ Os parâmetros centrais das cadeias são:
 - `R2_PRIOR = 0.5`: parâmetro global de alocação de variância usado pelo BGLR;
 - `SEED_BASE = 202608050`: início da sequência determinística de sementes. Cada ajuste soma seu número sequencial a essa base, de modo que as 350 combinações recebem sementes diferentes e reproduzíveis.
 
-A configuração de iterações, burn-in e thinning segue a análise de referência [@silva2021brrguava]. Como `floor(N_ITER / THIN)` calcula quantas amostras são gravadas e `floor(BURN_IN / THIN)` quantas pertencem ao burn-in, `RETAINED_SAMPLES` é uma quantidade derivada, não um parâmetro adicional.
+A configuração de iterações, burn-in e thinning segue a análise de referência [@silva2021brrguava]. As quantidades de amostras gravadas, descartadas e retidas são derivadas desses parâmetros e não constituem parâmetros adicionais do modelo.
 
 Outras definições específicas são:
 
@@ -427,7 +427,7 @@ seguido de
 2\frac{1-R^2}{R^2_{BL}}MS_x.
 \]
 
-No código, `apply(M, 2, function(x) sum(x^2))` percorre as colunas de `M` (`2` indica a margem das colunas) e calcula a soma dos quadrados em cada uma. A soma desses valores, dividida por `nrow(M)`, fornece o primeiro termo de `MS_x`; `sum(colMeans(M)^2)` fornece o segundo. Em seguida, `sqrt()` transforma `BL_LAMBDA_SQUARED` em `BL_LAMBDA`.
+
 
 ```{r bl-lambda}
 # Divide R2 entre os dois termos lineares do preditor: família e componente genômico BL.
@@ -471,9 +471,7 @@ O GBLUP utiliza a matriz de relacionamento genômico `G`. No BGLR, essa estrutur
 
 ## 7. Especificação dos modelos no BGLR
 
-O argumento `ETA` do BGLR recebe uma lista de termos do preditor. `family_term <- list(X = X_fixed, model = "FIXED")` associa a matriz de contrastes de família a coeficientes fixos. Em `ETA_models`, cada método contém dois elementos nomeados: `fixed`, comum aos sete modelos, e `genomic`, que define a parte genômica.
-
-Nas regressões por marcadores, `X = M` fornece as dosagens centralizadas e `model` escolhe a priori correspondente (`BRR`, `BayesA`, `BayesB`, `BayesC` ou `BL`). No GBLUP, `K = G` fornece diretamente a matriz de covariância ao componente `RKHS`. BayesB2 acrescenta `probIn` e `counts`; BL acrescenta `type = "FIXED"` e `lambda = BL_LAMBDA`. Assim, a estrutura de intercepto e família permanece constante e somente a especificação genômica muda entre métodos.
+As sete especificações mantêm o mesmo intercepto e o mesmo termo fixo de família. Nos seis métodos de regressão, o componente genômico é definido a partir de `M` com a priori correspondente; o BayesB2 acrescenta sua parametrização de inclusão e o Lasso Bayesiano utiliza o lambda fixo calibrado acima. No GBLUP, o componente genômico é definido diretamente por `G`. Assim, entre métodos muda apenas a especificação genômica.
 
 ```{r eta-specifications}
 # Define o efeito fixo de família e o componente genômico específico de cada método.
@@ -528,9 +526,7 @@ ETA_models <- list(
 
 ## 8. Combinações de característica, fold e método
 
-As mesmas sete especificações são aplicadas às dez características e aos cinco folds. `expand.grid(Trait = traits, Fold = ..., Method = method_names)` constrói o produto cartesiano dessas três dimensões, produzindo 350 linhas: 50 ajustes por método.
-
-A expressão `order(match(run_design$Trait, traits), run_design$Fold, match(run_design$Method, method_names))` reorganiza as linhas na ordem definida pelos vetores originais de características e métodos e, dentro deles, por fold. `seq_len(nrow(run_design))` atribui o número sequencial do ajuste; a semente é `SEED_BASE + Run_number`; e `paste(..., sep = "_")` combina característica, fold e método em um identificador legível. A semente controla apenas a reprodução da cadeia daquela combinação; ela não modifica os folds.
+As mesmas sete especificações são aplicadas às dez características e aos cinco folds, formando 350 combinações — 50 ajustes por método. A grade é organizada de forma determinística e cada ajuste recebe identificador e semente próprios. As sementes controlam a reprodutibilidade das cadeias, sem alterar os folds definidos no Módulo 02.
 
 ```{r run-design}
 # Combina características, folds e métodos e atribui uma semente reprodutível a cada ajuste.
@@ -569,7 +565,7 @@ Cada método aparece em `r nrow(run_design) / length(method_names)` combinaçõe
 
 ## 9. Ajuste dos 350 modelos
 
-O ajuste percorre as combinações de característica, fold e método. Antes do laço, quatro vetores nomeados mapeiam os arquivos escalares nativos do BGLR usados nos diagnósticos: `genomic_trace_suffix` identifica o arquivo, `genomic_trace_header` informa se ele possui cabeçalho, `genomic_trace_column` seleciona a coluna escalar e `genomic_trace_parameter` fornece o rótulo apresentado posteriormente.
+Para os diagnósticos MCMC, cada método é associado ao arquivo escalar nativo do BGLR e ao parâmetro representativo correspondente.
 
 A cadeia escolhida é uma quantidade escalar representativa de cada especificação, não um diagnóstico exaustivo de todos os efeitos de marcador. No BL, como lambda é fixo e não possui cadeia atualizada, o segundo diagnóstico usa `mu.dat` e é rotulado como intercepto; portanto, ele não deve ser interpretado como uma cadeia do componente genômico.
 
@@ -616,19 +612,9 @@ genomic_trace_parameter <- c(
 )
 ```
 
-Os 350 ajustes são computacionalmente intensivos. O bloco completo de ajuste permanece com `eval=FALSE`, de modo que a reconstrução das páginas não reinicia as cadeias nem sobrescreve seus arquivos. Para reproduzir a análise do zero, esse bloco deve ser executado deliberadamente depois da geração dos objetos dos Módulos 01 e 02.
+Os 350 ajustes seguem a mesma rotina. Para cada combinação de característica, fold e método, os fenótipos dos 30 indivíduos de validação são mascarados e os outros 120 fornecem a informação fenotípica do ajuste. As matrizes derivadas dos genótipos permanecem fixas, preservando o desenho de validação descrito no Módulo 02.
 
-A sequência de cada ajuste pode ser acompanhada diretamente no código:
-
-1. **Selecionar característica e fold.** `validation_index <- which(cv_folds$Fold == fold_number)` localiza os 30 candidatos de validação e `training_index` localiza os demais 120. A cópia `y_model` recebe `NA` somente nas posições de validação; assim, o fenótipo do candidato não participa do próprio ajuste.
-2. **Escolher a especificação e ajustar o BGLR.** `ETA_models[[method_name]]` recupera o `ETA` do método corrente. `BGLR::BGLR()` recebe a resposta mascarada, `nIter`, `burnIn`, `thin`, `R2` e o prefixo dos arquivos da cadeia. `withCallingHandlers()` permite registrar mensagens de aviso sem interromper o laço.
-3. **Recuperar predições e componentes.** `fit$yHat[validation_index]` fornece as predições OOF. O produto matricial `X_fixed %*% fit$ETA$fixed$b` calcula o componente fixo de família. Como `yHat = mu + componente fixo + componente genômico`, a diferença `fit$yHat - fit$mu - fixed_component` recupera o componente genômico.
-4. **Calcular métricas.** `cor()` fornece a correlação observado–predito; RMSE é a raiz da média dos erros quadráticos; MAE é a média dos erros absolutos; `mean(predicted - observed)` mede viés; e `cov(observed, predicted) / var(predicted)` fornece a inclinação da regressão de observado sobre predito. DIC e `pD` são recuperados do ajuste Bayesiano e não são métricas OOF.
-5. **Registrar parâmetros disponíveis.** Expressões como `c(fit$ETA$genomic$probIn, NA_real_)[1]` retornam o parâmetro quando ele existe e `NA` quando o método não o fornece, permitindo uma tabela comum aos sete modelos.
-6. **Ler e recortar as cadeias.** `scan()` lê a cadeia escalar da variância residual; `read.table()` lê o arquivo escalar específico do método. `seq.int(BURN_IN_SAVED_SAMPLES + 1L, ...)` seleciona somente as amostras posteriores ao burn-in e `cbind()` reúne as duas séries.
-7. **Calcular diagnósticos.** `coda::mcmc()` associa às amostras o início e o thinning da cadeia. `effectiveSize()` estima o tamanho efetivo da amostra e `geweke.diag()` calcula a estatística de Geweke.
-
-Os arquivos escalares nativos do BGLR contêm também as amostras gravadas durante o burn-in; por isso a remoção de `BURN_IN_SAVED_SAMPLES` ocorre explicitamente antes dos diagnósticos.
+De cada ajuste são armazenadas as predições OOF, os componentes fixo e genômico, as métricas preditivas, DIC e pD, parâmetros específicos quando disponíveis, avisos do BGLR e tempo de execução. Para os diagnósticos MCMC, a cadeia da variância residual e uma cadeia escalar representativa do método são avaliadas após o descarte explícito das amostras gravadas durante o burn-in; ESS e Geweke são calculados no trecho pós-burn-in.
 
 ```{r fit-models, eval=FALSE}
 # Listas que recebem as saídas de cada ajuste.
@@ -897,7 +883,7 @@ write.csv(
 
 ## 10. Predições, valores genômicos e métricas por fold
 
-As tabelas consolidadas produzidas pelos 350 ajustes são lidas de `output/models/`. `read.csv(..., check.names = FALSE)` recupera cada arquivo sem modificar seus nomes de colunas. Isso permite inspecionar predições, valores genômicos, métricas e diagnósticos a partir das saídas persistidas, sem recalcular as cadeias MCMC.
+As tabelas consolidadas produzidas pelos 350 ajustes são carregadas de `output/models/`, permitindo inspecionar predições, valores genômicos, métricas e diagnósticos a partir das saídas persistidas, sem recalcular as cadeias MCMC.
 
 ```{r combine-results}
 # Carrega as tabelas consolidadas produzidas pelos ajustes para os diagnósticos seguintes.
@@ -943,36 +929,13 @@ portanto
 
 A tabela de predições contém somente os indivíduos do fold que estava mascarado em cada ajuste, de modo que cada linha é uma predição OOF. Já `genomic_values_by_fold` armazena o componente genômico calculado para todos os 150 indivíduos em cada ajuste; nos módulos seguintes, o contexto do fold deve ser respeitado ao construir valores cross-fitted.
 
-Algumas linhas das predições OOF permitem verificar diretamente a decomposição entre valor observado, predição total, componente fixo de família e componente genômico.
 
-```{r prediction-preview}
-cv_predictions |>
-  select(
-    IND, Trait, Fold, Method,
-    Observed, Predicted, Fixed_component, Genomic_component
-  ) |>
-  head(12) |>
-  tabela_html(digits = 4, caption = "Exemplo das predições out-of-fold (OOF)")
-```
-
-Cada linha corresponde a um indivíduo quando seu fenótipo estava mascarado. A soma do intercepto, do componente fixo de família e do componente genômico reproduz a predição total armazenada em `Predicted`.
 
 As métricas preditivas são calculadas somente nos 30 indivíduos mascarados do fold. `Correlation` é a correlação de Pearson entre observado e predito; RMSE e MAE resumem a magnitude do erro nas unidades da característica; `Prediction_bias = mean(Predicted - Observed)` tem valor ideal 0; e `Regression_slope = cov(Observed, Predicted) / var(Predicted)` é a inclinação da regressão de observado sobre predito, com referência ideal 1.
 
 DIC e `Effective_parameters` (`pD`) têm natureza diferente: são critérios derivados do ajuste Bayesiano aos fenótipos observados de treinamento, não métricas OOF. Valores menores de DIC indicam melhor compromisso ajuste–complexidade apenas entre modelos ajustados à mesma resposta e conjunto comparável; DIC não deve ser comparado diretamente entre características em escalas distintas.
 
-```{r metrics-preview}
-cv_metrics_by_fold |>
-  select(
-    Trait, Fold, Method,
-    Correlation, RMSE, MAE,
-    Prediction_bias, Regression_slope, DIC
-  ) |>
-  head(14) |>
-  tabela_html(digits = 4, caption = "Exemplo das métricas obtidas por fold")
-```
-
-As linhas mostram que cada combinação característica–fold–método recebe simultaneamente métricas OOF de capacidade preditiva e critérios Bayesianos de ajuste. Esses dois grupos de medidas respondem a perguntas diferentes e são comparados separadamente no Módulo 04.
+Cada combinação característica–fold–método reúne métricas OOF de capacidade preditiva e critérios Bayesianos de ajuste. Esses dois grupos de medidas respondem a perguntas diferentes e são comparados separadamente no Módulo 04.
 
 A tabela seguinte é uma checagem estrutural do laço. Esperam-se 350 linhas de métricas, 10.500 predições OOF (350 ajustes × 30 indivíduos), 52.500 valores genômicos por fold (350 × 150) e 700 cadeias escalares avaliadas (duas por ajuste). Divergências nesses totais indicariam uma execução incompleta ou uma consolidação inconsistente.
 
@@ -1061,7 +1024,7 @@ A tabela detalhada localiza exatamente característica, fold, método e parâmet
 
 ## 12. Gravação dos diagnósticos e do objeto final
 
-Após os diagnósticos, a tabela de convergência é atualizada com os indicadores de revisão, o resumo por método é gravado e `models_object.rds` reúne configurações, desenho dos ajustes, catálogo dos métodos, predições, valores genômicos, métricas e diagnósticos. Esse bloco acompanha a regeneração completa dos ajustes e permanece com `eval=FALSE`; quando os resultados primários forem recalculados, ele deve ser executado para manter o objeto final coerente com as tabelas gravadas.
+Após os diagnósticos, a tabela de convergência é atualizada com os indicadores de revisão e o resumo por método é gravado. O arquivo `models_object.rds` consolida configurações, desenho dos ajustes, catálogo dos métodos, predições, valores genômicos, métricas e diagnósticos para uso nos módulos seguintes.
 
 ```{r save-results, eval=FALSE}
 # Agrupa configurações, resultados e diagnósticos no objeto final do módulo.
