@@ -170,14 +170,9 @@ A tabela de dimensões confirma que `Genes` contém `r nrow(genes)` indivíduos 
 
 A primeira coluna da aba `Genes` contém um índice sequencial de grupos populacionais e não representa a variável fenotípica `FAM`; por isso ela é excluída da matriz de marcadores. As 35 colunas restantes correspondem aos locos SSR originais.
 
-Na aba `Genealex`, a posição de cada informação é definida explicitamente:
+Na aba `Genealex`, os identificadores dos indivíduos e os nomes dos locos ocupam posições fixas da estrutura original do GenAlEx. Essas posições são recuperadas para atribuir corretamente os nomes das linhas e das colunas da matriz SSR.
 
-1. **Linhas dos indivíduos.** Os identificadores começam na linha 4 da segunda coluna. Como existem `n_individuals` indivíduos, as linhas são definidas por `individual_rows <- 4:(3 + n_individuals)`. O intervalo começa em 4 e termina em `3 + n_individuals`, incluindo exatamente uma linha para cada indivíduo.
-2. **Colunas dos locos.** Os nomes dos locos estão na linha 3 e aparecem em colunas alternadas a partir da coluna 3. Essas posições são obtidas com `locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)`. A função `seq()` começa em 3 e avança de duas em duas colunas até reunir os `n_loci` nomes.
-3. **Identificadores dos indivíduos.** A expressão `genealex[[2]][individual_rows]` seleciona a segunda coluna apenas nas linhas definidas acima. Em seguida, `as.character()` preserva identificadores alfanuméricos e `trimws()` remove espaços antes ou depois do código: `ids <- trimws(as.character(genealex[[2]][individual_rows]))`.
-4. **Nomes dos locos.** A expressão `genealex[3, locus_columns]` seleciona a terceira linha somente nas colunas dos locos. `unlist(..., use.names = FALSE)` transforma essa seleção em um vetor, e `trimws(as.character(...))` garante nomes em formato de texto sem espaços externos.
-5. **Matriz SSR.** A expressão `genes[, -1, drop = FALSE]` seleciona todas as linhas e exclui a primeira coluna de `Genes`; o índice `-1` significa “todas as colunas, exceto a primeira”. `drop = FALSE` mantém o resultado como uma estrutura bidimensional. `as.matrix()` transforma essa seleção em matriz e `storage.mode(ssr_raw) <- "numeric"` garante armazenamento numérico dos códigos SSR.
-6. **Chamadas ausentes.** Depois de formar a matriz numérica de SSR, o código `ssr_raw[ssr_raw == -9] <- NA_real_` substitui o valor `-9`, usado no arquivo de origem para indicar ausência, pelo valor ausente padrão do R (`NA`).
+Depois da organização, os códigos SSR são armazenados numericamente e o código `-9`, usado na fonte para representar chamadas ausentes, é convertido em `NA`. Dessa forma, `ssr_raw` preserva os genótipos originais com identificadores consistentes e uma representação explícita dos dados ausentes.
 
 ```{r organizacao-ssr}
 # Obtém as dimensões do painel a partir da aba `Genes`; a primeira coluna não é um loco SSR.
@@ -219,15 +214,9 @@ Os códigos SSR representam os dois alelos observados em cada indivíduo. Por ex
 
 ## 5. Organização e alinhamento dos fenótipos
 
-Dez características são utilizadas. Antes do alinhamento, três verificações evitam associar genótipos e fenótipos incorretamente:
+São utilizadas dez características fenotípicas. Antes do alinhamento, o módulo verifica se todas as colunas obrigatórias estão presentes, se os conjuntos de indivíduos genotipados e fenotipados coincidem e se existem identificadores ou nomes de locos ausentes ou duplicados.
 
-1. **Colunas obrigatórias.** `required_columns <- c("IND", "FAM", TRAITS)` reúne as colunas esperadas. `setdiff(required_columns, names(pheno_raw))` retorna quais delas não existem na planilha; quando o resultado é vazio, todas estão presentes.
-2. **Indivíduos presentes em apenas uma fonte.** `setdiff(ids, pheno_raw$IND)` identifica genótipos sem fenótipo correspondente, enquanto `setdiff(pheno_raw$IND, ids)` faz a comparação inversa e identifica fenótipos sem genótipo.
-3. **Identificadores inválidos ou repetidos.** `is.na()` e a comparação com `""` identificam códigos ausentes ou vazios; `duplicated()` identifica repetições que impediriam uma correspondência individual inequívoca.
-
-Depois dessas verificações, o alinhamento é feito com `match(ids, pheno_raw$IND)`. Para cada identificador presente em `ids`, `match()` retorna a posição correspondente em `pheno_raw$IND`. Essas posições são usadas diretamente em `pheno_raw[match(ids, pheno_raw$IND), required_columns]`, que reordena as linhas fenotípicas na mesma sequência da matriz SSR. Assim, a linha *i* dos fenótipos e a linha *i* dos genótipos passam a representar o mesmo indivíduo.
-
-Após o alinhamento, `factor(pheno$FAM)` converte `FAM` em variável categórica, preservando os níveis de família. Já `as.matrix(pheno[, TRAITS])` seleciona apenas as dez características e as reúne em uma matriz; `storage.mode(phenotypes) <- "numeric"` garante que seus valores sejam tratados numericamente nos cálculos posteriores.
+Somente após essas verificações os fenótipos são reordenados para seguir exatamente a sequência dos indivíduos na matriz SSR. Assim, cada linha dos objetos genotípicos e fenotípicos representa a mesma planta. `FAM` é preservada como variável categórica, enquanto as dez características são reunidas em uma matriz numérica para os módulos seguintes.
 
 ```{r organizacao-fenotipos}
 # Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.
@@ -338,11 +327,9 @@ Após a reorganização, `FAM` contém `r nlevels(metadata$FAM)` famílias, com 
 
 ## 6. Controle de qualidade dos marcadores
 
-Para cada loco, a taxa de chamada é calculada por `colMeans(!is.na(ssr_raw))`. Primeiro, `is.na(ssr_raw)` identifica as células ausentes; o operador `!` inverte o resultado, deixando `TRUE` para genótipos observados e `FALSE` para ausências. Como R trata `TRUE` como 1 e `FALSE` como 0 no cálculo da média, `colMeans()` fornece diretamente a proporção de indivíduos com genótipo observado em cada loco.
+O controle de qualidade considera duas propriedades de cada loco: a proporção de indivíduos com genótipo observado e o número de classes genotípicas presentes. Um loco é mantido quando apresenta taxa de chamada de pelo menos 0,90 — equivalente a 135 dos 150 indivíduos — e pelo menos duas classes genotípicas.
 
-O número de classes genotípicas é calculado, para cada coluna `j`, por `length(unique(na.omit(ssr_raw[, j])))`: `na.omit()` remove as ausências, `unique()` mantém apenas os códigos genotípicos distintos e `length()` conta quantas classes foram observadas. Um loco é mantido quando a taxa de chamada é igual ou superior a 0,90 — pelo menos 135 dos 150 indivíduos — e quando existem pelo menos duas classes genotípicas. Esse segundo critério remove locos sem variação observável mesmo quando a taxa de chamada é alta.
-
-A tabela permite identificar separadamente qual critério determinou a retenção ou remoção de cada loco. A matriz `ssr` criada ao final contém apenas os locos que seguem para a codificação alélica do Módulo 02; `ssr_raw` é preservada para os diagnósticos da fonte original.
+Esses critérios distinguem falta de dados de ausência de variação. Assim, um loco com alta taxa de chamada ainda pode ser removido se for monomórfico no painel. O filtro atua somente sobre os locos: `ssr_raw` preserva a matriz original para diagnóstico, enquanto `ssr` contém os locos que seguem para a codificação alélica no Módulo 02.
 
 ```{r qualidade-marcadores}
 # Calcula taxa de chamada e diversidade de classes genotípicas para decidir quais locos SSR serão mantidos.
@@ -416,7 +403,7 @@ A figura mostra que a decisão de retenção não depende apenas da posição em
 
 ## 7. Resumo da informação genotípica
 
-A completude genotípica também é calculada por indivíduo usando os 35 locos originais (`ssr_raw`). A expressão `rowSums(!is.na(ssr_raw))` conta quantos locos possuem genótipo observado em cada indivíduo, enquanto `rowMeans(!is.na(ssr_raw))` divide implicitamente essa contagem pelo número de locos e fornece a proporção de chamadas disponíveis. Nenhum limiar de exclusão por completude é aplicado aos indivíduos; todos os 150 indivíduos alinhados são preservados para as etapas seguintes.
+A completude genotípica também é resumida por indivíduo usando os 35 locos originais. Para cada planta são registrados o número e a proporção de chamadas SSR disponíveis. Essa informação é apenas diagnóstica: nenhum limiar de completude é usado para excluir indivíduos, e todos os 150 indivíduos alinhados permanecem nas etapas seguintes.
 
 ```{r resumo-individuos}
 # Calcula, nos locos originais, a quantidade e a proporção de chamadas disponíveis por indivíduo.
@@ -487,9 +474,13 @@ Todas as dez características apresentam `r min(phenotype_summary$N)` observaç�
 
 ### 8.1 Observações fenotípicas distantes da média
 
-Os valores padronizados são utilizados apenas como diagnóstico descritivo. Para cada característica, calcula-se $z=(y-\bar{y})/s$, em que $y$ é o valor observado, $\bar{y}$ é a média da característica e $s$ é o desvio-padrão amostral. A chamada `scale(phenotypes, center = phenotype_means, scale = phenotype_standard_deviations)` aplica exatamente essa transformação a cada coluna da matriz fenotípica.
+Os valores padronizados são utilizados somente como diagnóstico descritivo. Para cada característica, calcula-se
 
-Em seguida, `abs(phenotype_standardized) >= PHENOTYPE_DISTANCE_THRESHOLD` compara a distância absoluta de cada valor padronizado com o limite definido, ignorando se a observação está acima ou abaixo da média. `which(..., arr.ind = TRUE)` retorna as posições de linha e coluna que atendem ao critério; essas posições permitem recuperar o indivíduo, a característica e o valor original. Uma observação é destacada quando $|z|$ é de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD`, mas nenhum valor é removido ou alterado.
+\[
+z = \frac{y-\bar{y}}{s},
+\]
+
+em que $y$ é o valor observado, $\bar{y}$ é a média e $s$ é o desvio-padrão amostral. Observações cuja distância padronizada absoluta é de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão são destacadas para inspeção. Esse procedimento não remove, limita ou transforma os fenótipos usados posteriormente nos modelos.
 
 ```{r valores-fenotipicos-distantes}
 # Padroniza os fenótipos e identifica observações distantes da média segundo o limite definido.
@@ -600,7 +591,7 @@ tabela_html(
 
 O dicionário evidencia que produção e massa são expressas em kg, dimensões dos frutos em cm, firmeza em N e sólidos solúveis em °Brix. Essa diferença de unidades explica por que as escalas numéricas das características não devem ser comparadas diretamente.
 
-Os histogramas complementam as estatísticas descritivas ao mostrar a forma das distribuições. Para construí-los, `pivot_longer(cols = -IND, names_to = "Trait", values_to = "Value")` transforma a tabela de uma coluna por característica para o formato longo: cada linha passa a registrar um indivíduo, uma característica e seu valor. São usadas 20 classes apenas para definir a resolução visual do histograma. Como `scales = "free"`, cada característica recebe seu próprio eixo horizontal; isso facilita visualizar a forma interna de cada distribuição, mas os limites dos eixos não devem ser comparados diretamente entre painéis.
+Os histogramas complementam as estatísticas descritivas ao mostrar concentração, dispersão e assimetria em cada característica. São usadas 20 classes apenas para padronizar a resolução visual. Como as características possuem unidades e amplitudes distintas, cada painel utiliza sua própria escala horizontal; por isso, os limites dos eixos não devem ser comparados diretamente entre características.
 
 ```{r grafico-fenotipos, fig.height=8}
 # Reorganiza os fenótipos em formato longo e mostra suas distribuições em histogramas.
@@ -633,9 +624,9 @@ Os histogramas permitem avaliar concentração, dispersão e assimetria dentro d
 
 ## 9. Gravação dos resultados do pré-processamento
 
-A matriz fenotípica alinhada, os dados SSR, os metadados, o dicionário de características e os diagnósticos são reunidos em `preprocessing_object.rds`. Esse arquivo RDS é a interface principal com o Módulo 02 porque preserva conjuntamente estruturas, nomes e classes dos objetos.
+Os objetos necessários para as etapas seguintes são reunidos em `preprocessing_object.rds`, que constitui a interface principal com o Módulo 02. O arquivo preserva conjuntamente fenótipos alinhados, matrizes SSR, metadados, dicionário de características, diagnósticos e parâmetros do pré-processamento.
 
-Os arquivos CSV gravados em paralelo são saídas tabulares de inspeção: permitem examinar alinhamento, qualidade dos locos, completude por indivíduo, resumo fenotípico, observações destacadas e dicionário de características sem abrir o objeto RDS. Os parâmetros que definem esta etapa também são registrados em `settings`.
+As principais verificações também são exportadas em CSV para inspeção independente, sem alterar os objetos utilizados na análise.
 
 ```{r salvamento-saidas}
 # Reúne os objetos do pré-processamento e grava as saídas usadas no módulo seguinte.
