@@ -664,13 +664,13 @@ O mapa de calor sintetiza os relacionamentos pareados presentes em `G`. Como a o
 
 Todas as colunas alélicas que atendem aos filtros declarados são mantidas; nenhuma categoria é descartada artificialmente apenas para impor posto completo. Quando todos os alelos de um loco permanecem representados, suas dosagens somam 2 em cada indivíduo diploide e existe uma dependência linear exata entre essas colunas. Por isso, coeficientes de alelos individuais não são interpretados isoladamente; os módulos seguintes se concentram nas predições e nos valores genômicos.
 
-No conjunto de dados analisado, as 72 colunas de dosagem não representam 72 dimensões independentes. O posto teórico é calculado por `sum(table(...)- 1L)`: `table()` conta quantas colunas alélicas foram mantidas em cada loco, subtrair 1 fornece \(k_l-1\) para cada loco e `sum()` reúne essas contribuições. O posto observado de `M` é então comparado a esse valor.
+No conjunto de dados analisado, as 72 colunas de dosagem não representam 72 dimensões independentes. O limite estrutural de posto imposto pelas dependências intra-loco é calculado por `sum(table(...)- 1L)`: `table()` conta quantas colunas alélicas foram mantidas em cada loco, subtrair 1 fornece \(k_l-1\) para cada loco e `sum()` reúne essas contribuições. Esse valor representa o máximo permitido pelas dependências intra-loco quando não existem dependências lineares adicionais entre locos; o posto observado de `M` é então comparado a esse limite.
 
 A propriedade diploide é verificada loco a loco com `rowSums(...) - 2`: `rowSums()` soma as dosagens alélicas mantidas de cada indivíduo e a diferença em relação a 2 deve ser numericamente nula. A centralização é verificada pelas médias das colunas de `M`, e `tcrossprod(M_full) / denominator_full` reconstrói `G` para comparação com a matriz armazenada. Simetria, posto, diagonal e menor autovalor completam a checagem numérica de `G`.
 
 ```{r diagnostico-matrizes}
 # Verifica dimensões, postos, dependências lineares e propriedades numéricas de X, M e G.
-theoretical_rank_M <- sum(
+structural_rank_bound_M <- sum(
   table(
     allele_audit_full$Locus[
       allele_audit_full$Keep_allele
@@ -725,7 +725,7 @@ matrix_inventory <- data.frame(
     "Linhas de M",
     "Colunas de M",
     "Posto de M",
-    "Posto teórico de M",
+    "Limite estrutural de posto de M",
     "Máxima média absoluta das colunas de M",
     "Erro máximo da soma das dosagens por loco",
     "Diferença máxima na reconstrução de G",
@@ -747,7 +747,7 @@ matrix_inventory <- data.frame(
     nrow(M_full),
     ncol(M_full),
     qr(M_full)$rank,
-    theoretical_rank_M,
+    structural_rank_bound_M,
     maximum_M_column_mean,
     maximum_dosage_sum_error,
     maximum_G_reconstruction_difference,
@@ -771,7 +771,7 @@ tabela_html(
 )
 ```
 
-O inventário final reúne em uma única tabela as verificações anteriores. Para os dados analisados, `M` possui `r ncol(M_full)` colunas e posto `r qr(M_full)$rank`, igual ao posto teórico `r theoretical_rank_M`; a soma das dosagens por loco e a reconstrução de `G` apresentam erros máximos próximos de zero, e os cinco folds mantêm os mesmos tamanhos de treinamento e validação.
+O inventário final reúne em uma única tabela as verificações anteriores. Para os dados analisados, `M` possui `r ncol(M_full)` colunas e posto `r qr(M_full)$rank`, igual ao limite estrutural de posto `r structural_rank_bound_M`; a soma das dosagens por loco e a reconstrução de `G` apresentam erros máximos próximos de zero, e os cinco folds mantêm os mesmos tamanhos de treinamento e validação.
 
 ## 12. Gravação das matrizes e dos folds
 

@@ -661,13 +661,13 @@ The heatmap summarizes pairwise relationships in `G`. Because individual order i
 
 All allele columns satisfying the declared filters are retained; no category is artificially discarded merely to force full rank. When all alleles at a locus remain represented, their dosages sum to 2 in each diploid individual and an exact linear dependency exists among those columns. Individual allele coefficients are therefore not interpreted in isolation; later modules focus on predictions and genomic values.
 
-In the analyzed dataset, the 72 dosage columns do not represent 72 independent dimensions. The theoretical rank is computed by `sum(table(...) - 1L)`: `table()` counts retained allele columns at each locus, subtracting 1 gives \(k_l-1\) for each locus, and `sum()` combines those contributions. The observed rank of `M` is then compared with that value.
+In the analyzed dataset, the 72 dosage columns do not represent 72 independent dimensions. The structural rank bound imposed by within-locus dependencies is computed by `sum(table(...) - 1L)`: `table()` counts retained allele columns at each locus, subtracting 1 gives \(k_l-1\) for each locus, and `sum()` combines those contributions. This value is the maximum allowed by the within-locus dependencies when no additional linear dependencies occur across loci; the observed rank of `M` is then compared with this bound.
 
 The diploid property is checked locus by locus with `rowSums(...) - 2`: `rowSums()` adds the retained allele dosages for each individual, and the difference from 2 should be numerically zero. Centering is checked through the column means of `M`, and `tcrossprod(M_full) / denominator_full` reconstructs `G` for comparison with the stored matrix. Symmetry, rank, diagonal, and smallest eigenvalue complete the numerical check of `G`.
 
 ```{r matrix-diagnostics}
 # Check dimensions, ranks, linear dependencies, and numerical properties of X, M, and G.
-theoretical_rank_M <- sum(
+structural_rank_bound_M <- sum(
   table(
     allele_audit_full$Locus[
       allele_audit_full$Keep_allele
@@ -722,7 +722,7 @@ matrix_inventory <- data.frame(
     "Rows of M",
     "Columns of M",
     "Rank of M",
-    "Theoretical rank of M",
+    "Structural rank bound of M",
     "Maximum absolute column mean of M",
     "Maximum dosage-sum error within locus",
     "Maximum G reconstruction difference",
@@ -744,7 +744,7 @@ matrix_inventory <- data.frame(
     nrow(M_full),
     ncol(M_full),
     qr(M_full)$rank,
-    theoretical_rank_M,
+    structural_rank_bound_M,
     maximum_M_column_mean,
     maximum_dosage_sum_error,
     maximum_G_reconstruction_difference,
@@ -768,7 +768,7 @@ format_table(
 )
 ```
 
-The final inventory collects the preceding checks in one table. For the analyzed data, `M` contains `r ncol(M_full)` columns and rank `r qr(M_full)$rank`, equal to the theoretical rank `r theoretical_rank_M`; dosage sums within loci and reconstruction of `G` have maximum errors close to zero, and all five folds retain the same training and validation sizes.
+The final inventory collects the preceding checks in one table. For the analyzed data, `M` contains `r ncol(M_full)` columns and rank `r qr(M_full)$rank`, equal to the structural rank bound `r structural_rank_bound_M`; dosage sums within loci and reconstruction of `G` have maximum errors close to zero, and all five folds retain the same training and validation sizes.
 
 ## 12. Saving matrices and folds
 
