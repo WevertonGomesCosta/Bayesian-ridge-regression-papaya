@@ -262,56 +262,39 @@ project_theme <- theme_bw(base_size = 12) +
   )
 ```
 
-A tabela inicial funciona como uma checagem de cobertura: ela confirma quantas características e métodos são apresentados, quantas combinações entram na comparação e quantas características possuem método selecionado e correlação OOF positiva. Esses números verificam o escopo da síntese antes da interpretação dos painéis seguintes.
-
-```{r input-summary}
-data.frame(
-  Item = c(
-    "Características",
-    "Métodos",
-    "Linhas da comparação dos métodos",
-    "Características com método selecionado",
-    "Características com correlação OOF positiva"
-  ),
-  Valor = c(
-    length(traits),
-    length(methods),
-    nrow(model_comparison),
-    nrow(model_selection),
-    length(positive_oof_traits)
-  )
-) |>
-  tabela_html(caption = "Estrutura dos resultados apresentados neste módulo")
-```
-
-A tabela confirma a cobertura completa da síntese: `r n_traits` características, `r n_methods` métodos e `r n_trait_method_combinations` combinações característica × método. Todas as `r n_selected_traits` características possuem um método selecionado e `r n_positive_oof_traits` apresentam correlação OOF positiva. As características fora desse conjunto positivo são: `r format_list_pt(nonpositive_oof_traits)`.
+A síntese cobre `r n_traits` características e `r n_methods` métodos. Todas as `r n_selected_traits` características possuem método selecionado; `r n_positive_oof_traits` apresentam correlação OOF positiva e seguem para os rankings exploratórios. A característica fora desse conjunto positivo é: `r format_list_pt(nonpositive_oof_traits)`.
 
 ## 3. Comparação dos sete métodos
 
 A tabela reúne, para cada característica × método, o DIC médio entre folds, `Delta_DIC`, `Wprob`, `ER`, correlação OOF agrupada e p-valor nominal. DIC e seus pesos relativos devem ser comparados somente entre métodos da mesma característica; a correlação OOF representa desempenho preditivo e continua sendo a referência principal. O p-valor é apenas descritivo, conforme definido no Módulo 04.
 
 ```{r model-comparison-table}
+# DISPLAY-ONLY START
 model_comparison_display <- model_comparison |>
   mutate(Method_label = unname(method_labels[Method])) |>
   transmute(
     Trait,
     Method,
     Method_label,
-    DIC = Mean_DIC,
-    Delta_DIC,
-    Wprob,
-    ER,
-    r,
-    p_value
+    DIC = sprintf("%.2f", Mean_DIC),
+    Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Wprob = sprintf("%.3f", Wprob),
+    ER = sprintf("%.3f", ER),
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    )
   ) |>
   arrange(match(Trait, traits), match(Method, methods))
 
 tabela_html(
   model_comparison_display |>
     select(Trait, Method_label, DIC, Delta_DIC, Wprob, ER, r, p_value),
-  digits = 5,
   caption = "Comparação dos sete métodos por característica"
 )
+# DISPLAY-ONLY END
 ```
 
 O gráfico traduz a correlação OOF da tabela para uma comparação visual direta. A linha horizontal em zero separa associação positiva de não positiva e todos os painéis usam a mesma escala vertical, permitindo comparar magnitudes entre características. As barras representam estimativas pontuais e não intervalos de incerteza.
@@ -357,6 +340,7 @@ A comparação evidencia que a magnitude preditiva depende fortemente da caracte
 A tabela seguinte não refaz a seleção. Ela traduz a decisão já consolidada no Módulo 04, mostrando lado a lado o método escolhido, o vencedor preditivo, o vencedor por DIC, a eventual preferência por RR-BLUP, o status da decisão e os principais indicadores OOF e MCMC. Uma linha com status provisório continua exigindo revisão mesmo que um método apareça na coluna de selecionado.
 
 ```{r selected-methods-table}
+# DISPLAY-ONLY START
 final_results_summary <- model_selection |>
   mutate(
     Method_label = unname(method_labels[Selected_method]),
@@ -389,37 +373,41 @@ final_results_summary <- model_selection |>
     RRBLUP_preference_applied,
     Predictive_winner = Predictive_winner_label,
     DIC_winner = DIC_winner_label,
-    Predictive_loss,
-    r,
-    p_value,
-    RMSE,
-    DIC = Mean_DIC,
-    Delta_DIC,
-    Wprob,
-    ER,
-    Parameters_flagged,
-    Runs_with_flags,
+    Predictive_loss = sprintf("%.3f", Predictive_loss),
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    ),
+    RMSE = sprintf("%.3f", RMSE),
+    DIC = sprintf("%.2f", Mean_DIC),
+    Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Wprob = sprintf("%.3f", Wprob),
+    ER = sprintf("%.3f", ER),
+    Parameters_flagged = as.integer(Parameters_flagged),
+    Runs_with_flags = as.integer(Runs_with_flags),
     OOF_predictive_direction
   ) |>
   arrange(match(Trait, traits))
 
 tabela_html(
   final_results_summary,
-  digits = 5,
   caption = "Métodos selecionados e diagnósticos por característica"
 )
+# DISPLAY-ONLY END
 ```
 
 A decisão consolidada seleciona `r selected_method_summary`. Todas as escolhas permanecem com `Selection_status = rule_based_selected`. As características com correlação OOF não positiva — `r format_list_pt(nonpositive_oof_traits)` — não participam dos rankings exploratórios de candidatos.
 
 ## 5. Cadeias MCMC dos métodos selecionados
 
-Para cada característica, esta seção mostra apenas a cadeia posterior de \(\mu\) no fold 1 do método selecionado, sua média acumulada e sua densidade posterior. O fold 1 funciona como ilustração visual consistente entre características; ele não substitui os diagnósticos ESS/Geweke dos cinco folds nem constitui prova de convergência de todos os parâmetros do modelo.
+Para cada característica, esta seção mostra a cadeia posterior de \(\mu\) no fold 1 do método selecionado e sua média acumulada. O fold 1 é apenas uma ilustração visual consistente entre características; a avaliação de convergência continua baseada nos diagnósticos ESS e Geweke dos cinco folds.
 
-`models_object$settings$burn_in / models_object$settings$thin` converte o burn-in da escala de iterações para a escala das amostras salvas. `setNames(model_selection$Selected_method, model_selection$Trait)` cria um vetor nomeado que recupera diretamente o método selecionado de cada característica. `vector("list", length(traits))` pré-aloca as listas que receberão os resultados, e `seq_along(traits)` percorre os índices das dez características. Dentro do laço, `scan()` lê a cadeia salva de `mu`; `seq.int(burn_in_saved + 1L, length(mu_full))` conserva somente as amostras posteriores ao burn-in. A sequência de iterações é reconstruída com `seq.int(..., by = thin)`. `cumsum(posterior_mu) / seq_along(posterior_mu)` calcula a média acumulada usando toda a cadeia posterior, enquanto `seq.int(..., by = 100L)` reduz somente os pontos desenhados. Por fim, `density(posterior_mu, n = 512)` estima a densidade marginal usada na figura; `n = 512` controla a resolução da curva, não o número de amostras MCMC.
+O M05 lê apenas as cadeias `mu` já salvas dos métodos selecionados. O burn-in e o thinning herdados do Módulo 03 são respeitados; a média acumulada usa toda a cadeia posterior disponível, enquanto a redução de pontos afeta somente a legibilidade do trace.
 
 ```{r selected-mu-data}
-# Converte o burn-in para a escala das amostras salvas e prepara os traces e densidades posteriores de mu.
+# Converte o burn-in para a escala das amostras salvas e prepara o trace posterior de mu.
 burn_in_saved <-
   models_object$settings$burn_in /
   models_object$settings$thin
@@ -430,7 +418,6 @@ selected_method_lookup <- setNames(
 )
 
 trace_parts <- vector("list", length(traits))
-density_parts <- vector("list", length(traits))
 
 for (trait_index in seq_along(traits)) {
   # Identifica a característica e o método selecionado.
@@ -472,20 +459,9 @@ for (trait_index in seq_along(traits)) {
     Running_mean = running_mean[keep_index]
   )
 
-  # Estima a densidade posterior de mu para o método selecionado nesta característica.
-  density_object <- density(posterior_mu, n = 512)
-
-  density_parts[[trait_index]] <- data.frame(
-    Trait = trait_name,
-    Method = method_name,
-    Facet = paste0(trait_name, " — ", method_labels[method_name]),
-    x = density_object$x,
-    y = density_object$y
-  )
 }
 
 selected_mu_trace <- bind_rows(trace_parts)
-selected_mu_density <- bind_rows(density_parts)
 ```
 
 No trace, a linha fina mostra amostras posteriores de \(\mu\) depois do burn-in e a linha colorida mostra a média acumulada. Para tornar a figura legível, apenas uma em cada 100 amostras posteriores é desenhada; essa redução afeta somente a visualização, enquanto a média acumulada foi calculada com toda a cadeia posterior disponível. Estabilização visual da média é evidência descritiva, não um critério autônomo de convergência.
@@ -525,40 +501,7 @@ ggsave(
 )
 ```
 
-A densidade complementa o trace mostrando a forma marginal da distribuição posterior de \(\mu\) no mesmo fold. O parâmetro `n = 512` controla apenas a resolução numérica da curva de densidade e não modifica a cadeia nem a inferência. Painéis usam escalas livres porque a localização e a dispersão de \(\mu\) diferem entre características; portanto, a largura visual entre painéis não deve ser comparada como se os eixos fossem comuns.
-
-```{r selected-mu-density-figure, fig.width=13, fig.height=14}
-mu_density_plot <- ggplot(
-  selected_mu_density,
-  aes(x = x, y = y, color = Method)
-) +
-  geom_line(linewidth = 0.8) +
-  facet_wrap(~ Facet, scales = "free", ncol = 2) +
-  scale_color_manual(
-    values = method_colors,
-    breaks = methods,
-    labels = method_labels
-  ) +
-  labs(
-    x = expression(mu),
-    y = "Densidade",
-    color = "Método",
-    title = "Densidade posterior de mu — fold 1"
-  ) +
-  project_theme
-
-mu_density_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_model_mu_density_pt.png"),
-  mu_density_plot,
-  width = 13,
-  height = 14,
-  dpi = 300
-)
-```
-
-Os painéis de trace e densidade são, portanto, ilustrações da cadeia de `mu` usada pelos métodos selecionados no fold 1. Nenhuma seleção ou classificação de convergência é modificada por essas figuras; a avaliação de convergência continua baseada nos diagnósticos ESS e Geweke obtidos nos cinco folds no Módulo 03 e resumidos posteriormente.
+O trace é apenas uma ilustração da cadeia `mu` do fold 1. Ele não altera a seleção nem a classificação de convergência, que permanecem baseadas nos diagnósticos ESS e Geweke dos cinco folds.
 
 ## 6. Estabilidade entre folds
 
@@ -607,7 +550,6 @@ A estabilidade por fold deve ser interpretada em conjunto com a correlação OOF
 
 As barras apresentam o tempo médio registrado nos 50 ajustes de cada método e as hastes mostram um desvio-padrão entre esses ajustes. A comparação é operacional para esta execução e este ambiente; diferenças de hardware, carga do sistema, implementação e E/S impedem interpretar o gráfico como benchmark universal de velocidade.
 
-No código, `factor(Method, levels = methods)` fixa apenas a ordem visual dos métodos. `pmax(0, Mean_seconds - SD_seconds)` impede que a extremidade inferior da haste gráfica seja desenhada abaixo de zero segundos; o valor médio e o desvio-padrão originais permanecem inalterados.
 
 ```{r runtime-figure, fig.width=11, fig.height=7}
 # Resume o custo computacional dos métodos avaliados.
@@ -655,20 +597,21 @@ A ordenação dos tempos documenta apenas o custo computacional observado nesta 
 A tabela reapresenta as quantidades derivadas no Módulo 04 para o RR-BLUP/BRR. `RRBLUP_H2` é um análogo de herdabilidade baseado na variância de marcadores do modelo, não uma estimativa clássica independente de herdabilidade no sentido restrito. `RRBLUP_predictive_accuracy` é a razão média \(r_f/\sqrt{H_f^2}\); por ser um índice derivado de estimativas amostrais, pode ser negativo ou exceder 1 e não deve ser interpretado como correlação necessariamente limitada a `[0, 1]`.
 
 ```{r rrblup-heritability-table}
+# DISPLAY-ONLY START
 rrblup_table <- rrblup_heritability_summary |>
   transmute(
     Trait,
-    RRBLUP_H2 = Mean_H2,
-    SD_RRBLUP_H2 = SD_H2,
-    RRBLUP_predictive_accuracy = Mean_predictive_accuracy,
-    SD_RRBLUP_predictive_accuracy = SD_predictive_accuracy
+    RRBLUP_H2 = sprintf("%.3f", Mean_H2),
+    SD_RRBLUP_H2 = sprintf("%.3f", SD_H2),
+    RRBLUP_predictive_accuracy = sprintf("%.3f", Mean_predictive_accuracy),
+    SD_RRBLUP_predictive_accuracy = sprintf("%.3f", SD_predictive_accuracy)
   )
 
 tabela_html(
   rrblup_table,
-  digits = 5,
   caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR"
 )
+# DISPLAY-ONLY END
 ```
 
 Essas quantidades contextualizam a variabilidade capturada pelo RR-BLUP/BRR e a relação entre correlação preditiva e o análogo de herdabilidade. Elas não reordenam os métodos já selecionados e não devem ser convertidas em conclusões sobre herdabilidade clássica da população fora deste modelo.
@@ -677,7 +620,7 @@ Essas quantidades contextualizam a variabilidade capturada pelo RR-BLUP/BRR e a 
 
 O mapa de calor apresenta associações entre os valores genômicos OOF produzidos pelos métodos selecionados em cada característica. Como características diferentes podem usar métodos diferentes e os valores são cross-fitted, essas associações não constituem correlações genéticas estimadas por um modelo multivariado. As correlações são usadas sem arredondamento nos cálculos e na escala de cores; apenas o rótulo de valores com `|r| < 0.005` é mostrado como zero para evitar `-0.00`, sem alterar o valor numérico ou a cor.
 
-`as.table(selected_oof_correlations)` transforma a matriz 10 × 10 em combinações linha-coluna-valor; `as.data.frame()` converte essa estrutura em uma tabela longa e `names()` atribui os nomes das três colunas. `replace(Correlation, abs(Correlation) < 0.005, 0)` atua somente na coluna de rótulos. A estética `fill = Correlation` continua usando a correlação original, enquanto `sprintf("%.2f", Correlation_label)` controla apenas o texto mostrado em cada célula.
+O arredondamento mostrado nas células é apenas visual; a escala de cores continua usando as correlações OOF originais.
 
 ```{r oof-correlation-figure, fig.width=10, fig.height=9}
 # Reorganiza a matriz de correlações OOF e constrói o mapa de calor entre características.
@@ -745,10 +688,10 @@ O mapa de calor deve ser lido como associação entre escores OOF cross-fitted: 
 
 Os rankings são apresentados somente para características cujo método selecionado possui correlação OOF positiva. P-valores nominais são descritivos e não controlam a exibição; quando `p >= 0,05`, o ranking permanece explicitamente exploratório e não representa utilidade preditiva demonstrada. A proporção apresentada é `r sprintf("%.0f%%", 100 * selection_proportion)` por característica — `r n_selected_per_trait` dos `r n_available` indivíduos neste conjunto — e é uma regra configurável desta análise, não uma intensidade ótima estimada. Os escores são valores genômicos cross-fitted OOF, de modo que o fenótipo do próprio indivíduo não contribui para seu escore; ainda assim, eles não são valores genéticos finais de um modelo reajustado com todos os fenótipos.
 
-A tabela de tamanho do ranking é construída por duas junções. O primeiro `left_join()` acrescenta o objetivo de seleção de cada característica; o segundo acrescenta `r`, p-valor nominal e a classificação do sinal OOF. Como são `left_join()`, as características já presentes em `selection_sizes` permanecem como referência da apresentação. O p-valor é mostrado, mas não é usado para remover rankings.
+A tabela reúne objetivo de seleção, evidência OOF e tamanho do ranking. O p-valor nominal é mostrado como contexto e não é usado para remover rankings.
 
 ```{r proportional-selection-table}
-# Integra objetivo de seleção, evidência OOF e tamanho do ranking exploratório de cada característica.
+# DISPLAY-ONLY START
 selection_sizes_display <- selection_sizes |>
   left_join(
     selection_objectives |>
@@ -765,42 +708,61 @@ selection_sizes_display <- selection_sizes |>
       selection_objective_labels[Selection_objective]
     )
   ) |>
-  select(
+  transmute(
     Trait,
     Objetivo,
-    r,
-    p_value,
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    ),
     OOF_nominal_signal,
-    Selection_proportion,
-    N_available,
-    N_selected
+    Selection_proportion = sprintf("%.0f%%", 100 * Selection_proportion),
+    N_available = as.integer(N_available),
+    N_selected = as.integer(N_selected)
   )
 
 tabela_html(
   selection_sizes_display,
-  digits = 2,
   caption = "Resumo exploratório do ranking de candidatos por característica com OOF positivo"
 )
+# DISPLAY-ONLY END
 ```
 
 A tabela seguinte mostra somente os cinco primeiros indivíduos de cada ranking como prévia de leitura. O valor `n = 5` é uma escolha de apresentação; o ranking completo permanece disponível no objeto e nos arquivos derivados.
 
-Na prévia, `group_by(Trait)` separa os rankings por característica, `slice_head(n = 5)` conserva somente as cinco primeiras linhas de cada grupo e `ungroup()` encerra o agrupamento antes da seleção das colunas exibidas. O objeto completo `selected_individuals_by_trait` não é truncado.
+A prévia mostra cinco candidatos por característica apenas para leitura; o objeto `selected_individuals_by_trait` permanece completo.
 
 ```{r proportional-selection-preview}
-selected_individuals_by_trait |>
+# DISPLAY-ONLY START
+proportional_selection_preview_display <- selected_individuals_by_trait |>
   group_by(Trait) |>
   slice_head(n = 5) |>
   ungroup() |>
-  select(
-    Trait, Rank, IND, FAM, Method,
-    Selection_objective, Genomic_value, Selection_score,
-    OOF_r, OOF_nominal_p_value, OOF_nominal_signal
-  ) |>
-  tabela_html(
-    digits = 5,
-    caption = "Cinco primeiros candidatos do ranking em cada característica com OOF positivo"
+  transmute(
+    Trait,
+    Rank = as.integer(Rank),
+    IND,
+    FAM,
+    Method,
+    Selection_objective,
+    Genomic_value = sprintf("%.3f", Genomic_value),
+    Selection_score = sprintf("%.3f", Selection_score),
+    OOF_r = sprintf("%.3f", OOF_r),
+    OOF_nominal_p_value = if_else(
+      OOF_nominal_p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", OOF_nominal_p_value)
+    ),
+    OOF_nominal_signal
   )
+
+tabela_html(
+  proportional_selection_preview_display,
+  caption = "Cinco primeiros candidatos do ranking em cada característica com OOF positivo"
+)
+# DISPLAY-ONLY END
 ```
 
 As `r n_positive_oof_traits` características com correlação OOF positiva produzem rankings, cada um contendo `r n_selected_per_trait` dos `r n_available` indivíduos, totalizando `r n_trait_candidate_occurrences` ocorrências característica × candidato antes de considerar recorrência. As características fora do conjunto de OOF positivo são: `r format_list_pt(nonpositive_oof_traits)`. Entre as características com direção OOF positiva, aquelas com p-valor nominal `>= 0,05` são: `r format_list_pt(positive_oof_nonsignificant_traits)`; portanto, esses sinais continuam explicitamente exploratórios.
@@ -811,10 +773,10 @@ As classes de recorrência apresentadas aqui são as mesmas definidas no Módulo
 
 A primeira tabela de recorrência descreve toda a população segundo o número de rankings positivos nos quais cada indivíduo aparece. As classes são apenas rótulos de apresentação definidos no Módulo 04 e não limiares de significância.
 
-`recurrence_class_labels[Recurrence_class]` traduz os códigos internos das classes sem recalcular `N_traits`. Na tabela seguinte, `filter(N_traits >= 3L)` reduz apenas a apresentação principal. O objeto `multitrait_candidates` recebido do Módulo 04 permanece definido por recorrência em pelo menos duas características.
+O objeto científico `multitrait_candidates` continua definido por recorrência em pelo menos duas características. O corte `N_traits >= 3` é aplicado somente à tabela principal para torná-la mais compacta.
 
 ```{r recurrence-distribution-table}
-# Traduz as classes de recorrência e prepara sua distribuição para apresentação.
+# DISPLAY-ONLY START
 recurrence_class_labels <- c(
   high_4plus = "Alta (>=4)",
   intermediate_3 = "Intermediária (3)",
@@ -823,31 +785,30 @@ recurrence_class_labels <- c(
   none_0 = "Nenhuma (0)"
 )
 
-# Traduz as classes de recorrência e calcula a distribuição apresentada na tabela.
 recurrence_distribution_display <- recurrence_distribution |>
   mutate(
     Classe = unname(
       recurrence_class_labels[Recurrence_class]
     )
   ) |>
-  select(
-    N_traits,
+  transmute(
+    N_traits = as.integer(N_traits),
     Classe,
-    N_individuals,
-    Proportion_of_population
+    N_individuals = as.integer(N_individuals),
+    Proportion_of_population = sprintf("%.3f", Proportion_of_population)
   )
 
 tabela_html(
   recurrence_distribution_display,
-  digits = 4,
   caption = "Distribuição dos indivíduos por classe de recorrência"
 )
+# DISPLAY-ONLY END
 ```
 
 A tabela principal de candidatos é deliberadamente mais compacta: mostra somente indivíduos recorrentes em três ou mais características. Esse filtro é exclusivamente de apresentação; o objeto completo `multitrait_candidates` continua preservando recorrência em pelo menos duas características.
 
 ```{r recurrent-candidates-table}
-# Exibe na tabela principal apenas recorrência intermediária/alta (>=3); o objeto completo mantém >=2.
+# DISPLAY-ONLY START
 main_multitrait_candidates <- multitrait_candidates |>
   filter(N_traits >= 3L) |>
   mutate(
@@ -865,13 +826,19 @@ main_multitrait_candidates <- multitrait_candidates |>
     Best_rank,
     Mean_rank_present,
     ends_with("_rank")
+  ) |>
+  mutate(
+    N_traits = as.integer(N_traits),
+    Selection_frequency = sprintf("%.3f", Selection_frequency),
+    Best_rank = as.integer(Best_rank),
+    Mean_rank_present = sprintf("%.2f", Mean_rank_present)
   )
 
 tabela_html(
   main_multitrait_candidates,
-  digits = 4,
   caption = "Candidatos com recorrência alta ou intermediária"
 )
+# DISPLAY-ONLY END
 ```
 
 Recorrência resume, entre as características com correlação OOF positiva, em quantas listas cada indivíduo aparece entre os `r sprintf("%.0f%%", 100 * selection_proportion)` mais favoráveis. `Selection_frequency` usa como denominador o número de características com OOF positivo, não necessariamente as `r n_traits` características originais. Recorrência sustentada por sinais OOF positivos fracos permanece exploratória. `N_traits`, frequência e rankings não são combinados em um índice multicaracterística; portanto, maior recorrência não demonstra superioridade conjunta em múltiplas características.
