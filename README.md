@@ -30,7 +30,7 @@ The modules are intended to be read in sequence because each stage creates the o
 
 The five-fold cross-validation is stratified by family. With 150 individuals, each fold contains 30 validation individuals and 120 training individuals, and every individual is used once for OOF validation. This design evaluates prediction within the represented breeding population; it is not a leave-family-out assessment of entirely new families.
 
-Genotype-derived matrices are constructed from the aligned genotyped candidate panel, whereas validation phenotypes are masked during each fit. Consequently, the OOF genomic values are cross-fitted predictions rather than final breeding values from a full-data refit. Candidate rankings are therefore presented as exploratory proportional prioritizations, and weak positive OOF signals are interpreted cautiously rather than as demonstrated predictive utility.
+Genotype-derived matrices are constructed from the aligned genotyped candidate panel, whereas validation phenotypes are masked during each fit. Consequently, the OOF genomic values are cross-fitted predictions rather than final breeding values from a full-data refit. Candidate rankings are therefore presented as exploratory proportional prioritizations and are constructed only for traits with positive pooled OOF correlation, selecting the top 20% of candidates within each eligible trait. A positive OOF correlation alone is not treated as demonstrated predictive utility when its corresponding significance assessment remains weak.
 
 ### Repository structure
 
@@ -85,7 +85,7 @@ Os módulos devem ser lidos em sequência, pois cada etapa cria os objetos utili
 
 A validação cruzada em cinco folds é estratificada por família. Com 150 indivíduos, cada fold contém 30 indivíduos de validação e 120 de treinamento, e cada indivíduo participa uma única vez da avaliação OOF. Esse desenho avalia a predição dentro da população de melhoramento representada; não constitui uma avaliação leave-family-out de famílias inteiramente novas.
 
-As matrizes derivadas dos genótipos são construídas a partir do painel alinhado de candidatos genotipados, enquanto os fenótipos de validação são mascarados em cada ajuste. Consequentemente, os valores genômicos OOF são predições cross-fitted, e não valores genéticos finais provenientes de um reajuste com todos os dados. Os rankings de candidatos são, portanto, apresentados como priorizações proporcionais exploratórias, e sinais OOF positivos fracos são interpretados com cautela, sem serem tratados como utilidade preditiva demonstrada.
+As matrizes derivadas dos genótipos são construídas a partir do painel alinhado de candidatos genotipados, enquanto os fenótipos de validação são mascarados em cada ajuste. Consequentemente, os valores genômicos OOF são predições cross-fitted, e não valores genéticos finais provenientes de um reajuste com todos os dados. Os rankings de candidatos são, portanto, apresentados como priorizações proporcionais exploratórias e são construídos somente para características com correlação OOF agregada positiva, selecionando os 20% superiores dos candidatos em cada característica elegível. Uma correlação OOF positiva, isoladamente, não é tratada como utilidade preditiva demonstrada quando sua avaliação de significância correspondente permanece fraca.
 
 ### Estrutura do repositório
 
