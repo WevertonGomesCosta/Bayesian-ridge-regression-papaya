@@ -36,6 +36,8 @@ Este módulo transforma os resultados derivados no Módulo 04 em uma síntese vi
 
 ## 2. Pacotes, resultados e padrão gráfico
 
+### 2.1 Pacotes utilizados
+
 Os pacotes utilizados têm funções distintas nesta etapa:
 
 - `dplyr`: organização, junção e transformação das tabelas de resultados;
@@ -72,6 +74,8 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
   )
 }
 ```
+
+### 2.2 Objetos de entrada, verificações e padrão gráfico
 
 O módulo consome dois objetos consolidados. `models_object.rds` fornece as configurações necessárias para localizar e interpretar as cadeias já salvas; `module04_results.rds` fornece todas as tabelas, decisões, rankings e correlações derivados no Módulo 04. Rótulos, cores, tamanho-base de fonte, dimensões e resolução de exportação são escolhas exclusivamente de apresentação e não entram em cálculos de desempenho, seleção ou inferência. A paleta fixa mantém a identidade visual de cada método ao longo da página.
 
@@ -262,9 +266,13 @@ project_theme <- theme_bw(base_size = 12) +
   )
 ```
 
+### 2.3 Escopo da síntese
+
 A síntese cobre `r n_traits` características e `r n_methods` métodos. Todas as `r n_selected_traits` características possuem método selecionado; `r n_positive_oof_traits` apresentam correlação OOF positiva e seguem para os rankings exploratórios. A característica fora desse conjunto positivo é: `r format_list_pt(nonpositive_oof_traits)`.
 
 ## 3. Comparação dos sete métodos
+
+### 3.1 Comparação tabular
 
 A tabela reúne, para cada característica × método, o DIC médio entre folds, `Delta_DIC`, `Wprob`, `ER`, correlação OOF agrupada e p-valor nominal. DIC e seus pesos relativos devem ser comparados somente entre métodos da mesma característica; a correlação OOF representa desempenho preditivo e continua sendo a referência principal. O p-valor é apenas descritivo, conforme definido no Módulo 04.
 
@@ -296,6 +304,8 @@ tabela_html(
 )
 # DISPLAY-ONLY END
 ```
+
+### 3.2 Comparação visual do desempenho OOF
 
 O gráfico traduz a correlação OOF da tabela para uma comparação visual direta. A linha horizontal em zero separa associação positiva de não positiva e todos os painéis usam a mesma escala vertical, permitindo comparar magnitudes entre características. As barras representam estimativas pontuais e não intervalos de incerteza.
 
@@ -336,6 +346,8 @@ ggsave(
 A comparação evidencia que a magnitude preditiva depende fortemente da característica. A maior correlação OOF observada na comparação ocorre em `r highest_oof_trait`, enquanto várias características permanecem em faixas bem menores. Em diversos painéis, os métodos apresentam resultados próximos dentro da mesma característica; por isso, a decisão permanece específica por característica e segue a regra hierárquica consolidada no Módulo 04, em vez de definir um único método global.
 
 ## 4. Métodos selecionados por característica
+
+### 4.1 Tabela da decisão consolidada
 
 A tabela seguinte não refaz a seleção. Ela traduz a decisão já consolidada no Módulo 04, mostrando lado a lado o método escolhido, o vencedor preditivo, o vencedor por DIC, a eventual preferência por RR-BLUP, o status da decisão e os principais indicadores OOF e MCMC. Uma linha com status provisório continua exigindo revisão mesmo que um método apareça na coluna de selecionado.
 
@@ -398,9 +410,13 @@ tabela_html(
 # DISPLAY-ONLY END
 ```
 
+### 4.2 Síntese das escolhas e elegibilidade dos rankings
+
 A decisão consolidada seleciona `r selected_method_summary`. Todas as escolhas permanecem com `Selection_status = rule_based_selected`. As características com correlação OOF não positiva — `r format_list_pt(nonpositive_oof_traits)` — não participam dos rankings exploratórios de candidatos.
 
 ## 5. Cadeias MCMC dos métodos selecionados
+
+### 5.1 Escopo ilustrativo e preparação das cadeias
 
 Para cada característica, esta seção mostra a cadeia posterior de \(\mu\) no fold 1 do método selecionado e sua média acumulada. O fold 1 é apenas uma ilustração visual consistente entre características; a avaliação de convergência continua baseada nos diagnósticos ESS e Geweke dos cinco folds.
 
@@ -463,6 +479,8 @@ for (trait_index in seq_along(traits)) {
 
 selected_mu_trace <- bind_rows(trace_parts)
 ```
+
+### 5.2 Trace e média acumulada
 
 No trace, a linha fina mostra amostras posteriores de \(\mu\) depois do burn-in e a linha colorida mostra a média acumulada. Para tornar a figura legível, apenas uma em cada 100 amostras posteriores é desenhada; essa redução afeta somente a visualização, enquanto a média acumulada foi calculada com toda a cadeia posterior disponível. Estabilização visual da média é evidência descritiva, não um critério autônomo de convergência.
 
@@ -618,7 +636,11 @@ Essas quantidades contextualizam a variabilidade capturada pelo RR-BLUP/BRR e a 
 
 ## 9. Correlações entre valores genômicos OOF
 
+### 9.1 O que a matriz representa
+
 O mapa de calor apresenta associações entre os valores genômicos OOF produzidos pelos métodos selecionados em cada característica. Como características diferentes podem usar métodos diferentes e os valores são cross-fitted, essas associações não constituem correlações genéticas estimadas por um modelo multivariado. As correlações são usadas sem arredondamento nos cálculos e na escala de cores; apenas o rótulo de valores com `|r| < 0.005` é mostrado como zero para evitar `-0.00`, sem alterar o valor numérico ou a cor.
+
+### 9.2 Mapa de calor e interpretação
 
 O arredondamento mostrado nas células é apenas visual; a escala de cores continua usando as correlações OOF originais.
 
@@ -686,7 +708,11 @@ O mapa de calor deve ser lido como associação entre escores OOF cross-fitted: 
 
 ## 10. Ranking exploratório proporcional de candidatos por característica
 
+### 10.1 Elegibilidade e tamanho do ranking
+
 Os rankings são apresentados somente para características cujo método selecionado possui correlação OOF positiva. P-valores nominais são descritivos e não controlam a exibição; quando `p >= 0,05`, o ranking permanece explicitamente exploratório e não representa utilidade preditiva demonstrada. A proporção apresentada é `r sprintf("%.0f%%", 100 * selection_proportion)` por característica — `r n_selected_per_trait` dos `r n_available` indivíduos neste conjunto — e é uma regra configurável desta análise, não uma intensidade ótima estimada. Os escores são valores genômicos cross-fitted OOF, de modo que o fenótipo do próprio indivíduo não contribui para seu escore; ainda assim, eles não são valores genéticos finais de um modelo reajustado com todos os fenótipos.
+
+### 10.2 Resumo tabular dos rankings
 
 A tabela reúne objetivo de seleção, evidência OOF e tamanho do ranking. O p-valor nominal é mostrado como contexto e não é usado para remover rankings.
 
@@ -730,6 +756,8 @@ tabela_html(
 # DISPLAY-ONLY END
 ```
 
+### 10.3 Prévia dos candidatos
+
 A tabela seguinte mostra somente os cinco primeiros indivíduos de cada ranking como prévia de leitura. O valor `n = 5` é uma escolha de apresentação; o ranking completo permanece disponível no objeto e nos arquivos derivados.
 
 A prévia mostra cinco candidatos por característica apenas para leitura; o objeto `selected_individuals_by_trait` permanece completo.
@@ -765,11 +793,17 @@ tabela_html(
 # DISPLAY-ONLY END
 ```
 
+### 10.4 Totais e sinais exploratórios
+
 As `r n_positive_oof_traits` características com correlação OOF positiva produzem rankings, cada um contendo `r n_selected_per_trait` dos `r n_available` indivíduos, totalizando `r n_trait_candidate_occurrences` ocorrências característica × candidato antes de considerar recorrência. As características fora do conjunto de OOF positivo são: `r format_list_pt(nonpositive_oof_traits)`. Entre as características com direção OOF positiva, aquelas com p-valor nominal `>= 0,05` são: `r format_list_pt(positive_oof_nonsignificant_traits)`; portanto, esses sinais continuam explicitamente exploratórios.
 
 ## 11. Recorrência entre características
 
+### 11.1 Contrato científico e filtro de apresentação
+
 As classes de recorrência apresentadas aqui são as mesmas definidas no Módulo 04. O objeto completo preserva candidatos presentes em pelo menos duas características; para manter a tabela principal compacta, este módulo exibe apenas recorrência intermediária ou alta, isto é, candidatos presentes em três ou mais características. O corte `N_traits >= 3` é exclusivamente de apresentação e não redefine o conjunto de candidatos armazenado.
+
+### 11.2 Distribuição da recorrência
 
 A primeira tabela de recorrência descreve toda a população segundo o número de rankings positivos nos quais cada indivíduo aparece. As classes são apenas rótulos de apresentação definidos no Módulo 04 e não limiares de significância.
 
@@ -804,6 +838,8 @@ tabela_html(
 )
 # DISPLAY-ONLY END
 ```
+
+### 11.3 Tabela principal de candidatos
 
 A tabela principal de candidatos é deliberadamente mais compacta: mostra somente indivíduos recorrentes em três ou mais características. Esse filtro é exclusivamente de apresentação; o objeto completo `multitrait_candidates` continua preservando recorrência em pelo menos duas características.
 
@@ -840,6 +876,8 @@ tabela_html(
 )
 # DISPLAY-ONLY END
 ```
+
+### 11.4 Interpretação da recorrência
 
 Recorrência resume, entre as características com correlação OOF positiva, em quantas listas cada indivíduo aparece entre os `r sprintf("%.0f%%", 100 * selection_proportion)` mais favoráveis. `Selection_frequency` usa como denominador o número de características com OOF positivo, não necessariamente as `r n_traits` características originais. Recorrência sustentada por sinais OOF positivos fracos permanece exploratória. `N_traits`, frequência e rankings não são combinados em um índice multicaracterística; portanto, maior recorrência não demonstra superioridade conjunta em múltiplas características.
 
