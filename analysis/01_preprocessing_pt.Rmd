@@ -104,12 +104,13 @@ dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 ## 3. Leitura das planilhas originais
 
-A planilha genotípica utiliza a aba `Genes` para os códigos numéricos dos marcadores SSR e a aba `Genealex` para os identificadores dos indivíduos e dos locos. A aba `Genes` é lida sem cabeçalho porque suas 36 colunas correspondem diretamente ao índice de grupo e aos 35 locos SSR, sem uma linha de nomes de colunas. A aba `Genealex` também é lida sem cabeçalho, mas nesse caso porque preserva as linhas de metadados e a estrutura original do formato GenAlEx; a posição dos identificadores será tratada explicitamente na seção seguinte. Os fenótipos são lidos da aba `Médias_IND_artigo`, que já possui nomes de colunas.
+### 3.1 Dados genotípicos
 
-A coluna `BL` é retirada imediatamente após a leitura dos fenótipos para impedir que o bloco seja propagado para os objetos analíticos. As primeiras linhas permitem reconhecer a organização original dos dados, e a tabela de dimensões verifica a estrutura das três fontes antes do alinhamento.
+A informação genotípica está concentrada em duas abas do arquivo de genótipos. A aba `Genes` contém os códigos numéricos dos marcadores SSR: sua primeira coluna é um índice e as 35 colunas seguintes correspondem aos locos originais. Como essa aba não possui uma linha com nomes de colunas, ela é lida com `col_names = FALSE`.
 
-```{r leitura-dados}
-# Lê `Genes` sem cabeçalho porque a aba não possui uma linha de nomes de colunas.
+A aba `Genealex` fornece os identificadores dos indivíduos e os nomes dos locos. Ela também é lida sem cabeçalho porque preserva as linhas de metadados e a estrutura original do formato GenAlEx. As posições que contêm esses identificadores serão tratadas explicitamente na seção seguinte.
+
+```{r leitura-genotipos}
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -117,22 +118,12 @@ genes <- read_excel(
   na = c("", "NA")
 )
 
-# Lê `Genealex` sem cabeçalho; os identificadores serão extraídos por posição na próxima seção.
 genealex <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genealex",
   col_names = FALSE,
   na = c("", "NA")
 )
-
-# Lê os fenótipos com seus nomes de colunas e remove BL antes de qualquer alinhamento.
-pheno_raw <- read_excel(
-  PHENOTYPE_FILE,
-  sheet = "Médias_IND_artigo",
-  na = c("", "NA")
-) |>
-  select(-BL)
-
 ```
 
 A estrutura inicial de `Genes` pode ser verificada nas primeiras seis linhas e seis colunas:
@@ -144,16 +135,33 @@ as.data.frame(genes[1:6, 1:6]) |>
 
 A prévia mostra o formato bruto dos genótipos: a primeira coluna é um índice sequencial e as colunas seguintes contêm os códigos SSR que serão organizados na seção seguinte.
 
-A tabela fenotípica também é inspecionada após a remoção de `BL`:
+### 3.2 Dados fenotípicos
+
+Os dados fenotípicos estão na aba `Médias_IND_artigo`, que já possui nomes de colunas. Essa fonte contém os identificadores dos indivíduos, a família e as características avaliadas.
+
+A coluna `BL`, correspondente ao bloco experimental, é removida imediatamente após a leitura porque não participa do modelo estatístico adotado. `IND`, `FAM` e as dez características permanecem disponíveis para o alinhamento com os genótipos.
+
+```{r leitura-fenotipos}
+pheno_raw <- read_excel(
+  PHENOTYPE_FILE,
+  sheet = "Médias_IND_artigo",
+  na = c("", "NA")
+) |>
+  select(-BL)
+```
+
+A tabela fenotípica é inspecionada após a remoção de `BL`:
 
 ```{r previa-fenotipos}
 head(pheno_raw) |>
   tabela_html(caption = "Prévia dos dados fenotípicos")
 ```
 
-A prévia fenotípica apresenta `IND`, `FAM` e as dez características utilizadas na análise. A ausência de `BL` confirma que essa coluna já foi retirada antes do alinhamento com os genótipos.
+A prévia apresenta `IND`, `FAM` e as dez características utilizadas na análise. A ausência de `BL` confirma que essa coluna foi retirada antes do alinhamento com os genótipos.
 
-Por fim, as dimensões das três fontes são comparadas:
+### 3.3 Verificação inicial das fontes
+
+Antes de organizar e alinhar os dados, as dimensões das três estruturas importadas são comparadas. Essa verificação é estrutural: `Genes` contém os códigos genotípicos, `Genealex` preserva os metadados do formato GenAlEx e `pheno_raw` contém os fenótipos.
 
 ```{r dimensoes-dados}
 data.frame(
@@ -164,26 +172,23 @@ data.frame(
   tabela_html(caption = "Dimensões das planilhas utilizadas")
 ```
 
-A tabela de dimensões confirma que `Genes` contém `r nrow(genes)` indivíduos e `r ncol(genes) - 1` colunas correspondentes aos locos SSR, além da primeira coluna de índice. A tabela fenotípica contém `r nrow(pheno_raw)` indivíduos. A aba `Genealex` possui uma estrutura de metadados própria e, por isso, suas dimensões não devem ser interpretadas como uma matriz de marcadores.
+A tabela confirma que `Genes` contém `r nrow(genes)` indivíduos e `r ncol(genes) - 1` colunas correspondentes aos locos SSR, além da primeira coluna de índice. A tabela fenotípica contém `r nrow(pheno_raw)` indivíduos. A aba `Genealex` possui uma estrutura de metadados própria e, por isso, suas dimensões não devem ser interpretadas como uma matriz de marcadores.
 
 ## 4. Organização dos dados SSR
 
-A primeira coluna da aba `Genes` contém um índice sequencial de grupos populacionais e não representa a variável fenotípica `FAM`; por isso ela é excluída da matriz de marcadores. As 35 colunas restantes correspondem aos locos SSR originais.
+### 4.1 Identificadores dos indivíduos e dos locos
 
-Na aba `Genealex`, os identificadores dos indivíduos e os nomes dos locos ocupam posições fixas da estrutura original do GenAlEx. Essas posições são recuperadas para atribuir corretamente os nomes das linhas e das colunas da matriz SSR.
+A primeira coluna da aba `Genes` contém um índice sequencial de grupos populacionais e não representa a variável fenotípica `FAM`. As 35 colunas restantes correspondem aos locos SSR originais.
 
-Depois da organização, os códigos SSR são armazenados numericamente e o código `-9`, usado na fonte para representar chamadas ausentes, é convertido em `NA`. Dessa forma, `ssr_raw` preserva os genótipos originais com identificadores consistentes e uma representação explícita dos dados ausentes.
+Na aba `Genealex`, os identificadores dos indivíduos e os nomes dos locos ocupam posições fixas da estrutura GenAlEx. Essas posições são recuperadas primeiro, antes da construção da matriz genotípica, para que linhas e colunas possam receber os identificadores corretos.
 
-```{r organizacao-ssr}
-# Obtém as dimensões do painel a partir da aba `Genes`; a primeira coluna não é um loco SSR.
+```{r identificadores-ssr}
 n_individuals <- nrow(genes)
 n_loci <- ncol(genes) - 1
 
-# Traduz a estrutura da aba `Genealex`: indivíduos a partir da linha 4 e locos em colunas alternadas.
 individual_rows <- 4:(3 + n_individuals)
 locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)
 
-# Mantém os identificadores como texto para preservar códigos alfanuméricos.
 ids <- trimws(
   as.character(genealex[[2]][individual_rows])
 )
@@ -193,38 +198,102 @@ locus_names <- trimws(
     unlist(genealex[3, locus_columns], use.names = FALSE)
   )
 )
+```
 
+### 4.2 Construção da matriz SSR
+
+Com os identificadores recuperados, a primeira coluna de `Genes` é retirada e as 35 colunas de marcadores formam `ssr_raw`. Os códigos são armazenados numericamente e `-9`, usado no arquivo original para representar chamadas ausentes, é convertido em `NA`.
+
+Assim, `ssr_raw` preserva os genótipos originais, mas passa a ter indivíduos nas linhas, locos nas colunas e uma representação explícita dos dados ausentes.
+
+```{r matriz-ssr}
 ssr_raw <- as.matrix(
   genes[, -1, drop = FALSE]
 )
 
 storage.mode(ssr_raw) <- "numeric"
-# Converte o código de ausência do arquivo original para o valor ausente padrão do R.
 ssr_raw[ssr_raw == -9] <- NA_real_
 
 rownames(ssr_raw) <- ids
 colnames(ssr_raw) <- locus_names
 
-# Mostra uma prévia da matriz SSR já organizada.
 as.data.frame(ssr_raw[1:6, 1:8]) |>
   tabela_html(caption = "Prévia da matriz SSR organizada")
 ```
 
-Os códigos SSR representam os dois alelos observados em cada indivíduo. Por exemplo, `12` indica um alelo 1 e um alelo 2, `22` indica duas cópias do alelo 2 e `33` indica duas cópias do alelo 3. O valor `33` observado em `P3K3256CC` não representa erro ou categoria especial: esse loco é multialélico e inclui o alelo 3 no painel. No Módulo 02, esses códigos serão decompostos em dosagens de 0, 1 ou 2 cópias para cada alelo observado.
+### 4.3 Interpretação dos códigos SSR
+
+Os códigos SSR representam os dois alelos observados em cada indivíduo. Por exemplo, `12` indica um alelo 1 e um alelo 2, `22` indica duas cópias do alelo 2 e `33` indica duas cópias do alelo 3.
+
+O valor `33` observado em `P3K3256CC` não representa erro ou categoria especial: esse loco é multialélico e inclui o alelo 3 no painel. No Módulo 02, esses códigos serão decompostos em dosagens de 0, 1 ou 2 cópias para cada alelo observado.
 
 ## 5. Organização e alinhamento dos fenótipos
 
-São utilizadas dez características fenotípicas. Antes do alinhamento, o módulo verifica se todas as colunas obrigatórias estão presentes, se os conjuntos de indivíduos genotipados e fenotipados coincidem e se existem identificadores ou nomes de locos ausentes ou duplicados.
+Esta etapa transforma a tabela fenotípica bruta em objetos alinhados à matriz SSR. O processo é apresentado em cinco partes: definição das características, correspondência dos indivíduos, verificação dos identificadores, alinhamento efetivo e separação entre metadados e fenótipos numéricos.
 
-Somente após essas verificações os fenótipos são reordenados para seguir exatamente a sequência dos indivíduos na matriz SSR. Assim, cada linha dos objetos genotípicos e fenotípicos representa a mesma planta. `FAM` é preservada como variável categórica, enquanto as dez características são reunidas em uma matriz numérica para os módulos seguintes.
+### 5.1 Características utilizadas
 
-```{r organizacao-fenotipos}
-# Define as características, alinha os fenótipos aos indivíduos genotipados e monta os objetos fenotípicos.
+São utilizadas dez características fenotípicas, identificadas pelos mesmos códigos ao longo de todos os módulos.
+
+```{r definicao-caracteristicas}
+# Define as características utilizadas na análise.
 TRAITS <- c(
   "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
   "DCI", "EP", "FFC", "FFP", "SS"
 )
+```
 
+O dicionário associa os códigos usados no código às descrições biológicas e às unidades de medida. Essa tabela é importante porque as dez características estão em escalas diferentes e os mesmos códigos serão utilizados nos módulos de modelagem e resultados.
+
+```{r dicionario-caracteristicas}
+# Associa a cada característica suas descrições em português e inglês e sua unidade de medida.
+trait_dictionary <- data.frame(
+  Trait = TRAITS,
+  Description_en = c(
+    "Mean mass of commercial fruit",
+    "Production of commercial fruit",
+    "Production of defective fruit",
+    "Fruit length",
+    "Fruit diameter",
+    "Internal-cavity diameter",
+    "Mean pulp thickness",
+    "External fruit firmness",
+    "Internal pulp firmness",
+    "Soluble solids"
+  ),
+  Description_pt = c(
+    "Massa média de frutos comerciais",
+    "Produção de frutos comerciais",
+    "Produção de frutos defeituosos",
+    "Comprimento do fruto",
+    "Diâmetro do fruto",
+    "Diâmetro da cavidade interna",
+    "Espessura média da polpa",
+    "Firmeza externa do fruto",
+    "Firmeza interna da polpa",
+    "Sólidos solúveis"
+  ),
+  Unit = c(
+    "kg", "kg", "kg", "cm", "cm",
+    "cm", "cm", "N", "N", "°Brix"
+  )
+)
+
+rownames(trait_dictionary) <- NULL
+
+tabela_html(
+  trait_dictionary[, c("Trait", "Description_pt", "Unit")],
+  caption = "Dicionário das características fenotípicas"
+)
+```
+
+O dicionário evidencia que produção e massa são expressas em kg, dimensões dos frutos em cm, firmeza em N e sólidos solúveis em °Brix. Essa diferença de unidades explica por que as escalas numéricas das características não devem ser comparadas diretamente.
+
+### 5.2 Correspondência entre indivíduos genotipados e fenotipados
+
+Antes de reordenar qualquer linha, verificamos se as colunas obrigatórias estão presentes e se as duas fontes representam o mesmo conjunto de plantas.
+
+```{r correspondencia-individuos}
 # Define as colunas que precisam estar presentes antes do alinhamento.
 required_columns <- c("IND", "FAM", TRAITS)
 missing_columns <- setdiff(required_columns, names(pheno_raw))
@@ -258,6 +327,8 @@ tabela_html(
 
 A tabela confirma `r length(ids)` indivíduos genotipados e `r nrow(pheno_raw)` indivíduos fenotipados, sem indivíduos presentes em apenas uma das fontes. Assim, o alinhamento pode ser realizado sem descartar plantas.
 
+### 5.3 Verificação dos identificadores
+
 ```{r verificacao-identificadores}
 # Resume os resultados no objeto `identifier_summary`.
 identifier_summary <- data.frame(
@@ -289,6 +360,10 @@ tabela_html(
 
 As verificações de consistência apresentam `r sum(identifier_summary$Valor)` ocorrências problemáticas no total. Para os dados analisados, isso confirma ausência de identificadores vazios ou duplicados, nomes de locos ausentes ou duplicados e colunas fenotípicas obrigatórias ausentes.
 
+### 5.4 Alinhamento efetivo dos fenótipos
+
+Somente depois das verificações anteriores os fenótipos são reordenados para seguir exatamente a sequência dos indivíduos na matriz SSR.
+
 ```{r alinhamento-fenotipos}
 # Reordena os fenótipos para a mesma sequência dos indivíduos genotipados.
 pheno <- pheno_raw[
@@ -302,7 +377,13 @@ for (trait in TRAITS) {
     as.character(pheno[[trait]])
   )
 }
+```
 
+### 5.5 Metadados e matriz fenotípica
+
+Depois do alinhamento, `metadata` mantém `IND` e `FAM`, enquanto `phenotypes` contém somente as dez características numéricas. Assim, a família permanece categórica e não é misturada aos fenótipos.
+
+```{r objetos-fenotipicos}
 # Separa os metadados; FAM permanece categórica e não é incorporada aos fenótipos numéricos.
 metadata <- data.frame(
   IND = pheno$IND,
@@ -326,6 +407,8 @@ data.frame(
 Após a reorganização, `FAM` contém `r nlevels(metadata$FAM)` famílias, com tamanhos entre `r min(table(metadata$FAM))` e `r max(table(metadata$FAM))` indivíduos. Essa distribuição será usada para estratificar os cinco folds de validação cruzada no Módulo 02.
 
 ## 6. Controle de qualidade dos marcadores
+
+### 6.1 Critérios de retenção dos locos
 
 O controle de qualidade considera duas propriedades de cada loco: a proporção de indivíduos com genótipo observado e o número de classes genotípicas presentes. Um loco é mantido quando apresenta taxa de chamada de pelo menos 0,90 — equivalente a 135 dos 150 indivíduos — e pelo menos duas classes genotípicas.
 
@@ -369,7 +452,11 @@ tabela_html(
 )
 ```
 
+### 6.2 Resultado do controle de qualidade
+
 Dos `r nrow(locus_audit)` locos avaliados, `r sum(locus_audit$Keep_locus)` atendem simultaneamente aos critérios de taxa de chamada e variabilidade genotípica. O loco removido é `r paste(locus_audit$Locus[!locus_audit$Keep_locus], collapse = ", ")`; sua exclusão decorre da ausência de variação genotípica suficiente no painel, e não de remoção de indivíduos.
+
+### 6.3 Visualização da taxa de chamada
 
 A figura ordena os locos pela taxa de chamada e posiciona uma linha horizontal em 0,90. A cor informa a decisão final de retenção, que depende também do número de classes genotípicas; portanto, um loco pode estar acima da linha de taxa de chamada e ainda assim ser removido por falta de variação genotípica.
 
@@ -401,7 +488,7 @@ ggplot(
 
 A figura mostra que a decisão de retenção não depende apenas da posição em relação à linha de 0,90. Um loco pode apresentar alta taxa de chamada e ainda ser excluído se somente uma classe genotípica estiver representada, como ocorre com o loco identificado na tabela anterior.
 
-## 7. Resumo da informação genotípica
+## 7. Completude genotípica por indivíduo
 
 A completude genotípica também é resumida por indivíduo usando os 35 locos originais. Para cada planta são registrados o número e a proporção de chamadas SSR disponíveis. Essa informação é apenas diagnóstica: nenhum limiar de completude é usado para excluir indivíduos, e todos os 150 indivíduos alinhados permanecem nas etapas seguintes.
 
@@ -435,7 +522,9 @@ tabela_html(
 
 A taxa de chamada por indivíduo varia de `r sprintf("%.1f%%", 100 * min(individual_audit$Call_rate))` a `r sprintf("%.1f%%", 100 * max(individual_audit$Call_rate))`, com média de `r sprintf("%.1f%%", 100 * mean(individual_audit$Call_rate))`. Como não há regra de exclusão por indivíduo, essas diferenças são registradas apenas como informação de completude genotípica.
 
-## 8. Resumo das características fenotípicas
+## 8. Caracterização dos fenótipos
+
+### 8.1 Estatísticas descritivas
 
 As estatísticas descritivas permitem verificar diretamente a escala, a dispersão e a amplitude das dez características antes de qualquer ajuste de predição. `N` também confirma a disponibilidade de fenótipos por característica. Nenhuma transformação ou padronização permanente dos fenótipos é realizada nesta etapa; os valores originais são preservados para os modelos.
 
@@ -472,7 +561,7 @@ tabela_html(
 
 Todas as dez características apresentam `r min(phenotype_summary$N)` observações disponíveis, confirmando ausência de dados fenotípicos faltantes nas variáveis analisadas. Como as características utilizam unidades e amplitudes distintas, desvios-padrão e intervalos devem ser interpretados dentro de cada característica, e não comparados diretamente entre unidades diferentes.
 
-### 8.1 Observações fenotípicas distantes da média
+### 8.2 Observações fenotípicas distantes da média
 
 Os valores padronizados são utilizados somente como diagnóstico descritivo. Para cada característica, calcula-se
 
@@ -543,53 +632,7 @@ tabela_html(
 
 Foram destacadas `r nrow(phenotype_extremes)` observações com distância padronizada de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. Essas observações permanecem nos dados e nos modelos; a tabela apenas documenta quais valores merecem inspeção adicional.
 
-### 8.2 Dicionário das características
-
-O dicionário associa os códigos usados no código às descrições biológicas e às unidades de medida. Essa tabela é importante porque as dez características estão em escalas diferentes e os mesmos códigos serão utilizados nos módulos de modelagem e resultados.
-
-```{r dicionario-caracteristicas}
-# Associa a cada característica suas descrições em português e inglês e sua unidade de medida.
-trait_dictionary <- data.frame(
-  Trait = TRAITS,
-  Description_en = c(
-    "Mean mass of commercial fruit",
-    "Production of commercial fruit",
-    "Production of defective fruit",
-    "Fruit length",
-    "Fruit diameter",
-    "Internal-cavity diameter",
-    "Mean pulp thickness",
-    "External fruit firmness",
-    "Internal pulp firmness",
-    "Soluble solids"
-  ),
-  Description_pt = c(
-    "Massa média de frutos comerciais",
-    "Produção de frutos comerciais",
-    "Produção de frutos defeituosos",
-    "Comprimento do fruto",
-    "Diâmetro do fruto",
-    "Diâmetro da cavidade interna",
-    "Espessura média da polpa",
-    "Firmeza externa do fruto",
-    "Firmeza interna da polpa",
-    "Sólidos solúveis"
-  ),
-  Unit = c(
-    "kg", "kg", "kg", "cm", "cm",
-    "cm", "cm", "N", "N", "°Brix"
-  )
-)
-
-rownames(trait_dictionary) <- NULL
-
-tabela_html(
-  trait_dictionary[, c("Trait", "Description_pt", "Unit")],
-  caption = "Dicionário das características fenotípicas"
-)
-```
-
-O dicionário evidencia que produção e massa são expressas em kg, dimensões dos frutos em cm, firmeza em N e sólidos solúveis em °Brix. Essa diferença de unidades explica por que as escalas numéricas das características não devem ser comparadas diretamente.
+### 8.3 Distribuições fenotípicas
 
 Os histogramas complementam as estatísticas descritivas ao mostrar concentração, dispersão e assimetria em cada característica. São usadas 20 classes apenas para padronizar a resolução visual. Como as características possuem unidades e amplitudes distintas, cada painel utiliza sua própria escala horizontal; por isso, os limites dos eixos não devem ser comparados diretamente entre características.
 

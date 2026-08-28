@@ -104,12 +104,13 @@ dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 ## 3. Reading the original spreadsheets
 
-The genotype workbook uses the `Genes` sheet for numerical SSR codes and the `Genealex` sheet for individual and locus identifiers. The `Genes` sheet is read without column names because its 36 columns correspond directly to the group index and the 35 SSR loci, with no column-name row. The `Genealex` sheet is also read without column names, but in this case because it preserves the metadata rows and original GenAlEx layout; the identifier positions are handled explicitly in the next section. Phenotypes are read from the `Médias_IND_artigo` sheet, which already contains column names.
+### 3.1 Genotype data
 
-The `BL` column is removed immediately after phenotype reading so that block is not propagated into analytical objects. The first rows make the original data organization visible, and the dimensions table checks the structure of the three sources before alignment.
+Genotype information is concentrated in two sheets of the genotype workbook. The `Genes` sheet contains the numerical SSR codes: its first column is an index and the next 35 columns correspond to the original loci. Because this sheet has no row containing column names, it is read with `col_names = FALSE`.
 
-```{r read-data}
-# Read `Genes` without column names because the sheet has no column-name row.
+The `Genealex` sheet provides individual identifiers and locus names. It is also read without column names because it preserves metadata rows and the original GenAlEx layout. The positions containing these identifiers are handled explicitly in the next section.
+
+```{r read-genotypes}
 genes <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genes",
@@ -117,22 +118,12 @@ genes <- read_excel(
   na = c("", "NA")
 )
 
-# Read `Genealex` without column names; identifiers are extracted by position in the next section.
 genealex <- read_excel(
   GENOTYPE_FILE,
   sheet = "Genealex",
   col_names = FALSE,
   na = c("", "NA")
 )
-
-# Read phenotypes with their column names and remove BL before alignment.
-pheno_raw <- read_excel(
-  PHENOTYPE_FILE,
-  sheet = "Médias_IND_artigo",
-  na = c("", "NA")
-) |>
-  select(-BL)
-
 ```
 
 The initial structure of `Genes` can be inspected in its first six rows and six columns:
@@ -142,18 +133,35 @@ as.data.frame(genes[1:6, 1:6]) |>
   format_table(caption = "Preview of the Genes sheet")
 ```
 
-The preview shows the raw genotype layout: the first column is a sequential index, and subsequent columns contain the SSR codes organized in the next section.
+The preview shows the raw genotype layout: the first column is a sequential index, and the following columns contain the SSR codes organized in the next section.
 
-The phenotype table is also inspected after `BL` is removed:
+### 3.2 Phenotype data
+
+Phenotype data are stored in the `Médias_IND_artigo` sheet, which already contains column names. This source includes individual identifiers, family membership, and the evaluated traits.
+
+The `BL` column, corresponding to experimental block, is removed immediately after reading because it is not part of the statistical model used here. `IND`, `FAM`, and the ten traits remain available for alignment with the genotype data.
+
+```{r read-phenotypes}
+pheno_raw <- read_excel(
+  PHENOTYPE_FILE,
+  sheet = "Médias_IND_artigo",
+  na = c("", "NA")
+) |>
+  select(-BL)
+```
+
+The phenotype table is inspected after `BL` is removed:
 
 ```{r phenotype-preview}
 head(pheno_raw) |>
   format_table(caption = "Preview of phenotype data")
 ```
 
-The phenotype preview contains `IND`, `FAM`, and the ten traits used in the analysis. The absence of `BL` confirms that this column has already been removed before genotype–phenotype alignment.
+The preview contains `IND`, `FAM`, and the ten traits used in the analysis. The absence of `BL` confirms that this column was removed before genotype–phenotype alignment.
 
-Finally, the dimensions of the three sources are compared:
+### 3.3 Initial check of the data sources
+
+Before organization and alignment, the dimensions of the three imported structures are compared. This is a structural check: `Genes` contains genotype codes, `Genealex` preserves GenAlEx metadata, and `pheno_raw` contains phenotypes.
 
 ```{r data-dimensions}
 data.frame(
@@ -164,26 +172,23 @@ data.frame(
   format_table(caption = "Dimensions of the spreadsheets used in the analysis")
 ```
 
-The dimensions table confirms `r nrow(genes)` individuals in `Genes` and `r ncol(genes) - 1` columns corresponding to SSR loci, in addition to the first index column. The phenotype table contains `r nrow(pheno_raw)` individuals. `Genealex` has its own metadata layout, so its dimensions should not be interpreted as a marker matrix.
+The table confirms `r nrow(genes)` individuals in `Genes` and `r ncol(genes) - 1` columns corresponding to SSR loci, in addition to the first index column. The phenotype table contains `r nrow(pheno_raw)` individuals. `Genealex` has its own metadata layout, so its dimensions should not be interpreted as a marker matrix.
 
 ## 4. Organizing the SSR data
 
-The first column of `Genes` contains a sequential population-group index and does not represent the phenotype variable `FAM`; it is therefore excluded from the marker matrix. The remaining 35 columns correspond to the original SSR loci.
+### 4.1 Individual and locus identifiers
 
-In `Genealex`, individual identifiers and locus names occupy fixed positions in the original GenAlEx layout. These positions are recovered to assign the correct row and column names to the SSR matrix.
+The first column of `Genes` contains a sequential population-group index and does not represent the phenotype variable `FAM`. The remaining 35 columns correspond to the original SSR loci.
 
-After organization, SSR codes are stored numerically and the source missing-value code `-9` is converted to `NA`. Thus, `ssr_raw` preserves the original genotypes with consistent identifiers and an explicit representation of missing calls.
+In `Genealex`, individual identifiers and locus names occupy fixed positions in the GenAlEx layout. These positions are recovered first, before the genotype matrix is constructed, so that rows and columns can receive the correct identifiers.
 
-```{r organize-ssr}
-# Obtain panel dimensions from `Genes`; its first column is not an SSR locus.
+```{r ssr-identifiers}
 n_individuals <- nrow(genes)
 n_loci <- ncol(genes) - 1
 
-# Translate the `Genealex` layout: individuals start on row 4 and loci occupy alternating columns.
 individual_rows <- 4:(3 + n_individuals)
 locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)
 
-# Keep identifiers as text to preserve alphanumeric codes.
 ids <- trimws(
   as.character(genealex[[2]][individual_rows])
 )
@@ -193,38 +198,102 @@ locus_names <- trimws(
     unlist(genealex[3, locus_columns], use.names = FALSE)
   )
 )
+```
 
+### 4.2 Building the SSR matrix
+
+After identifiers are recovered, the first column of `Genes` is removed and the 35 marker columns form `ssr_raw`. Codes are stored numerically, and `-9`, used in the original file for missing calls, is converted to `NA`.
+
+Thus, `ssr_raw` preserves the original genotypes while representing individuals in rows, loci in columns, and missing calls explicitly.
+
+```{r ssr-matrix}
 ssr_raw <- as.matrix(
   genes[, -1, drop = FALSE]
 )
 
 storage.mode(ssr_raw) <- "numeric"
-# Convert the original missing-value code to R's standard missing value.
 ssr_raw[ssr_raw == -9] <- NA_real_
 
 rownames(ssr_raw) <- ids
 colnames(ssr_raw) <- locus_names
 
-# Show a preview of the organized SSR matrix.
 as.data.frame(ssr_raw[1:6, 1:8]) |>
   format_table(caption = "Preview of the organized SSR matrix")
 ```
 
-SSR codes represent the two alleles observed in each individual. For example, `12` denotes one copy of allele 1 and one copy of allele 2, `22` denotes two copies of allele 2, and `33` denotes two copies of allele 3. The `33` value shown for `P3K3256CC` is not an error or a special category: this locus is multi-allelic and allele 3 is represented in the panel. In Module 02, these genotype codes are decomposed into dosages of 0, 1, or 2 copies for each observed allele.
+### 4.3 Interpreting SSR codes
+
+SSR codes represent the two alleles observed in each individual. For example, `12` denotes one copy of allele 1 and one copy of allele 2, `22` denotes two copies of allele 2, and `33` denotes two copies of allele 3.
+
+The `33` value observed for `P3K3256CC` is not an error or a special category: this locus is multi-allelic and allele 3 is represented in the panel. In Module 02, these genotype codes are decomposed into dosages of 0, 1, or 2 copies for each observed allele.
 
 ## 5. Organizing and aligning phenotypes
 
-Ten phenotype traits are used. Before alignment, the module checks that all required columns are present, that the sets of genotyped and phenotyped individuals agree, and that identifiers and locus names contain no missing or duplicated entries.
+This stage transforms the raw phenotype table into objects aligned with the SSR matrix. The process is presented in five parts: trait definition, individual correspondence, identifier checks, effective alignment, and separation of metadata from numerical phenotypes.
 
-Only after these checks are phenotypes reordered to exactly match the individual sequence in the SSR matrix. Thus, corresponding rows of the genotype and phenotype objects represent the same plant. `FAM` is preserved as a categorical variable, whereas the ten traits are gathered into a numeric matrix for subsequent modules.
+### 5.1 Traits used in the analysis
 
-```{r organize-phenotypes}
-# Define the traits, align phenotypes to genotyped individuals, and build the phenotype objects.
+Ten phenotype traits are used, identified by the same codes throughout all modules.
+
+```{r define-traits}
+# Define the traits used in the analysis.
 TRAITS <- c(
   "MMCOM", "PRODCOM", "PRODEF", "CF", "DF",
   "DCI", "EP", "FFC", "FFP", "SS"
 )
+```
 
+The dictionary links the codes used in the R objects to biological descriptions and measurement units. This is important because the ten traits are on different scales and the same codes are used throughout the modeling and results modules.
+
+```{r trait-dictionary}
+# Associate each trait with its English and Portuguese descriptions and measurement unit.
+trait_dictionary <- data.frame(
+  Trait = TRAITS,
+  Description_en = c(
+    "Mean mass of commercial fruit",
+    "Production of commercial fruit",
+    "Production of defective fruit",
+    "Fruit length",
+    "Fruit diameter",
+    "Internal-cavity diameter",
+    "Mean pulp thickness",
+    "External fruit firmness",
+    "Internal pulp firmness",
+    "Soluble solids"
+  ),
+  Description_pt = c(
+    "Massa média de frutos comerciais",
+    "Produção de frutos comerciais",
+    "Produção de frutos defeituosos",
+    "Comprimento do fruto",
+    "Diâmetro do fruto",
+    "Diâmetro da cavidade interna",
+    "Espessura média da polpa",
+    "Firmeza externa do fruto",
+    "Firmeza interna da polpa",
+    "Sólidos solúveis"
+  ),
+  Unit = c(
+    "kg", "kg", "kg", "cm", "cm",
+    "cm", "cm", "N", "N", "°Brix"
+  )
+)
+
+rownames(trait_dictionary) <- NULL
+
+format_table(
+  trait_dictionary[, c("Trait", "Description_en", "Unit")],
+  caption = "Dictionary of phenotype traits"
+)
+```
+
+The dictionary shows that production and mass are expressed in kg, fruit dimensions in cm, firmness in N, and soluble solids in °Brix. These different units explain why the numerical scales of the traits should not be compared directly.
+
+### 5.2 Correspondence between genotyped and phenotyped individuals
+
+Before any rows are reordered, we verify that required columns are present and that both sources represent the same set of plants.
+
+```{r individual-correspondence}
 # Define the columns that must be present before alignment.
 required_columns <- c("IND", "FAM", TRAITS)
 missing_columns <- setdiff(required_columns, names(pheno_raw))
@@ -258,6 +327,8 @@ format_table(
 
 The table confirms `r length(ids)` genotyped individuals and `r nrow(pheno_raw)` phenotyped individuals, with no individuals present in only one source. Alignment can therefore proceed without discarding plants.
 
+### 5.3 Identifier checks
+
 ```{r identifier-checks}
 # Summarize the results in `identifier_summary`.
 identifier_summary <- data.frame(
@@ -289,6 +360,10 @@ format_table(
 
 The consistency checks contain `r sum(identifier_summary$Value)` problematic occurrences in total. For the analyzed data, this confirms the absence of empty or duplicated identifiers, missing or duplicated locus names, and missing required phenotype columns.
 
+### 5.4 Effective phenotype alignment
+
+Only after the previous checks are phenotypes reordered to exactly follow the individual sequence in the SSR matrix.
+
 ```{r phenotype-alignment}
 # Reorder phenotypes to the same sequence as genotyped individuals.
 pheno <- pheno_raw[
@@ -302,7 +377,13 @@ for (trait in TRAITS) {
     as.character(pheno[[trait]])
   )
 }
+```
 
+### 5.5 Metadata and phenotype matrix
+
+After alignment, `metadata` retains `IND` and `FAM`, whereas `phenotypes` contains only the ten numerical traits. Family therefore remains categorical and is not mixed with numerical phenotypes.
+
+```{r phenotype-objects}
 # Separate metadata; FAM remains categorical and is not mixed with numeric phenotypes.
 metadata <- data.frame(
   IND = pheno$IND,
@@ -326,6 +407,8 @@ data.frame(
 After reordering, `FAM` contains `r nlevels(metadata$FAM)` families, with family sizes ranging from `r min(table(metadata$FAM))` to `r max(table(metadata$FAM))` individuals. This distribution is used to stratify the five cross-validation folds in Module 02.
 
 ## 6. Marker quality control
+
+### 6.1 Locus-retention criteria
 
 Marker quality control considers two properties of each locus: the proportion of individuals with an observed genotype and the number of genotype classes represented. A locus is retained when its call rate is at least 0.90 — equivalent to 135 of 150 individuals — and at least two genotype classes are present.
 
@@ -369,7 +452,11 @@ format_table(
 )
 ```
 
+### 6.2 Quality-control result
+
 Of the `r nrow(locus_audit)` loci evaluated, `r sum(locus_audit$Keep_locus)` satisfy both the call-rate and genotype-variation criteria. The removed locus is `r paste(locus_audit$Locus[!locus_audit$Keep_locus], collapse = ", ")`; its exclusion is due to insufficient genotype variation in the panel rather than removal of any individual.
+
+### 6.3 Call-rate visualization
 
 The figure orders loci by call rate and places a horizontal line at 0.90. Color reports the final retention decision, which also depends on the number of genotype classes; therefore, a locus may lie above the call-rate line and still be removed because it lacks genotype variation.
 
@@ -401,7 +488,7 @@ ggplot(
 
 The figure shows that retention does not depend only on position relative to the 0.90 line. A locus can have high call rate and still be excluded when only one genotype class is represented, as occurs for the locus identified in the preceding table.
 
-## 7. Summary of genotype information
+## 7. Genotype completeness by individual
 
 Genotype completeness is also summarized by individual using the 35 original loci. For each plant, the number and proportion of available SSR calls are recorded. This information is diagnostic only: no completeness threshold is used to exclude individuals, and all 150 aligned individuals remain in subsequent stages.
 
@@ -435,7 +522,9 @@ format_table(
 
 Individual call rate ranges from `r sprintf("%.1f%%", 100 * min(individual_audit$Call_rate))` to `r sprintf("%.1f%%", 100 * max(individual_audit$Call_rate))`, with a mean of `r sprintf("%.1f%%", 100 * mean(individual_audit$Call_rate))`. Because no individual-exclusion rule is applied, these differences are recorded only as genotype-completeness information.
 
-## 8. Summary of phenotype traits
+## 8. Phenotype characterization
+
+### 8.1 Descriptive statistics
 
 Descriptive statistics allow direct inspection of the scale, dispersion, and range of the ten traits before prediction models are fitted. `N` also confirms phenotype availability by trait. No permanent transformation or standardization of phenotypes is performed at this stage; original values are preserved for the models.
 
@@ -472,7 +561,7 @@ format_table(
 
 All ten traits contain `r min(phenotype_summary$N)` available observations, confirming that the analyzed phenotype variables have no missing values. Because traits use different units and ranges, standard deviations and intervals should be interpreted within each trait rather than compared directly across different measurement scales.
 
-### 8.1 Phenotype observations far from the mean
+### 8.2 Phenotype observations far from the mean
 
 Standardized values are used only as a descriptive diagnostic. For each trait,
 
@@ -543,53 +632,7 @@ format_table(
 
 `r nrow(phenotype_extremes)` observations are highlighted at a standardized distance of at least `r PHENOTYPE_DISTANCE_THRESHOLD` standard deviations. These observations remain in the data and in the models; the table only documents values that merit additional inspection.
 
-### 8.2 Trait dictionary
-
-The dictionary links the codes used in the R objects to biological descriptions and measurement units. This is important because the ten traits are on different scales and the same codes are used throughout the modeling and results modules.
-
-```{r trait-dictionary}
-# Associate each trait with its English and Portuguese descriptions and measurement unit.
-trait_dictionary <- data.frame(
-  Trait = TRAITS,
-  Description_en = c(
-    "Mean mass of commercial fruit",
-    "Production of commercial fruit",
-    "Production of defective fruit",
-    "Fruit length",
-    "Fruit diameter",
-    "Internal-cavity diameter",
-    "Mean pulp thickness",
-    "External fruit firmness",
-    "Internal pulp firmness",
-    "Soluble solids"
-  ),
-  Description_pt = c(
-    "Massa média de frutos comerciais",
-    "Produção de frutos comerciais",
-    "Produção de frutos defeituosos",
-    "Comprimento do fruto",
-    "Diâmetro do fruto",
-    "Diâmetro da cavidade interna",
-    "Espessura média da polpa",
-    "Firmeza externa do fruto",
-    "Firmeza interna da polpa",
-    "Sólidos solúveis"
-  ),
-  Unit = c(
-    "kg", "kg", "kg", "cm", "cm",
-    "cm", "cm", "N", "N", "°Brix"
-  )
-)
-
-rownames(trait_dictionary) <- NULL
-
-format_table(
-  trait_dictionary[, c("Trait", "Description_en", "Unit")],
-  caption = "Dictionary of phenotype traits"
-)
-```
-
-The dictionary shows that production and mass are expressed in kg, fruit dimensions in cm, firmness in N, and soluble solids in °Brix. These different units explain why the numerical scales of the traits should not be compared directly.
+### 8.3 Phenotype distributions
 
 The histograms complement the descriptive statistics by showing concentration, dispersion, and asymmetry within each trait. Twenty bins are used only to standardize visual resolution. Because traits have different units and ranges, each panel uses its own horizontal scale; axis limits should therefore not be compared directly across traits.
 
