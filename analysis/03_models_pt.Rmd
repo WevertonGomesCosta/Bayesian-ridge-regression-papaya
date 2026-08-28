@@ -97,6 +97,8 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
+### 2.1 Entradas e diretórios de saída
+
 As matrizes construídas no Módulo 02 são lidas diretamente. Os arquivos
 gerados nesta etapa são gravados em `output/models/`, enquanto as cadeias
 nativas do BGLR ficam organizadas em `output/models/bglr/`.
@@ -123,6 +125,8 @@ G <- matrices_object$G
 cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
 ```
+
+### 2.2 Compatibilidade das entradas
 
 A tabela seguinte confirma que os objetos recebidos do Módulo 02 possuem dimensões compatíveis antes de qualquer ajuste. Nenhum objeto é filtrado ou reconstruído nesta conferência.
 
@@ -212,6 +216,8 @@ N\left(\mathbf 0,\mathbf G\sigma_g^2\right).
 
 ## 4. Validação cruzada
 
+### 4.1 Partição fixa e comparação pareada
+
 Os cinco folds definidos no Módulo 02 são utilizados sem reconstrução. Cada fold contém 30 indivíduos de validação e 120 de treinamento, mantendo a representação das famílias. A tabela abaixo apenas recupera essa partição já fixada; usar exatamente os mesmos folds para todos os métodos garante uma comparação pareada quanto aos indivíduos de validação.
 
 ```{r cv-summary}
@@ -220,6 +226,8 @@ tabela_html(
   caption = "Distribuição dos indivíduos nos cinco folds"
 )
 ```
+
+### 4.2 Mascaramento dos fenótipos e escopo da validação
 
 Durante cada ajuste, os fenótipos dos indivíduos pertencentes ao fold de
 validação são substituídos por `NA`. O BGLR utiliza os fenótipos restantes para
@@ -231,6 +239,8 @@ generalização leave-family-out.
 
 ## 5. Configuração das cadeias MCMC
 
+### 5.1 Configuração comum das cadeias
+
 Os parâmetros centrais das cadeias são:
 
 - `N_ITER = 1.000.000`: número total de iterações de cada cadeia;
@@ -240,6 +250,8 @@ Os parâmetros centrais das cadeias são:
 - `SEED_BASE = 202608050`: início da sequência determinística de sementes. Cada ajuste soma seu número sequencial a essa base, de modo que as 350 combinações recebem sementes diferentes e reproduzíveis.
 
 A configuração de iterações, burn-in e thinning segue a análise de referência [@silva2021brrguava]. As quantidades de amostras gravadas, descartadas e retidas são derivadas desses parâmetros e não constituem parâmetros adicionais do modelo.
+
+### 5.2 Configurações específicas e limiares de revisão
 
 Outras definições específicas são:
 
@@ -279,6 +291,8 @@ GEWEKE_REVIEW_THRESHOLD <- 2
 # Mantém o lambda do Lasso Bayesiano fixo durante a cadeia.
 BL_LAMBDA_TYPE <- "FIXED"
 ```
+
+### 5.3 Amostras gravadas e retidas
 
 A tabela resume as escolhas que controlam a amostragem. Com 1.000.000 de iterações e `thin = 4`, o BGLR grava 250.000 amostras escalares; as primeiras 50.000 correspondem ao burn-in de 200.000 iterações, restando 200.000 amostras salvas para os diagnósticos posteriores. Esses números são derivados dos três parâmetros da cadeia.
 
@@ -565,6 +579,8 @@ Cada método aparece em `r nrow(run_design) / length(method_names)` combinaçõe
 
 ## 9. Ajuste dos 350 modelos
 
+### 9.1 Cadeias escalares utilizadas nos diagnósticos
+
 Para os diagnósticos MCMC, cada método é associado ao arquivo escalar nativo do BGLR e ao parâmetro representativo correspondente.
 
 A cadeia escolhida é uma quantidade escalar representativa de cada especificação, não um diagnóstico exaustivo de todos os efeitos de marcador. No BL, como lambda é fixo e não possui cadeia atualizada, o segundo diagnóstico usa `mu.dat` e é rotulado como intercepto; portanto, ele não deve ser interpretado como uma cadeia do componente genômico.
@@ -611,6 +627,8 @@ genomic_trace_parameter <- c(
   GBLUP = "Genomic_variance"
 )
 ```
+
+### 9.2 Rotina de ajuste e saídas de cada combinação
 
 Os 350 ajustes seguem a mesma rotina. Para cada combinação de característica, fold e método, os fenótipos dos 30 indivíduos de validação são mascarados e os outros 120 fornecem a informação fenotípica do ajuste. As matrizes derivadas dos genótipos permanecem fixas, preservando o desenho de validação descrito no Módulo 02.
 
@@ -836,7 +854,7 @@ for (run_index in seq_len(nrow(run_design))) {
 }
 ```
 
-### 9.1 Consolidação e gravação das saídas primárias
+### 9.3 Consolidação e gravação das saídas primárias
 
 Ao final do laço, as listas preenchidas são reunidas nas quatro tabelas que
 alimentam os diagnósticos e os módulos seguintes. A consolidação abaixo é a
@@ -883,6 +901,8 @@ write.csv(
 
 ## 10. Predições, valores genômicos e métricas por fold
 
+### 10.1 Carregamento das saídas persistidas
+
 As tabelas consolidadas produzidas pelos 350 ajustes são carregadas de `output/models/`, permitindo inspecionar predições, valores genômicos, métricas e diagnósticos a partir das saídas persistidas, sem recalcular as cadeias MCMC.
 
 ```{r combine-results}
@@ -909,6 +929,8 @@ convergence_diagnostics <- read.csv(
 )
 ```
 
+### 10.2 Predições OOF e valores genômicos
+
 A relação entre a predição total e o valor genômico pode ser escrita como
 
 \[
@@ -931,11 +953,15 @@ A tabela de predições contém somente os indivíduos do fold que estava mascar
 
 
 
+### 10.3 Métricas preditivas e critérios Bayesianos de ajuste
+
 As métricas preditivas são calculadas somente nos 30 indivíduos mascarados do fold. `Correlation` é a correlação de Pearson entre observado e predito; RMSE e MAE resumem a magnitude do erro nas unidades da característica; `Prediction_bias = mean(Predicted - Observed)` tem valor ideal 0; e `Regression_slope = cov(Observed, Predicted) / var(Predicted)` é a inclinação da regressão de observado sobre predito, com referência ideal 1.
 
 DIC e `Effective_parameters` (`pD`) têm natureza diferente: são critérios derivados do ajuste Bayesiano aos fenótipos observados de treinamento, não métricas OOF. Valores menores de DIC indicam melhor compromisso ajuste–complexidade apenas entre modelos ajustados à mesma resposta e conjunto comparável; DIC não deve ser comparado diretamente entre características em escalas distintas.
 
 Cada combinação característica–fold–método reúne métricas OOF de capacidade preditiva e critérios Bayesianos de ajuste. Esses dois grupos de medidas respondem a perguntas diferentes e são comparados separadamente no Módulo 04.
+
+### 10.4 Conferência estrutural das saídas
 
 A tabela seguinte é uma checagem estrutural do laço. Esperam-se 350 linhas de métricas, 10.500 predições OOF (350 ajustes × 30 indivíduos), 52.500 valores genômicos por fold (350 × 150) e 700 cadeias escalares avaliadas (duas por ajuste). Divergências nesses totais indicariam uma execução incompleta ou uma consolidação inconsistente.
 
@@ -961,9 +987,13 @@ Os totais esperados são confirmados pelas quatro tabelas consolidadas: `r nrow(
 
 ## 11. Diagnósticos MCMC
 
+### 11.1 Quantidades avaliadas e limiares de revisão
+
 Para cada ajuste são examinadas a cadeia da variância residual e uma cadeia escalar representativa da especificação. No BL, como \(\lambda\) é fixo, o segundo diagnóstico utiliza a cadeia do intercepto. Portanto, esta seção avalia 700 cadeias escalares, mas não pretende demonstrar convergência individual de todos os coeficientes de marcador ou demais quantidades latentes.
 
 O tamanho efetivo da amostra (ESS) resume a quantidade de informação aproximadamente independente após considerar autocorrelação; valores maiores são preferíveis. A estatística de Geweke contrasta médias de partes inicial e final da cadeia pós-burn-in; valores próximos de zero são mais compatíveis com estabilidade. `ESS < 1000` e \(|Z_{Geweke}|>2\) são apenas limiares de triagem para inspeção, não testes formais de validade do modelo nem critérios automáticos de exclusão. Diagnósticos gráficos e o contexto da cadeia continuam necessários quando houver sinalização.
+
+### 11.2 Resumo dos diagnósticos por método
 
 ```{r convergence-summary}
 # Aplica os critérios de revisão e resume os diagnósticos de convergência por método.
@@ -1003,6 +1033,8 @@ convergence_summary |>
 ```
 
 O resumo informa quantas cadeias foram avaliadas e quantas ultrapassaram pelo menos um limiar de triagem em cada método. `Minimum_ESS`, `Median_ESS` e `Maximum_absolute_Geweke` descrevem a intensidade dos sinais de autocorrelação ou instabilidade, sem transformar os limiares em testes formais de validade.
+
+### 11.3 Cadeias sinalizadas para inspeção
 
 A tabela abaixo lista somente as cadeias que ultrapassam pelo menos um dos limiares de triagem. Uma linha sinalizada identifica a combinação característica–fold–método e o parâmetro que merece inspeção; ela não implica, isoladamente, que todas as predições daquele ajuste sejam inválidas.
 

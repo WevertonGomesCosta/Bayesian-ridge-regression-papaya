@@ -97,6 +97,8 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
+### 2.1 Inputs and output directories
+
 The matrices constructed in Module 02 are read directly. Outputs from this
 module are written to `output/models/`, while the native BGLR chains are
 organized under `output/models/bglr/`.
@@ -123,6 +125,8 @@ G <- matrices_object$G
 cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
 ```
+
+### 2.2 Input compatibility
 
 The following table confirms that the objects received from Module 02 have compatible dimensions before any fit. No object is filtered or reconstructed in this check.
 
@@ -212,6 +216,8 @@ N\left(\mathbf 0,\mathbf G\sigma_g^2\right).
 
 ## 4. Cross-validation
 
+### 4.1 Fixed partition and paired comparison
+
 The five folds defined in Module 02 are used without reconstruction. Each fold contains 30 validation individuals and 120 training individuals while preserving family representation. The table below only retrieves this fixed partition; using exactly the same folds for every method makes comparisons paired with respect to validation individuals.
 
 ```{r cv-summary}
@@ -220,6 +226,8 @@ format_table(
   caption = "Distribution of individuals across the five folds"
 )
 ```
+
+### 4.2 Phenotype masking and scope of validation
 
 During each fit, phenotypes of the individuals in the validation fold are set
 to `NA`. BGLR fits the model using the remaining phenotypes and returns
@@ -230,6 +238,8 @@ breeding population rather than leave-family-out generalization.
 
 ## 5. MCMC settings
 
+### 5.1 Common chain settings
+
 The central chain settings are:
 
 - `N_ITER = 1,000,000`: total iterations in each chain;
@@ -239,6 +249,8 @@ The central chain settings are:
 - `SEED_BASE = 202608050`: start of the deterministic seed sequence. Each run adds its sequential number to this base, giving all 350 combinations different and reproducible seeds.
 
 The iteration, burn-in, and thinning configuration follows the reference analysis [@silva2021brrguava]. The numbers of written, discarded, and retained draws are derived from these settings rather than additional model parameters.
+
+### 5.2 Method-specific settings and review thresholds
 
 Other method-specific definitions are:
 
@@ -278,6 +290,8 @@ GEWEKE_REVIEW_THRESHOLD <- 2
 # Keep the Bayesian Lasso lambda fixed during the chain.
 BL_LAMBDA_TYPE <- "FIXED"
 ```
+
+### 5.3 Written and retained samples
 
 The table summarizes the choices controlling MCMC sampling. With 1,000,000 iterations and `thin = 4`, BGLR writes 250,000 scalar draws; the first 50,000 correspond to the 200,000-iteration burn-in, leaving 200,000 saved draws for the downstream diagnostics. These counts are derived from the three chain parameters.
 
@@ -563,6 +577,8 @@ Each method appears in `r nrow(run_design) / length(method_names)` combinations,
 
 ## 9. Fitting the 350 models
 
+### 9.1 Scalar chains used for diagnostics
+
 For MCMC diagnostics, each method is associated with the relevant native BGLR scalar file and its representative parameter.
 
 The selected chain is one representative scalar quantity for each specification, not an exhaustive diagnostic of every marker effect. For BL, lambda is fixed and has no updated chain, so the second diagnostic uses `mu.dat` and is labelled as the intercept; it must not be interpreted as a genomic-component chain.
@@ -609,6 +625,8 @@ genomic_trace_parameter <- c(
   GBLUP = "Genomic_variance"
 )
 ```
+
+### 9.2 Fitting routine and outputs from each combination
 
 All 350 fits follow the same routine. For each trait–fold–method combination, phenotypes of the 30 validation individuals are masked and the other 120 provide the phenotypic information for fitting. The genotype-derived matrices remain fixed, preserving the validation design described in Module 02.
 
@@ -834,7 +852,7 @@ for (run_index in seq_len(nrow(run_design))) {
 }
 ```
 
-### 9.1 Assembling and writing the primary outputs
+### 9.3 Assembling and writing the primary outputs
 
 At the end of the loop, the populated lists are combined into the four tables
 used by the diagnostics and downstream modules. The block below is the direct
@@ -881,6 +899,8 @@ write.csv(
 
 ## 10. Predictions, genomic values, and fold-level metrics
 
+### 10.1 Loading persisted outputs
+
 The consolidated tables produced by the 350 fits are loaded from `output/models/`, making predictions, genomic values, metrics, and diagnostics available from persisted outputs without recalculating the MCMC chains.
 
 ```{r combine-results}
@@ -907,6 +927,8 @@ convergence_diagnostics <- read.csv(
 )
 ```
 
+### 10.2 OOF predictions and genomic values
+
 The total prediction and genomic value are related by
 
 \[
@@ -929,11 +951,15 @@ The prediction table contains only individuals from the fold that was masked in 
 
 
 
+### 10.3 Predictive metrics and Bayesian fit criteria
+
 Predictive metrics are computed only for the 30 masked individuals in each fold. `Correlation` is the Pearson correlation between observed and predicted values; RMSE and MAE summarize error magnitude in trait units; `Prediction_bias = mean(Predicted - Observed)` has ideal value 0; and `Regression_slope = cov(Observed, Predicted) / var(Predicted)` is the slope from regressing observed on predicted values, with reference value 1.
 
 DIC and `Effective_parameters` (`pD`) have a different role: they are posterior fit-complexity criteria derived from the observed training phenotypes, not OOF predictive metrics. Lower DIC indicates a better fit-complexity tradeoff only among models fitted to the same response and comparable data; DIC should not be directly compared across traits on different scales.
 
 Each trait–fold–method combination carries both OOF predictive metrics and Bayesian fit criteria. These two groups of measures answer different questions and are compared separately in Module 04.
+
+### 10.4 Structural check of the outputs
 
 The following table is a structural check of the loop. Expected totals are 350 metric rows, 10,500 OOF predictions (350 fits × 30 individuals), 52,500 fold-specific genomic values (350 × 150), and 700 scalar chains reviewed (two per fit). Different totals would indicate an incomplete execution or inconsistent consolidation.
 
@@ -959,9 +985,13 @@ The four consolidated tables confirm the expected totals: `r nrow(cv_metrics_by_
 
 ## 11. MCMC diagnostics
 
+### 11.1 Quantities evaluated and review thresholds
+
 For every fit, the residual-variance chain and one scalar chain representative of the specification are examined. For BL, because \(\lambda\) is fixed, the intercept chain is used as the second diagnostic. This section therefore evaluates 700 scalar chains but does not claim to establish convergence of every marker coefficient or other latent quantity individually.
 
 Effective sample size (ESS) summarizes the amount of approximately independent information after accounting for autocorrelation; larger values are preferable. The Geweke statistic contrasts means from early and late parts of the post-burn-in chain; values near zero are more compatible with stability. `ESS < 1000` and \(|Z_{Geweke}|>2\) are screening thresholds for inspection only, not formal tests of model validity or automatic exclusion criteria. Graphical diagnostics and chain context remain necessary when a flag is raised.
+
+### 11.2 Diagnostic summary by method
 
 ```{r convergence-summary}
 # Apply the review criteria and summarize convergence diagnostics by method.
@@ -1001,6 +1031,8 @@ convergence_summary |>
 ```
 
 The summary reports how many chains were evaluated and how many crossed at least one screening threshold for each method. `Minimum_ESS`, `Median_ESS`, and `Maximum_absolute_Geweke` describe the strength of autocorrelation or stability signals without treating the thresholds as formal validity tests.
+
+### 11.3 Chains flagged for inspection
 
 The table below lists only chains that cross at least one screening threshold. A flagged row identifies the trait–fold–method combination and parameter that deserves inspection; by itself, it does not imply that all predictions from that fit are invalid.
 
