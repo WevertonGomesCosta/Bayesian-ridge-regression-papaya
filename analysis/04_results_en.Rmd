@@ -47,6 +47,8 @@ DF, EP, FFC, FFP, and SS; decrease PRODEF and DCI.
 
 ## 2. Packages and model-fitting results
 
+### 2.1 Packages used
+
 The packages used here have distinct roles:
 
 - `dplyr`: grouping, joining, ordering, and summarizing result tables;
@@ -84,6 +86,8 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
+### 2.2 Input objects and results directory
+
 The module uses two consolidated objects: `matrices_object.rds`, which supplies phenotypes, metadata, and definitions from Module 02, and `models_object.rds`, which supplies fold-level metrics, OOF predictions, and MCMC diagnostics from Module 03.
 
 ```{r inputs}
@@ -106,6 +110,8 @@ methods <- models_object$settings$methods
 
 ## 3. OOF predictive performance
 
+### 3.1 Scope of OOF evaluation
+
 The OOF estimates inherit the family-stratified design of Modules 02 and
 03. They quantify prediction within the represented breeding population and do
 not estimate generalization to entirely new families.
@@ -113,6 +119,8 @@ not estimate generalization to entirely new families.
 The main metrics are recalculated using the 150 out-of-fold predictions for
 each trait × method combination. Each individual contributes one OOF
 prediction for every method.
+
+### 3.2 Pooled performance and variation across folds
 
 For each trait × method combination, correlation, RMSE, MAE, bias, and slope are calculated from the 150 OOF predictions. The two-sided Pearson-correlation p-value is retained only as a nominal descriptive measure because training sets overlap across folds.
 
@@ -157,6 +165,8 @@ Pearson-correlation p-values are retained as nominal descriptive measures becaus
 
 ## 4. DIC and relative support for the methods
 
+### 4.1 DIC-derived relative support
+
 Following the logic used in the reference study [@silva2021brrguava], the
 difference from the smallest mean DIC within each trait is converted into
 relative weights:
@@ -198,6 +208,8 @@ model_comparison <- pooled_metrics |>
   ) |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
+
+### 4.2 Relationship between Bayesian fit and predictive performance
 
 `model_comparison` combines OOF performance and DIC-derived relative support for every trait and method. DIC quantities are comparable only within the same trait and do not replace predictive evidence.
 
@@ -620,12 +632,16 @@ runtime_summary <- metrics |>
 
 ## 8. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR
 
+### 8.1 Definition and interpretation limits
+
 Following Silva et al. [@silva2021brrguava], a marker-based additive-variance
 analogue is obtained from the common marker variance and the \(\sum 2pq\)
 denominator. Fold-level adjusted accuracy is defined as
 \(r_f/\sqrt{H_f^2}\). The resulting \(H^2\) is reported as a model-based
 heritability analogue rather than as an independent classical estimate of
 narrow-sense heritability. The quantity named `Predictive_accuracy` is a derived ratio, `r_f/sqrt(H_f^2)`, rather than an observed correlation between true and predicted genetic values. Because it depends on sample estimates of `r_f` and `H_f^2`, it may be negative or exceed 1; it should therefore be interpreted as an adjusted-accuracy index under this definition, not as a measure necessarily bounded to [0, 1].
+
+### 8.2 Fold-level derivation and across-fold summary
 
 ```{r rrblup-heritability}
 # Compute and organize the RR-BLUP/BRR model-based heritability summary.
@@ -671,11 +687,15 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
 
 ## 9. OOF genomic values and selection direction
 
+### 9.1 Cross-fitted genomic values
+
 Each individual's genomic value is cross-fitted: it comes from the fold in
 which that individual's phenotype was masked. These OOF genomic values provide
 a validation-consistent ranking because an individual's own phenotype does not
 enter its score. They are not final breeding values from a model refitted to
 all 150 phenotypes.
+
+### 9.2 Selection direction and score construction
 
 Selection direction is applied to the genomic value only when the ranking is constructed. The original genomic value remains unchanged. For each trait, `Genomic_value` is exactly the OOF `Genomic_component` produced by the selected method; different traits may therefore use genomic values supplied by different methods.
 
@@ -736,6 +756,8 @@ format_table(
 
 ## 10. Exploratory proportional candidate ranking by trait
 
+### 10.1 Eligibility and prioritized proportion
+
 Candidate rankings are shown for traits whose selected method has positive OOF
 correlation. Nominal p-values remain descriptive and do not determine whether a
 ranking is produced. Positive correlations with nominal `p >= 0.05` are kept
@@ -743,6 +765,8 @@ explicitly as weak/exploratory signals and should not be interpreted as
 demonstrated predictive utility. Within each positive-OOF trait, the 20% of
 individuals with the largest oriented score are listed; this 20% is a
 configurable rule in this analysis, not an estimated optimal selection intensity. With 150 available candidates, 20% corresponds to 30 individuals. For traits whose objective is to decrease, the score is the negative genomic value.
+
+### 10.2 Ordering and boundary ties
 
 `IND` is used only as a deterministic secondary ordering key when two scores are exactly tied. The selected proportion remains fixed even if a tie occurs at the boundary; `Exact_boundary_tie = TRUE` only reports that the last included and first excluded candidates have the same score, so there is no genomic-score evidence separating them at that cutoff.
 
@@ -825,6 +849,8 @@ selected_individuals_by_trait <- genomic_ranking |>
   arrange(match(Trait, traits), Rank)
 ```
 
+### 10.3 Cutoff diagnostic
+
 The cutoff table shows the score of the last included candidate and the first candidate not included. `Exact_boundary_tie` should be checked before interpreting the cutoff as a substantive separation between candidates.
 
 ```{r selection-cutoff-table}
@@ -854,7 +880,11 @@ The complete `selected_individuals_by_trait` object retains every candidate in t
 
 ## 11. Recurrence across traits
 
+### 11.1 Recurrence definition and denominator
+
 Recurrence is descriptive: among traits with positive OOF correlation, it counts how many times each individual appears among the most favorable 20%. `Selection_frequency` divides this count by the number of positive-OOF traits, not necessarily by all ten original traits. Weak positive OOF signals remain exploratory. No weights are used and no multi-trait selection index is constructed; appearing in several lists does not demonstrate joint multi-trait superiority.
+
+### 11.2 Recurrence classes and recurrent candidates
 
 Recurrence classes are descriptive conventions: high for four or more traits, intermediate for three, broad for two, specific for one, and none for zero. The `multitrait_candidates` object retains individuals recurring in at least two traits so potentially useful information is not discarded before downstream presentation. These cutoffs organize the summary and are not statistical-significance thresholds.
 

@@ -47,6 +47,8 @@ CF, DF, EP, FFC, FFP e SS; diminuir PRODEF e DCI.
 
 ## 2. Pacotes e resultados do ajuste dos modelos
 
+### 2.1 Pacotes utilizados
+
 Os pacotes utilizados têm funções distintas nesta etapa:
 
 - `dplyr`: agrupamento, junção, ordenação e resumo das tabelas de resultados;
@@ -84,6 +86,8 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
+### 2.2 Objetos de entrada e diretório de resultados
+
 O módulo usa dois objetos consolidados: `matrices_object.rds`, que fornece fenótipos, metadados e definições do Módulo 02, e `models_object.rds`, que fornece métricas por fold, predições OOF e diagnósticos MCMC do Módulo 03.
 
 ```{r inputs}
@@ -106,6 +110,8 @@ methods <- models_object$settings$methods
 
 ## 3. Desempenho preditivo OOF
 
+### 3.1 Escopo da avaliação OOF
+
 As estimativas OOF herdam o desenho estratificado por família dos Módulos 02
 e 03. Elas quantificam a predição dentro da população de melhoramento
 representada e não estimam a generalização para famílias inteiramente novas.
@@ -113,6 +119,8 @@ representada e não estimam a generalização para famílias inteiramente novas.
 As métricas principais são recalculadas com as 150 predições OOF
 de cada combinação característica × método. Cada indivíduo contribui uma única
 predição OOF para cada método.
+
+### 3.2 Desempenho agrupado e variação entre folds
 
 Para cada característica × método, correlação, RMSE, MAE, viés e inclinação são calculados sobre as 150 predições OOF. O p-valor bicaudal associado à correlação de Pearson é mantido apenas como medida nominal e descritiva, pois os conjuntos de treinamento se sobrepõem entre folds.
 
@@ -157,6 +165,8 @@ Os p-valores da correlação de Pearson são mantidos como medidas nominais e de
 
 ## 4. DIC e suporte relativo dos métodos
 
+### 4.1 Suporte relativo derivado do DIC
+
 Seguindo a lógica utilizada no estudo de referência [@silva2021brrguava], a
 diferença em relação ao menor DIC médio de cada característica é convertida em
 pesos relativos:
@@ -198,6 +208,8 @@ model_comparison <- pooled_metrics |>
   ) |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
+
+### 4.2 Relação entre ajuste Bayesiano e desempenho preditivo
 
 `model_comparison` reúne, para cada característica e método, desempenho OOF e suporte relativo derivado do DIC. As medidas de DIC são comparáveis apenas dentro da mesma característica e não substituem a evidência preditiva.
 
@@ -620,12 +632,16 @@ runtime_summary <- metrics |>
 
 ## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR
 
+### 8.1 Definição e limites de interpretação
+
 Seguindo Silva et al. [@silva2021brrguava], um análogo de variância aditiva
 baseado em marcadores é obtido a partir da variância comum dos marcadores e do
 denominador \(\sum 2pq\). A acurácia ajustada por fold é definida como
 \(r_f/\sqrt{H_f^2}\). O \(H^2\) resultante é apresentado como um análogo de
 herdabilidade baseado no modelo, e não como uma estimativa clássica independente
 de herdabilidade no sentido restrito. A quantidade denominada `Predictive_accuracy` é uma razão derivada, `r_f/sqrt(H_f^2)`, e não uma correlação observada diretamente entre valor genético verdadeiro e predito. Por depender de estimativas amostrais de `r_f` e `H_f^2`, ela pode ser negativa ou exceder 1; por isso deve ser interpretada como índice de acurácia ajustada segundo essa definição, e não como uma medida necessariamente limitada ao intervalo [0, 1].
+
+### 8.2 Derivação por fold e resumo entre folds
 
 ```{r rrblup-heritability}
 # Calcula e organiza o resumo de herdabilidade baseado no modelo RR-BLUP/BRR.
@@ -671,11 +687,15 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
 
 ## 9. Valores genômicos OOF e direção de seleção
 
+### 9.1 Valores genômicos cross-fitted
+
 O valor genômico de cada indivíduo é cross-fitted: ele provém do fold em que o
 fenótipo desse indivíduo foi mascarado. Esses valores genômicos OOF permitem um
 ranking coerente com a validação, pois o próprio fenótipo do indivíduo não entra
 no seu escore. Eles não correspondem a valores genéticos finais de um modelo
 reajustado com os 150 fenótipos.
+
+### 9.2 Direção de seleção e construção do escore
 
 A direção de seleção é aplicada ao valor genômico somente no momento de construir o ranking. O valor genômico original permanece inalterado. Em cada característica, a coluna `Genomic_value` é exatamente o `Genomic_component` da predição OOF produzida pelo método selecionado; métodos diferentes podem, portanto, fornecer os valores usados em características diferentes.
 
@@ -736,6 +756,8 @@ tabela_html(
 
 ## 10. Ranking exploratório proporcional de candidatos por característica
 
+### 10.1 Elegibilidade e proporção priorizada
+
 Os rankings de candidatos são apresentados para as características cujo método
 selecionado possui correlação OOF positiva. Os p-valores nominais permanecem
 descritivos e não determinam se um ranking é produzido. Correlações positivas
@@ -744,6 +766,8 @@ não devem ser interpretadas como utilidade preditiva demonstrada. Em cada
 característica com OOF positivo, são listados os 20% de indivíduos com maior
 escore orientado; essa proporção é uma regra configurável desta análise, e não
 uma intensidade ótima estimada. Com 150 candidatos disponíveis, 20% correspondem a 30 indivíduos. Para características cujo objetivo é diminuir, o escore é o negativo do valor genômico.
+
+### 10.2 Ordenação e empates no limite
 
 A ordenação usa `IND` apenas como critério secundário determinístico quando dois escores são exatamente iguais. A proporção selecionada permanece fixa mesmo se houver empate no limite; `Exact_boundary_tie = TRUE` apenas informa que o último incluído e o primeiro excluído possuem o mesmo escore e, portanto, não há evidência genômica para distingui-los naquele corte.
 
@@ -826,6 +850,8 @@ selected_individuals_by_trait <- genomic_ranking |>
   arrange(match(Trait, traits), Rank)
 ```
 
+### 10.3 Diagnóstico do ponto de corte
+
 A tabela de corte mostra o escore do último candidato incluído e do primeiro não incluído. A coluna `Exact_boundary_tie` deve ser consultada antes de interpretar o limite como separação substantiva entre candidatos.
 
 ```{r selection-cutoff-table}
@@ -855,7 +881,11 @@ O objeto completo `selected_individuals_by_trait` mantém todos os candidatos pe
 
 ## 11. Recorrência entre características
 
+### 11.1 Definição e denominador da recorrência
+
 A recorrência é descritiva: entre as características com correlação OOF positiva, conta em quantas cada indivíduo aparece entre os 20% mais favoráveis. `Selection_frequency` divide essa contagem pelo número de características com OOF positivo, e não necessariamente pelas dez características originais. Sinais OOF positivos fracos permanecem exploratórios. Não são usados pesos e não é construído índice de seleção multicaracterística; aparecer em várias listas não equivale a demonstrar superioridade multicaracterística conjunta.
+
+### 11.2 Classes de recorrência e candidatos recorrentes
 
 As classes de recorrência são convenções descritivas: alta para quatro ou mais características, intermediária para três, ampla para duas, específica para uma e nenhuma para zero. O objeto `multitrait_candidates` conserva indivíduos recorrentes em pelo menos duas características para não descartar informação potencialmente útil nos módulos seguintes. Esses pontos de corte organizam a apresentação e não são limiares de significância estatística.
 
