@@ -92,6 +92,8 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
+### 2.1 Objeto de entrada e parâmetros
+
 O objeto `preprocessing_object.rds`, produzido no Módulo 01, fornece os indivíduos, fenótipos, famílias e locos SSR que entram na construção das matrizes.
 
 Três parâmetros são definidos neste módulo:
@@ -136,6 +138,8 @@ trait_dictionary <- preprocessing$trait_dictionary
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 ```
 
+### 2.2 Conferência do objeto recebido
+
 Antes da codificação dos marcadores, a tabela seguinte confere a estrutura recebida do Módulo 01: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade e número de famílias. A comparação confirma que o objeto recebido contém a estrutura esperada; nenhum novo filtro é aplicado nessa etapa.
 
 ```{r resumo-entrada}
@@ -163,9 +167,13 @@ A conferência mostra `r length(ids)` indivíduos, `r ncol(phenotypes)` caracter
 
 ## 3. Codificação das dosagens alélicas
 
+### 3.1 Do código SSR à dosagem por alelo
+
 Cada código SSR contém dois rótulos alélicos. O código `12`, por exemplo, representa uma cópia do alelo 1 e uma cópia do alelo 2, enquanto `22` representa duas cópias do alelo 2. Para cada alelo observado em cada loco mantido, a dosagem de um indivíduo é calculada como a soma de duas funções indicadoras: uma para cada posição alélica do genótipo. Assim, a coluna assume 0, 1 ou 2 conforme o indivíduo carregue zero, uma ou duas cópias daquele alelo.
 
 Uma coluna é criada para cada combinação loco–alelo, e chamadas SSR ausentes permanecem como `NA` até a etapa de imputação. Antes de qualquer filtragem de colunas alélicas, as dosagens de todos os alelos de um loco diploide somam 2 para cada genótipo observado. Essa propriedade será usada posteriormente como diagnóstico da codificação.
+
+### 3.2 Expansão dos locos em colunas alélicas
 
 A codificação percorre os locos mantidos, identifica os alelos observados em cada um e cria uma coluna de dosagem para cada combinação loco–alelo. Os metadados preservam a correspondência entre cada coluna, seu loco e o alelo representado. O código abaixo implementa essa expansão sem remover indivíduos.
 
@@ -242,7 +250,11 @@ A codificação gera `r ncol(dosage_full_raw)` colunas de dosagem a partir dos `
 
 ## 4. Frequências alélicas e retenção das colunas de dosagem
 
+### 4.1 Cálculo das frequências alélicas
+
 A frequência de uma coluna alélica é calculada como a média das dosagens observadas dividida por 2, pois cada indivíduo diploide pode contribuir com duas cópias do alelo. O cálculo ignora `NA` nesta etapa, de modo que a frequência usa apenas chamadas disponíveis.
+
+### 4.2 Critérios de retenção das colunas alélicas
 
 São mantidas colunas com frequência entre 0,05 e 0,95 e desvio-padrão de dosagem positivo. Os limites inferior e superior são simétricos: removem alelos muito raros e colunas praticamente fixadas, enquanto `Dosage_sd > 0` garante variação observável. O filtro atua sobre colunas de dosagem alélica; ele não remove indivíduos.
 
@@ -297,6 +309,8 @@ tabela_html(
 
 Das `r nrow(allele_audit_full)` colunas alélicas inicialmente codificadas, `r sum(allele_audit_full$Keep_allele)` atendem simultaneamente ao intervalo de frequência e à exigência de variação positiva. A tabela mostra, para cada loco, quantos alelos foram observados e quantos permanecem na matriz de marcadores.
 
+### 4.3 Distribuição das frequências alélicas
+
 O histograma mostra onde se concentram as frequências das colunas alélicas. As linhas verticais marcam 0,05 e 0,95, e o preenchimento indica a decisão final de retenção, que também exige variação de dosagem positiva. As 20 classes são apenas uma escolha de resolução visual e não participam do filtro.
 
 ```{r grafico-frequencias-alelicas, fig.height=5}
@@ -335,12 +349,12 @@ As frequências observadas variam de `r sprintf("%.3f", min(allele_audit_full$Al
 
 ## 5. Matriz de marcadores
 
-As dosagens ausentes são imputadas pela média da respectiva coluna, calculada no painel genotípico completo. Em seguida, cada coluna é centralizada subtraindo essa mesma média. Como consequência, uma dosagem imputada assume valor zero em `M`, indicando ausência de desvio em relação à média da coluna, e não uma nova classe genotípica.
+### 5.1 Imputação das dosagens ausentes
 
-A matriz resultante é denotada por \(\mathbf M\). Suas colunas são centralizadas, mas não padronizadas para variância unitária. A imputação utiliza somente informação genotípica dos 150 candidatos; nenhum fenótipo de validação entra no cálculo.
+As dosagens ausentes são imputadas pela média da respectiva coluna, calculada no painel genotípico completo. Essa etapa completa a matriz de dosagens sem criar uma nova categoria genotípica e sem utilizar informação fenotípica.
 
-```{r matriz-marcadores}
-# Imputa dosagens ausentes pelas médias, centraliza as colunas e constrói a matriz de marcadores M.
+```{r imputacao-dosagens}
+# Calcula as médias das colunas e imputa as dosagens ausentes.
 marker_means_full <- colMeans(
   dosage_full,
   na.rm = TRUE
@@ -349,17 +363,22 @@ marker_means_full <- colMeans(
 dosage_full_imputed <- dosage_full
 
 for (j in seq_len(ncol(dosage_full_imputed))) {
-  # Localiza as dosagens ausentes na coluna atual.
   missing_values <- is.na(dosage_full_imputed[, j])
 
-  # Imputa a média da coluna.
   dosage_full_imputed[
     missing_values,
     j
   ] <- marker_means_full[j]
 }
+```
 
-# Centraliza cada coluna da matriz de dosagens.
+### 5.2 Centralização e construção de M
+
+Depois da imputação, cada coluna é centralizada subtraindo a mesma média usada na imputação. A matriz resultante é denotada por \(\mathbf M\). Suas colunas são centralizadas, mas não padronizadas para variância unitária.
+
+Como consequência, uma dosagem imputada assume valor zero em `M`, indicando ausência de desvio em relação à média da coluna, e não uma nova classe genotípica. A imputação e a centralização utilizam somente informação genotípica dos 150 candidatos; nenhum fenótipo de validação participa dessas operações.
+
+```{r matriz-marcadores}
 M_full <- sweep(
   dosage_full_imputed,
   2,
@@ -367,6 +386,8 @@ M_full <- sweep(
   FUN = "-"
 )
 ```
+
+### 5.3 Dimensões, centralização e posto de M
 
 O resumo de `M` verifica quatro propriedades básicas: número de indivíduos, número de colunas alélicas retidas, posto da matriz e máxima média absoluta das colunas. O posto representa o número de direções linearmente independentes em `M`, enquanto uma média absoluta próxima de zero confirma a centralização numérica.
 
@@ -387,6 +408,8 @@ A matriz `M` possui `r nrow(M_full)` linhas e `r ncol(M_full)` colunas de dosage
 
 ## 6. Matriz de relacionamento genômico
 
+### 6.1 Definição e escala de G
+
 Seja \(p_j\) a frequência do alelo representado pela coluna \(j\). Utilizando
 uma escala do tipo VanRaden baseada em frequências alélicas
 [@vanraden2008efficient], a matriz aditiva de relacionamento genômico é
@@ -397,6 +420,8 @@ calculada por
 \frac{\mathbf M\mathbf M^{\mathsf T}}
 {\sum_j 2p_j(1-p_j)}.
 \]
+
+### 6.2 Construção da matriz G
 
 As frequências alélicas usadas na escala são obtidas das médias das dosagens, pois a dosagem média corresponde a \(2p_j\). O produto \(\mathbf M\mathbf M^{\mathsf T}\) reúne os relacionamentos entre indivíduos a partir das colunas centralizadas e é dividido pelo denominador definido na expressão acima. A matriz resultante é simetrizada numericamente antes da avaliação de seus autovalores.
 
@@ -425,6 +450,8 @@ eigenvalues_G_full <- eigen(
   only.values = TRUE
 )$values
 ```
+
+### 6.3 Diagnósticos numéricos de G
 
 O denominador informa a escala usada na construção de `G`. A média da diagonal resume o relacionamento de cada indivíduo consigo mesmo nessa escala e não é forçada a ser exatamente 1. A diferença de simetria deve ser próxima de zero. Como `G` é construída por produto cruzado, ela é semidefinida positiva em teoria; por isso, um menor autovalor ligeiramente negativo, quando restrito à precisão numérica, deve ser interpretado como arredondamento e não como evidência de relacionamento negativo.
 
@@ -478,12 +505,16 @@ data.frame(
 
 `X`, `M` e `G` têm `r length(ids)` linhas, garantindo a mesma ordem dos indivíduos. `X` contém o intercepto e as colunas necessárias para representar `FAM`; `M` contém as dosagens centralizadas; e `G` é uma matriz quadrada de relacionamento entre todos os indivíduos.
 
-## 8. Cinco folds estratificados por família
+## 8. Desenho da validação cruzada
+
+### 8.1 Cenário de avaliação
 
 A estratificação por família direciona a avaliação para a predição entre
 indivíduos da população de melhoramento representada. Não se trata de um
 desenho leave-family-out e, portanto, o desempenho não representa famílias
 inteiramente novas.
+
+### 8.2 Construção dos folds estratificados
 
 Os 150 indivíduos são distribuídos em cinco grupos de validação de 30 indivíduos. A alocação é realizada família por família: os indivíduos de cada família são embaralhados e distribuídos entre os folds, com prioridade para aqueles que possuem menor número acumulado de indivíduos. Esse procedimento mantém simultaneamente a representação das famílias e o equilíbrio dos tamanhos totais.
 
@@ -557,7 +588,11 @@ tabela_html(
 )
 ```
 
+### 8.3 Tamanhos de treinamento e validação
+
 Todos os cinco folds contêm `r unique(fold_summary$Validation_n)` indivíduos de validação e `r unique(fold_summary$Training_n)` indivíduos de treinamento. Assim, o tamanho amostral é constante entre as cinco rodadas.
+
+### 8.4 Equilíbrio das famílias entre os folds
 
 A tabela família × fold permite verificar diretamente a estratificação. Para cada família, as contagens entre folds devem ser tão equilibradas quanto permite seu tamanho amostral; a quantidade `family_balance`, calculada anteriormente, mede a diferença entre a maior e a menor contagem daquela família. Como o algoritmo distribui os membros ciclicamente, essa diferença é no máximo uma unidade para cada família.
 
@@ -570,7 +605,7 @@ tabela_html(
 
 A maior diferença entre a contagem máxima e mínima de uma mesma família nos cinco folds é `r max(family_balance)` indivíduo. Esse resultado confirma que a estratificação distribui cada família de forma tão equilibrada quanto permite seu tamanho.
 
-## 9. Uso dos folds no ajuste dos modelos
+### 8.5 Uso dos folds no ajuste dos modelos
 
 A tabela `cv_folds` identifica quais indivíduos serão mascarados em cada rodada de validação. Para o fold `k`, os 30 indivíduos com `Fold == k` têm seus fenótipos substituídos por `NA`, enquanto os outros 120 fornecem fenótipos de treinamento. Esse procedimento é repetido para cada característica e método.
 
@@ -587,7 +622,7 @@ cv_folds |>
 
 As 15 linhas exibidas permitem verificar a estrutura da atribuição sem modificar `cv_folds`, que mantém os 150 indivíduos e será usado diretamente no Módulo 03.
 
-## 10. Mapa de calor do relacionamento genômico
+## 9. Mapa de calor do relacionamento genômico
 
 O mapa de calor permite inspecionar a estrutura completa de `G`: a diagonal representa o relacionamento de cada indivíduo consigo mesmo e as células fora da diagonal representam relacionamento genômico entre pares. Os indivíduos permanecem na ordem original do objeto; não é aplicado agrupamento hierárquico nem reordenação para produzir blocos visuais. Assim, padrões aparentes podem sugerir estrutura de relacionamento, mas o gráfico não constitui um teste de agrupamento ou de estrutura populacional.
 
@@ -618,11 +653,15 @@ ggplot(
 
 O mapa de calor sintetiza os relacionamentos pareados presentes em `G`. Como a ordem dos indivíduos é mantida e nenhum agrupamento é aplicado, regiões de maior ou menor intensidade devem ser interpretadas como padrões descritivos de relacionamento, e não como grupos inferidos pelo gráfico.
 
-## 11. Diagnósticos das matrizes construídas
+## 10. Diagnósticos das matrizes construídas
+
+### 10.1 Dependência estrutural e posto de M
 
 Todas as colunas alélicas que atendem aos filtros declarados são mantidas; nenhuma categoria é descartada artificialmente apenas para impor posto completo. Quando todos os alelos de um loco permanecem representados, suas dosagens somam 2 em cada indivíduo diploide e existe uma dependência linear exata entre essas colunas. Por isso, coeficientes de alelos individuais não são interpretados isoladamente; os módulos seguintes se concentram nas predições e nos valores genômicos.
 
 No conjunto de dados analisado, as 72 colunas de dosagem não representam 72 dimensões independentes. Quando todos os alelos de um mesmo loco são mantidos, suas dosagens apresentam uma dependência linear decorrente da condição diploide. O limite estrutural de posto de `M` soma, para cada loco com \(k_l\) colunas alélicas mantidas, a contribuição \(k_l-1\). O posto observado é comparado a esse limite para verificar se existem dependências lineares adicionais entre locos.
+
+### 10.2 Verificações numéricas consolidadas
 
 A propriedade diploide é verificada confirmando que as dosagens alélicas de cada loco somam 2 por indivíduo. A centralização de `M` é avaliada pelas médias de suas colunas, e `G` é reconstruída a partir de `M` para confirmar consistência numérica. Simetria, posto, diagonal e menor autovalor completam os diagnósticos da matriz de relacionamento genômico.
 
@@ -756,7 +795,7 @@ tabela_html(
 
 O inventário final reúne em uma única tabela as verificações anteriores. Para os dados analisados, `M` possui `r ncol(M_full)` colunas e posto `r qr(M_full)$rank`, igual ao limite estrutural de posto `r structural_rank_bound_M`; a soma das dosagens por loco e a reconstrução de `G` apresentam erros máximos próximos de zero, e os cinco folds mantêm os mesmos tamanhos de treinamento e validação.
 
-## 12. Gravação das matrizes e dos folds
+## 11. Gravação das matrizes e dos folds
 
 O arquivo `matrices_object.rds` reúne as matrizes, fenótipos alinhados, metadados, frequências, folds e parâmetros necessários ao Módulo 03. As principais tabelas de diagnóstico também são exportadas em CSV para inspeção independente, sem modificar os objetos utilizados nos modelos.
 
@@ -808,7 +847,7 @@ write.csv(
 )
 ```
 
-## 13. Próxima etapa
+## 12. Próxima etapa
 
 O Módulo 03 utiliza `X`, `M`, `G` e os cinco folds para ajustar RR-BLUP,
 BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP. Em cada ajuste,
