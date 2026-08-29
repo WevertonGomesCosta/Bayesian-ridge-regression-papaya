@@ -302,7 +302,8 @@ allele_summary_full <- allele_audit_full |>
 
 format_table(
   allele_summary_full,
-  caption = "Allele-dosage columns by SSR locus"
+  caption = "Allele-dosage columns by SSR locus",
+  col.names = c("Locus", "Observed alleles", "Retained alleles")
 )
 ```
 
@@ -312,7 +313,7 @@ Of the `r nrow(allele_audit_full)` initially coded allele columns, `r sum(allele
 
 The histogram shows where allele-column frequencies are concentrated. Vertical lines mark 0.05 and 0.95, and fill indicates the final retention decision, which also requires positive dosage variation. The 20 bins are only a visual-resolution choice and do not participate in filtering.
 
-```{r allele-frequency-plot, fig.height=5}
+```{r allele-frequency-plot, fig.height=5, fig.alt="Histogram of SSR allele-column frequencies, with reference lines at 0.05 and 0.95 and fill indicating the final retention decision."}
 # Display the allele-frequency distribution and the thresholds used by the filter.
 ggplot(
   allele_audit_full,
@@ -399,7 +400,8 @@ data.frame(
 ) |>
   format_table(
     digits = 8,
-    caption = "Dimensions and centering of the marker matrix"
+    caption = "Dimensions and centering of the marker matrix",
+  col.names = c("Rows", "Columns", "Rank", "Maximum absolute column mean")
   )
 ```
 
@@ -419,9 +421,17 @@ genomic relationship matrix is calculated as
 {\sum_j 2p_j(1-p_j)}.
 \]
 
+Because an SSR locus can generate several allele-dosage columns, these columns should not be interpreted as independent markers. When all alleles from the same diploid locus remain represented, their dosages sum to 2 within each individual. After centering, the deviations across those columns sum to zero, creating a structural linear dependence among them.
+
+This dependence does not prevent construction of `G`. Matrix `G` does not require inversion of `M` or separate estimation of an identifiable coefficient for every allele column. Instead, the cross-product `M M^T` aggregates, for each pair of individuals, the agreement between their allele-dosage deviation profiles. A multiallelic locus therefore contributes to genomic relationship through its set of alleles, while dependence among its columns remains an expected property of the coding.
+
 ### 6.2 Construction of G
 
-Allele frequencies used in the scaling are obtained from dosage means because mean dosage equals \(2p_j\). The product \(\mathbf M\mathbf M^{\mathsf T}\) summarizes relationships among individuals from the centered columns and is divided by the denominator defined above. The resulting matrix is numerically symmetrized before its eigenvalues are evaluated.
+Allele frequencies used in the scaling are obtained from dosage means because mean dosage equals \(2p_j\). For each allele column, the term \(2p_j(1-p_j)\) provides a frequency-based variability scale; summing these terms gives a global denominator across all columns. Because `M` is centered but not standardized column by column, this denominator converts the raw cross-product to a common genomic-relationship scale.
+
+For two individuals, an off-diagonal cell of \(\mathbf M\mathbf M^{\mathsf T}\) is the inner product of their centered dosage profiles. Deviations in the same direction contribute positively, whereas deviations in opposite directions contribute negatively. After division by the denominator, off-diagonal elements of `G` describe relative genomic relationship between pairs of individuals, using allele frequencies in this panel as the reference. A negative value indicates lower genomic similarity relative to that reference rather than a biologically antagonistic relationship.
+
+On the diagonal, each individual is compared with itself; diagonal elements therefore summarize self-relatedness on the adopted scale. Because the normalization is global and does not force each individual diagonal separately, these values need not equal exactly 1. The resulting matrix is numerically symmetrized before its eigenvalues are evaluated.
 
 ```{r genomic-relationship-matrix}
 # Recover p_j from the dosage mean, which equals 2p_j.
@@ -623,7 +633,7 @@ The 15 displayed rows make the allocation structure visible without modifying `c
 
 The heatmap provides a full view of `G`: diagonal cells represent each individual's relationship with itself, whereas off-diagonal cells represent pairwise genomic relationships. Individuals remain in their original object order; no hierarchical clustering or reordering is applied to create visual blocks. Apparent patterns can therefore suggest relationship structure, but the figure is not a clustering or population-structure test.
 
-```{r genomic-relationship-plot, fig.height=8}
+```{r genomic-relationship-plot, fig.height=8, fig.alt="Heatmap of the genomic relationship matrix G for the 150 individuals, displaying relative genomic similarity across pairs of candidates."}
 # Reshape G to long format and build the genomic-relationship heatmap.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individual_1", "Individual_2", "Relationship")

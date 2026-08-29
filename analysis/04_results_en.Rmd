@@ -36,6 +36,8 @@ Using the predictions, metrics, and diagnostics obtained in Module 03, this
 module compares the seven methods within each trait and derives the results
 used for genomic selection.
 
+The change from the previous module is therefore from **fitting to decision**: Module 03 produced evidence for each trait, fold, and method; here that evidence is aggregated and organized to determine which method represents each trait and which exploratory rankings can be derived from that choice.
+
 The analysis calculates OOF predictive performance, DIC and relative support
 measures, the selected method for each trait, fold stability, computational
 time, heritability and accuracy in the RR-BLUP/BRR analogue, OOF genomic
@@ -516,6 +518,18 @@ selected_performance <- model_selection_support |>
 Finally, the selected method, predictive and DIC winners, OOF direction, and a
 nominal signal class are brought together for each trait. The nominal class is shown only to make weak positive correlations explicit; it is not used as a selection filter. The $r > 0$ boundary separates only positive from nonpositive predictive direction; it is neither a significance test nor a minimum predictive-utility threshold.
 
+`Predictive_loss` records the difference between the pooled OOF correlation of the predictive winner and the pooled OOF correlation of the method actually selected:
+
+\[
+\mathrm{Predictive\_loss}
+=
+r_{\mathrm{predictive\ winner}}
+-
+r_{\mathrm{selected\ method}}.
+\]
+
+Thus, `Predictive_loss = 0` means that the selected method is also the predictive winner, whereas a positive value quantifies how much pooled OOF correlation was given up by the hierarchical selection rule. This quantity is not a loss function used to fit the models, does not combine RMSE or DIC, and is not an additional selection criterion; it is only a descriptive diagnostic of the predictive-performance difference.
+
 ```{r final-model-selection}
 # Combine the selected method, predictive and DIC winners, and OOF evidence in the final trait-level table.
 model_selection <- selection_spec |>
@@ -527,6 +541,7 @@ model_selection <- selection_spec |>
   left_join(predictive_winners, by = "Trait") |>
   left_join(dic_winners, by = "Trait") |>
   mutate(
+    # Quantify the OOF-correlation difference between the predictive winner and selected method.
     Predictive_loss = Predictive_winner_r - r,
     Predictive_winner_agrees =
       Selected_method == Predictive_winner,
@@ -580,7 +595,8 @@ model_selection_display <- model_selection |>
 
 format_table(
   model_selection_display,
-  caption = "Method selected for each trait"
+  caption = "Method selected for each trait",
+  col.names = c("Trait", "Selected method", "Predictive winner", "DIC winner", "r", "p-value", "RMSE", "Mean DIC", "Delta DIC", "RR-BLUP preference applied", "Selection status", "OOF predictive direction", "OOF nominal signal")
 )
 # DISPLAY-ONLY END
 ```
@@ -590,7 +606,8 @@ The direction summary counts how many traits end with positive or nonpositive OO
 ```{r oof-direction-table}
 format_table(
   oof_direction_summary,
-  caption = "OOF predictive direction of the traits"
+  caption = "OOF predictive direction of the traits",
+  col.names = c("OOF predictive direction", "Traits")
 )
 ```
 
@@ -750,7 +767,8 @@ selected_oof_genomic_values <- predictions |>
 
 format_table(
   selection_objectives,
-  caption = "Selection direction defined for each trait"
+  caption = "Selection direction defined for each trait",
+  col.names = c("Trait", "Selection objective", "Ranking rule")
 )
 ```
 
@@ -871,7 +889,8 @@ selection_cutoff_display <- selection_cutoff_summary |>
 
 format_table(
   selection_cutoff_display,
-  caption = "Scores at the proportional-selection boundary"
+  caption = "Scores at the proportional-selection boundary",
+  col.names = c("Trait", "Available candidates", "Selected candidates", "Last selected score", "First non-selected score", "Exact boundary tie")
 )
 # DISPLAY-ONLY END
 ```
@@ -1042,7 +1061,9 @@ saveRDS(
 
 ## 14. Next step
 
-Module 05 uses only these derivations to build the summary tables and figures. The OOF genomic values remain cross-fitted validation scores; this workflow does not transform them into final breeding values from a refit using all 150 phenotypes.
+By the end of this module, the derivation stage is complete: method comparison, trait-specific decisions, associated diagnostics, exploratory rankings, recurrence, and correlations among OOF scores have already been defined in the persisted objects.
+
+Module 05 changes from **derivation to presentation and interpretation**. It uses only these derivations to build summary tables and figures, without reapplying the selection rule, rebuilding rankings, or refitting models. OOF genomic values remain cross-fitted validation scores; this workflow does not transform them into final breeding values from a refit using all 150 phenotypes.
 
 <div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="03_models_en.html">← Module 03 — Model fitting</a>
