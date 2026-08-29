@@ -177,7 +177,8 @@ X_fixed <- X[
 ]
 
 data.frame(Coluna_de_familia = colnames(X_fixed)) |>
-  tabela_html(caption = "Colunas de família usadas como efeitos fixos")
+  tabela_html(caption = "Colunas de família usadas como efeitos fixos",
+  col.names = c("Coluna de família"))
 ```
 
 Após a remoção do intercepto, `X_fixed` contém `r ncol(X_fixed)` colunas de contraste de família. Essas colunas entram como um único termo fixo comum aos sete métodos.
@@ -223,7 +224,8 @@ Os cinco folds definidos no Módulo 02 são utilizados sem reconstrução. Cada 
 ```{r cv-summary}
 tabela_html(
   matrices_object$fold_summary,
-  caption = "Distribuição dos indivíduos nos cinco folds"
+  caption = "Distribuição dos indivíduos nos cinco folds",
+  col.names = c("Fold", "Tamanho de treinamento", "Tamanho de validação")
 )
 ```
 
@@ -246,8 +248,14 @@ Os parâmetros centrais das cadeias são:
 - `N_ITER = 1.000.000`: número total de iterações de cada cadeia;
 - `BURN_IN = 200.000`: iterações iniciais descartadas antes dos diagnósticos;
 - `THIN = 4`: mantém uma amostra a cada quatro iterações;
-- `R2_PRIOR = 0.5`: parâmetro global de alocação de variância usado pelo BGLR;
+- `R2_PRIOR = 0.5`: hiperparâmetro global usado pelo BGLR para calibrar as escalas das distribuições a priori;
 - `SEED_BASE = 202608050`: início da sequência determinística de sementes. Cada ajuste soma seu número sequencial a essa base, de modo que as 350 combinações recebem sementes diferentes e reproduzíveis.
+
+Neste contexto, `R2` é um hiperparâmetro de calibração a priori do BGLR. Ele não corresponde ao coeficiente de determinação observado, à herdabilidade estimada ou a uma medida de desempenho preditivo. Quando determinadas escalas a priori não são fornecidas explicitamente, o BGLR utiliza `R2` para calibrá-las em relação à variância fenotípica.
+
+Para termos de `ETA` que não recebem um valor de `R2` específico, o BGLR utiliza `R2 / nLT`, em que `nLT` é o número de termos presentes em `ETA`. Neste módulo existem dois termos: o efeito fixo de família e o componente genômico. Portanto, a calibração automática do componente genômico utiliza `0.5 / 2 = 0.25`.
+
+Esse valor de 0,25 não significa que 25% da variância fenotípica tenha sido estimada como genômica e não representa uma decomposição estimada da variância entre família e genoma. Trata-se apenas de uma quantidade utilizada pelo BGLR para definir escalas a priori. A aplicação dessa regra ao Lasso Bayesiano é apresentada explicitamente na Seção 6.6.
 
 A configuração de iterações, burn-in e thinning segue a análise de referência [@silva2021brrguava]. As quantidades de amostras gravadas, descartadas e retidas são derivadas desses parâmetros e não constituem parâmetros adicionais do modelo.
 
@@ -260,6 +268,47 @@ Outras definições específicas são:
 - `ESS_REVIEW_THRESHOLD = 1000` e `GEWEKE_REVIEW_THRESHOLD = 2`, usados somente como sinais de revisão, não como critérios automáticos de exclusão;
 - `BL_LAMBDA_TYPE = "FIXED"`, indicando que o lambda calculado na Seção 6.6 permanece constante durante a cadeia.
 
+Para separar as decisões explícitas desta análise das configurações que permanecem sob a parametrização do pacote, a tabela a seguir resume a origem dos principais parâmetros. **Projeto** indica valores definidos diretamente neste workflow. **BGLR** indica configurações que não foram sobrescritas e, portanto, seguem os defaults ou as regras internas de calibração do pacote.
+
+```{r mcmc-parameter-origin, echo=FALSE}
+data.frame(
+  Item = c(
+    "nIter, burnIn e thin",
+    "R2 global",
+    "Sementes dos ajustes",
+    "BayesB2: probIn e counts",
+    "Lasso Bayesiano: type e lambda",
+    "Limiares de revisão ESS e Geweke",
+    "Hiperparâmetros da priori residual não informados explicitamente",
+    "Demais hiperparâmetros das prioris não informados explicitamente"
+  ),
+  Origem = c(
+    "Projeto",
+    "Projeto",
+    "Projeto",
+    "Projeto",
+    "Projeto",
+    "Projeto",
+    "BGLR",
+    "BGLR"
+  ),
+  Tratamento = c(
+    "Definidos explicitamente e mantidos comuns aos 350 ajustes.",
+    "R2 = 0,5 é passado explicitamente a todos os ajustes para calibração das escalas a priori.",
+    "Uma sequência determinística fornece uma semente diferente e reproduzível para cada ajuste.",
+    "probIn e counts são definidos explicitamente na parametrização BayesB2.",
+    "O lambda é calculado pela regra apresentada na Seção 6.6 e mantido fixo durante a cadeia.",
+    "Definidos pelo projeto apenas como sinais de revisão, sem exclusão automática de ajustes.",
+    "Como não são fornecidos explicitamente na chamada principal, permanecem sob os defaults e as regras de calibração do BGLR.",
+    "Quando não são especificados em ETA_models ou na chamada BGLR(), permanecem sob os defaults e as regras de calibração do BGLR."
+  ),
+  check.names = FALSE
+) |>
+  tabela_html(
+    caption = "Origem das principais configurações do Módulo 03"
+  )
+```
+
 ```{r mcmc-settings}
 # Define o comprimento total da cadeia MCMC de cada ajuste.
 N_ITER <- 1000000L
@@ -267,7 +316,7 @@ N_ITER <- 1000000L
 BURN_IN <- 200000L
 # Salva uma amostra a cada quatro iterações.
 THIN <- 4L
-# Usa R2 = 0,5 como parâmetro global de alocação de variância do BGLR.
+# Usa R2 = 0,5 como hiperparâmetro global de calibração das escalas a priori do BGLR.
 R2_PRIOR <- 0.5
 # Inicia a sequência determinística de sementes; cada ajuste recebe um incremento único.
 SEED_BASE <- 202608050L
@@ -304,7 +353,7 @@ data.frame(
     "Burn-in",
     "Thinning",
     "Amostras posteriores mantidas",
-    "R2",
+    "R2 global (calibração a priori)",
     "Probabilidade de efeito zero no BayesB2"
   ),
   Valor = c(
@@ -319,7 +368,7 @@ data.frame(
   tabela_html(caption = "Configuração MCMC utilizada nos sete métodos")
 ```
 
-A configuração resulta em `r RAW_SAVED_SAMPLES` amostras escalares gravadas por cadeia e `r RETAINED_SAMPLES` amostras após a remoção da parcela correspondente ao burn-in. Os mesmos valores de iteração, burn-in, thinning e `R2` são usados em todos os 350 ajustes.
+A configuração resulta em `r formatC(RAW_SAVED_SAMPLES, format = "f", digits = 0, big.mark = ".")` amostras escalares gravadas por cadeia e `r formatC(RETAINED_SAMPLES, format = "f", digits = 0, big.mark = ".")` amostras após a remoção da parcela correspondente ao burn-in. Os mesmos valores de iteração, burn-in, thinning e `R2` são usados em todos os 350 ajustes.
 
 ## 6. Métodos de predição genômica
 
@@ -359,7 +408,8 @@ data.frame(
     "Valores genômicos estruturados pela matriz G"
   )
 ) |>
-  tabela_html(caption = "Métodos de predição genômica avaliados")
+  tabela_html(caption = "Métodos de predição genômica avaliados",
+  col.names = c("Método", "Componente BGLR", "Entrada genômica", "Estrutura"))
 ```
 
 A principal diferença entre os seis métodos de regressão está na priori dos efeitos dos marcadores. O GBLUP muda a representação: em vez de estimar efeitos individuais das colunas de `M`, modela diretamente o vetor de valores genômicos com covariância definida por `G`.
@@ -418,13 +468,25 @@ Neste modelo, `type = "FIXED"` possui significado diferente de
 `model = "FIXED"` usado para família. Aqui, `type = "FIXED"` indica que
 \(\lambda\) permanece constante durante a cadeia MCMC.
 
-O valor adotado corresponde à própria calibração inicial do BGLR. Como o
-preditor contém dois termos lineares — família e componente genômico BL — a
-parcela de `R2` destinada ao BL é
+O valor adotado reproduz a regra de calibração que o BGLR aplicaria ao
+termo BL quando não é fornecido um `R2` específico para esse termo. O pacote
+usa `R2 / nLT`, em que `nLT` é o número de termos presentes em `ETA`. Como
+neste módulo `ETA` contém dois termos — família e componente genômico —, a
+escala de calibração usada para o BL é
 
 \[
-R^2_{BL}=\frac{0.5}{2}=0.25.
+R^2_{\mathrm{cal},BL}
+=
+\frac{R^2_{\mathrm{cal}}}{n_{LT}}
+=
+\frac{0.5}{2}
+=
+0.25.
 \]
+
+Esse valor de 0,25 é uma quantidade de calibração a priori do termo BL. Ele
+não é uma estimativa da proporção de variância fenotípica explicada pelo
+componente genômico e não corresponde ao \(R^2\) preditivo observado.
 
 Para a matriz de marcadores centralizada,
 
@@ -438,13 +500,13 @@ seguido de
 
 \[
 \lambda_0^2=
-2\frac{1-R^2}{R^2_{BL}}MS_x.
+2\frac{1-R^2_{\mathrm{cal}}}{R^2_{\mathrm{cal},BL}}MS_x.
 \]
 
 
 
 ```{r bl-lambda}
-# Divide R2 entre os dois termos lineares do preditor: família e componente genômico BL.
+# Aplica ao termo BL a calibração R2 / nLT usada pelo BGLR, com nLT igual ao número de termos em ETA.
 BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 
@@ -458,11 +520,16 @@ BL_LAMBDA_SQUARED <-
 BL_LAMBDA <- sqrt(BL_LAMBDA_SQUARED)
 ```
 
-A tabela torna explícita a calibração que leva ao lambda fixo. `MSx` resume a escala quadrática de `M`, `R2 global` é o valor passado ao BGLR e `R2 do BL` é a parcela usada nesta calibração porque o preditor possui dois termos lineares. O valor final de `Lambda0` é então reutilizado sem ajuste específico por característica ou fold.
+A tabela torna explícita a calibração que leva ao lambda fixo. `MSx` resume a escala quadrática de `M`, `R2 global de calibração` é o valor passado ao BGLR e `R2 de calibração do BL` é o valor `R2 / nLT` usado para esse termo. O valor final de `Lambda0` é então reutilizado sem ajuste específico por característica ou fold.
 
 ```{r bl-lambda-table}
 data.frame(
-  Quantidade = c("MSx", "R2 global", "R2 do BL", "Lambda0 fixo"),
+  Quantidade = c(
+    "MSx",
+    "R2 global de calibração",
+    "R2 de calibração do BL",
+    "Lambda0 fixo"
+  ),
   Valor = c(BL_MSX, R2_PRIOR, BL_COMPONENT_R2, BL_LAMBDA)
 ) |>
   tabela_html(
@@ -486,6 +553,8 @@ O GBLUP utiliza a matriz de relacionamento genômico `G`. No BGLR, essa estrutur
 ## 7. Especificação dos modelos no BGLR
 
 As sete especificações mantêm o mesmo intercepto e o mesmo termo fixo de família. Nos seis métodos de regressão, o componente genômico é definido a partir de `M` com a priori correspondente; o BayesB2 acrescenta sua parametrização de inclusão e o Lasso Bayesiano utiliza o lambda fixo calibrado acima. No GBLUP, o componente genômico é definido diretamente por `G`. Assim, entre métodos muda apenas a especificação genômica.
+
+O bloco de código abaixo deve ser lido em duas camadas. Primeiro, `family_term` define uma única vez o efeito fixo de família compartilhado por todos os métodos. Depois, cada elemento de `ETA_models` combina esse mesmo termo fixo com um componente `genomic` específico. RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC e BL usam `X = M`; o que muda entre eles é a priori e, quando aplicável, seus hiperparâmetros. GBLUP é a exceção de representação: usa `K = G` com o componente `RKHS`. Portanto, o bloco não define sete modelos inteiramente diferentes; ele mantém a parte não genômica constante e troca somente a representação probabilística do componente genômico.
 
 ```{r eta-specifications}
 # Define o efeito fixo de família e o componente genômico específico de cada método.
@@ -572,7 +641,8 @@ run_design$Run_id <- paste(
 
 run_design |>
   count(Method, name = "Numero_de_ajustes") |>
-  tabela_html(caption = "Número de ajustes por método")
+  tabela_html(caption = "Número de ajustes por método",
+  col.names = c("Método", "Número de ajustes"))
 ```
 
 Cada método aparece em `r nrow(run_design) / length(method_names)` combinações, totalizando `r nrow(run_design)` ajustes. Como a mesma grade de característica × fold é usada para todos os métodos, as comparações posteriores partem do mesmo desenho de validação.
@@ -633,6 +703,16 @@ genomic_trace_parameter <- c(
 Os 350 ajustes seguem a mesma rotina. Para cada combinação de característica, fold e método, os fenótipos dos 30 indivíduos de validação são mascarados e os outros 120 fornecem a informação fenotípica do ajuste. As matrizes derivadas dos genótipos permanecem fixas, preservando o desenho de validação descrito no Módulo 02.
 
 De cada ajuste são armazenadas as predições OOF, os componentes fixo e genômico, as métricas preditivas, DIC e pD, parâmetros específicos quando disponíveis, avisos do BGLR e tempo de execução. Para os diagnósticos MCMC, a cadeia da variância residual e uma cadeia escalar representativa do método são avaliadas após o descarte explícito das amostras gravadas durante o burn-in; ESS e Geweke são calculados no trecho pós-burn-in.
+
+Para acompanhar o bloco longo sem depender de seus detalhes de programação, cada iteração do laço pode ser lida em cinco etapas:
+
+1. identificar a combinação característica–fold–método e sua semente;
+2. mascarar os fenótipos dos 30 indivíduos de validação;
+3. ajustar o BGLR com a especificação genômica correspondente;
+4. recuperar a predição total e separá-la em intercepto, efeito fixo de família e componente genômico;
+5. registrar predições OOF, métricas, quantidades do ajuste e diagnósticos das cadeias pós-burn-in.
+
+O código implementa repetidamente esse mesmo fluxo para as 350 combinações; decisões metodológicas não são tomadas dentro do laço com base nos resultados de uma característica ou fold.
 
 ```{r fit-models, eval=FALSE}
 # Listas que recebem as saídas de cada ajuste.
@@ -1028,7 +1108,8 @@ convergence_summary |>
   ) |>
   tabela_html(
     digits = 3,
-    caption = "Resumo dos diagnósticos MCMC por método"
+    caption = "Resumo dos diagnósticos MCMC por método",
+  col.names = c("Método", "Execuções", "Parâmetros avaliados", "Parâmetros sinalizados", "Execuções com flags", "ESS mínimo", "ESS mediano", "Máximo |Geweke Z|")
   )
 ```
 
@@ -1048,7 +1129,8 @@ convergence_diagnostics |>
   ) |>
   tabela_html(
     digits = 4,
-    caption = "Cadeias destacadas pelos diagnósticos ESS ou Geweke"
+    caption = "Cadeias destacadas pelos diagnósticos ESS ou Geweke",
+  col.names = c("Característica", "Fold", "Método", "Parâmetro", "Tamanho efetivo da amostra", "Geweke Z")
   )
 ```
 
@@ -1126,9 +1208,9 @@ saveRDS(
 
 ## 13. Próxima etapa
 
-O Módulo 04 utiliza as predições OOF, as métricas por fold, os valores
-genômicos e os diagnósticos MCMC obtidos aqui para comparar os métodos e
-construir os resultados genômicos derivados.
+Este módulo respondeu **como cada método foi ajustado e o que cada combinação característica–fold–método produziu**. O Módulo 04 muda o nível de análise: em vez de inspecionar ajustes individualmente, reúne as evidências OOF, de ajuste Bayesiano e de diagnóstico para comparar os sete métodos dentro de cada característica e consolidar a decisão utilizada nos rankings genômicos.
+
+Assim, o Módulo 04 utiliza as predições OOF, as métricas por fold, os valores genômicos e os diagnósticos MCMC obtidos aqui; nenhum dos 350 modelos precisa ser reajustado para realizar essa comparação.
 
 <div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="02_matrices_pt.html">← Módulo 02 — Construção das matrizes</a>

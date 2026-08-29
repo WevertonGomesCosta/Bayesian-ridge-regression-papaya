@@ -177,7 +177,8 @@ X_fixed <- X[
 ]
 
 data.frame(Family_column = colnames(X_fixed)) |>
-  format_table(caption = "Family columns used as fixed effects")
+  format_table(caption = "Family columns used as fixed effects",
+  col.names = c("Family column"))
 ```
 
 After the intercept is removed, `X_fixed` contains `r ncol(X_fixed)` family-contrast columns. These columns enter as one fixed term shared by all seven methods.
@@ -223,7 +224,8 @@ The five folds defined in Module 02 are used without reconstruction. Each fold c
 ```{r cv-summary}
 format_table(
   matrices_object$fold_summary,
-  caption = "Distribution of individuals across the five folds"
+  caption = "Distribution of individuals across the five folds",
+  col.names = c("Fold", "Training size", "Validation size")
 )
 ```
 
@@ -245,8 +247,14 @@ The central chain settings are:
 - `N_ITER = 1,000,000`: total iterations in each chain;
 - `BURN_IN = 200,000`: initial iterations discarded before diagnostics;
 - `THIN = 4`: retains one draw every four iterations;
-- `R2_PRIOR = 0.5`: BGLR's global prior-allocation parameter;
+- `R2_PRIOR = 0.5`: global hyperparameter used by BGLR to calibrate prior scales;
 - `SEED_BASE = 202608050`: start of the deterministic seed sequence. Each run adds its sequential number to this base, giving all 350 combinations different and reproducible seeds.
+
+In this context, `R2` is a prior-calibration hyperparameter in BGLR. It is not the observed coefficient of determination, an estimate of heritability, or a measure of predictive performance. When particular prior scales are not supplied explicitly, BGLR uses `R2` to calibrate them relative to the phenotypic variance.
+
+For terms in `ETA` that do not receive a term-specific `R2`, BGLR uses `R2 / nLT`, where `nLT` is the number of terms in `ETA`. This module contains two terms: the fixed family effect and the genomic component. Therefore, the automatic calibration for the genomic component uses `0.5 / 2 = 0.25`.
+
+This value of 0.25 does not mean that 25% of the phenotypic variance was estimated as genomic, nor does it represent an estimated partition of variance between family and genome. It is only a quantity used by BGLR to define prior scales. The application of this rule to the Bayesian Lasso is shown explicitly in Section 6.6.
 
 The iteration, burn-in, and thinning configuration follows the reference analysis [@silva2021brrguava]. The numbers of written, discarded, and retained draws are derived from these settings rather than additional model parameters.
 
@@ -259,6 +267,47 @@ Other method-specific definitions are:
 - `ESS_REVIEW_THRESHOLD = 1000` and `GEWEKE_REVIEW_THRESHOLD = 2`, used only as review flags rather than automatic exclusion rules;
 - `BL_LAMBDA_TYPE = "FIXED"`, indicating that the lambda calculated in Section 6.6 remains constant during the chain.
 
+To distinguish explicit decisions in this analysis from settings left under the package parameterization, the following table summarizes the origin of the main parameters. **Project** denotes values set directly in this workflow. **BGLR** denotes settings that were not overridden and therefore follow the package defaults or internal calibration rules.
+
+```{r mcmc-parameter-origin, echo=FALSE}
+data.frame(
+  Item = c(
+    "nIter, burnIn, and thin",
+    "Global R2",
+    "Fit seeds",
+    "BayesB2: probIn and counts",
+    "Bayesian Lasso: type and lambda",
+    "ESS and Geweke review thresholds",
+    "Residual-prior hyperparameters not supplied explicitly",
+    "Other prior hyperparameters not supplied explicitly"
+  ),
+  Origin = c(
+    "Project",
+    "Project",
+    "Project",
+    "Project",
+    "Project",
+    "Project",
+    "BGLR",
+    "BGLR"
+  ),
+  Treatment = c(
+    "Set explicitly and kept common across all 350 fits.",
+    "R2 = 0.5 is passed explicitly to every fit to calibrate prior scales.",
+    "A deterministic sequence provides a different reproducible seed for each fit.",
+    "probIn and counts are set explicitly in the BayesB2 parameterization.",
+    "Lambda is calculated using the rule presented in Section 6.6 and kept fixed throughout the chain.",
+    "Defined by the project only as review flags, with no automatic exclusion of fits.",
+    "Because they are not supplied explicitly in the main call, they remain under BGLR defaults and calibration rules.",
+    "When they are not specified in ETA_models or the BGLR() call, they remain under BGLR defaults and calibration rules."
+  ),
+  check.names = FALSE
+) |>
+  format_table(
+    caption = "Origin of the main settings in Module 03"
+  )
+```
+
 ```{r mcmc-settings}
 # Set the total MCMC chain length for each fit.
 N_ITER <- 1000000L
@@ -266,7 +315,7 @@ N_ITER <- 1000000L
 BURN_IN <- 200000L
 # Save one sample every four iterations.
 THIN <- 4L
-# Use R2 = 0.5 as BGLR's global prior-allocation parameter.
+# Use R2 = 0.5 as BGLR's global hyperparameter for calibrating prior scales.
 R2_PRIOR <- 0.5
 # Start the deterministic seed sequence; each run receives a unique increment.
 SEED_BASE <- 202608050L
@@ -303,7 +352,7 @@ data.frame(
     "Burn-in",
     "Thinning",
     "Retained posterior samples",
-    "R2",
+    "Global R2 (prior calibration)",
     "BayesB2 zero-effect probability"
   ),
   Value = c(
@@ -318,7 +367,7 @@ data.frame(
   format_table(caption = "MCMC settings used for the seven methods")
 ```
 
-This configuration yields `r RAW_SAVED_SAMPLES` scalar draws written per chain and `r RETAINED_SAMPLES` draws after the burn-in portion is removed. The same iteration, burn-in, thinning, and `R2` settings are used in all 350 fits.
+This configuration yields `r formatC(RAW_SAVED_SAMPLES, format = "f", digits = 0, big.mark = ",")` scalar draws written per chain and `r formatC(RETAINED_SAMPLES, format = "f", digits = 0, big.mark = ",")` draws after the burn-in portion is removed. The same iteration, burn-in, thinning, and `R2` settings are used in all 350 fits.
 
 ## 6. Genomic prediction methods
 
@@ -358,7 +407,8 @@ data.frame(
     "Genomic values structured by matrix G"
   )
 ) |>
-  format_table(caption = "Genomic prediction methods evaluated")
+  format_table(caption = "Genomic prediction methods evaluated",
+  col.names = c("Method", "BGLR component", "Genomic input", "Structure"))
 ```
 
 The main distinction among the six regression methods is the prior assigned to marker effects. GBLUP changes the representation: instead of estimating effects for individual columns of `M`, it models the genomic-value vector directly with covariance defined by `G`.
@@ -417,13 +467,25 @@ Here, `type = "FIXED"` has a different meaning from `model = "FIXED"` used for
 family. Within the BL term, `type = "FIXED"` means that \(\lambda\) remains
 constant throughout the MCMC chain.
 
-The adopted value corresponds to BGLR's own initial calibration. Because the
-predictor contains two linear terms — family and the BL genomic component —
-the share of `R2` allocated to BL is
+The adopted value reproduces the calibration rule that BGLR would apply to
+the BL term when no term-specific `R2` is supplied. The package uses
+`R2 / nLT`, where `nLT` is the number of terms in `ETA`. Because `ETA`
+contains two terms in this module — family and the genomic component — the
+calibration scale used for BL is
 
 \[
-R^2_{BL}=\frac{0.5}{2}=0.25.
+R^2_{\mathrm{cal},BL}
+=
+\frac{R^2_{\mathrm{cal}}}{n_{LT}}
+=
+\frac{0.5}{2}
+=
+0.25.
 \]
+
+This value of 0.25 is a prior-calibration quantity for the BL term. It is not
+an estimate of the proportion of phenotypic variance explained by the genomic
+component and does not correspond to the observed predictive \(R^2\).
 
 For the centered marker matrix,
 
@@ -437,13 +499,13 @@ followed by
 
 \[
 \lambda_0^2=
-2\frac{1-R^2}{R^2_{BL}}MS_x.
+2\frac{1-R^2_{\mathrm{cal}}}{R^2_{\mathrm{cal},BL}}MS_x.
 \]
 
 
 
 ```{r bl-lambda}
-# Split R2 across the two linear predictor terms: family and the BL genomic component.
+# Apply BGLR's R2 / nLT calibration to the BL term, with nLT equal to the number of terms in ETA.
 BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 
@@ -457,11 +519,16 @@ BL_LAMBDA_SQUARED <-
 BL_LAMBDA <- sqrt(BL_LAMBDA_SQUARED)
 ```
 
-The table makes explicit the calibration leading to the fixed lambda. `MSx` summarizes the quadratic scale of `M`, `Global R2` is the value passed to BGLR, and `BL R2` is the share used in this calibration because the predictor contains two linear terms. The resulting `Lambda0` is then reused without trait- or fold-specific tuning.
+The table makes explicit the calibration leading to the fixed lambda. `MSx` summarizes the quadratic scale of `M`, `Global calibration R2` is the value passed to BGLR, and `BL calibration R2` is the `R2 / nLT` value used for this term. The resulting `Lambda0` is then reused without trait- or fold-specific tuning.
 
 ```{r bl-lambda-table}
 data.frame(
-  Quantity = c("MSx", "Global R2", "BL R2", "Fixed lambda0"),
+  Quantity = c(
+    "MSx",
+    "Global calibration R2",
+    "BL calibration R2",
+    "Fixed lambda0"
+  ),
   Value = c(BL_MSX, R2_PRIOR, BL_COMPONENT_R2, BL_LAMBDA)
 ) |>
   format_table(
@@ -484,6 +551,8 @@ GBLUP uses the genomic relationship matrix `G`. In BGLR, this structure is imple
 ## 7. BGLR model specifications
 
 All seven specifications retain the same intercept and family fixed term. For the six regression methods, the genomic component is defined from `M` with the corresponding prior; BayesB2 adds its inclusion parameterization and the Bayesian Lasso uses the fixed lambda calibrated above. GBLUP defines the genomic component directly from `G`. Thus, only the genomic specification varies across methods.
+
+The code block below can be read in two layers. First, `family_term` defines once the family fixed effect shared by every method. Each element of `ETA_models` then combines that same fixed term with a method-specific `genomic` component. RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, and BL use `X = M`; what changes among them is the prior and, when applicable, its hyperparameters. GBLUP is the representation exception: it uses `K = G` through the `RKHS` component. Thus, the block does not define seven entirely different models; it holds the non-genomic part constant and changes only the probabilistic representation of the genomic component.
 
 ```{r eta-specifications}
 # Define the fixed family effect and the method-specific genomic component.
@@ -570,7 +639,8 @@ run_design$Run_id <- paste(
 
 run_design |>
   count(Method, name = "Number_of_fits") |>
-  format_table(caption = "Number of fits by method")
+  format_table(caption = "Number of fits by method",
+  col.names = c("Method", "Number of fits"))
 ```
 
 Each method appears in `r nrow(run_design) / length(method_names)` combinations, for `r nrow(run_design)` fits overall. Because the same trait × fold grid is used for every method, downstream comparisons start from the same validation design.
@@ -631,6 +701,16 @@ genomic_trace_parameter <- c(
 All 350 fits follow the same routine. For each trait–fold–method combination, phenotypes of the 30 validation individuals are masked and the other 120 provide the phenotypic information for fitting. The genotype-derived matrices remain fixed, preserving the validation design described in Module 02.
 
 Each fit stores OOF predictions, fixed and genomic components, predictive metrics, DIC and pD, method-specific parameters when available, BGLR warnings, and elapsed time. For MCMC diagnostics, the residual-variance chain and one method-representative scalar chain are evaluated after explicit removal of draws written during burn-in; ESS and Geweke are then computed from the post-burn-in segment.
+
+To follow the long block without relying on programming details, each loop iteration can be read as five steps:
+
+1. identify the trait–fold–method combination and its seed;
+2. mask phenotypes for the 30 validation individuals;
+3. fit BGLR using the corresponding genomic specification;
+4. recover the total prediction and separate it into intercept, family fixed effect, and genomic component;
+5. record OOF predictions, metrics, fit quantities, and diagnostics from the post-burn-in chains.
+
+The code repeats this same workflow for all 350 combinations; no methodological decision is made inside the loop based on the results of a particular trait or fold.
 
 ```{r fit-models, eval=FALSE}
 # Lists that collect the outputs from each fit.
@@ -1026,7 +1106,8 @@ convergence_summary |>
   ) |>
   format_table(
     digits = 3,
-    caption = "Summary of MCMC diagnostics by method"
+    caption = "Summary of MCMC diagnostics by method",
+  col.names = c("Method", "Runs", "Parameters reviewed", "Parameters flagged", "Runs with flags", "Minimum ESS", "Median ESS", "Maximum |Geweke Z|")
   )
 ```
 
@@ -1046,7 +1127,8 @@ convergence_diagnostics |>
   ) |>
   format_table(
     digits = 4,
-    caption = "Chains highlighted by ESS or Geweke diagnostics"
+    caption = "Chains highlighted by ESS or Geweke diagnostics",
+  col.names = c("Trait", "Fold", "Method", "Parameter", "Effective sample size", "Geweke Z")
   )
 ```
 
@@ -1124,9 +1206,9 @@ saveRDS(
 
 ## 13. Next step
 
-Module 04 uses the OOF predictions, fold-level metrics, genomic values, and MCMC
-diagnostics obtained here to compare methods and derive downstream genomic
-results.
+This module answered **how each method was fitted and what each trait–fold–method combination produced**. Module 04 changes the level of analysis: instead of inspecting individual fits, it combines OOF, Bayesian-fit, and diagnostic evidence to compare the seven methods within each trait and consolidate the decision used for genomic rankings.
+
+Thus, Module 04 uses the OOF predictions, fold-level metrics, genomic values, and MCMC diagnostics obtained here; none of the 350 models needs to be refitted for that comparison.
 
 <div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="02_matrices_en.html">← Module 02 — Matrix construction</a>

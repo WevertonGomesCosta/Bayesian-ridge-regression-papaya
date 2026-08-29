@@ -36,6 +36,8 @@ A partir das predições, métricas e diagnósticos obtidos no Módulo 03, este
 módulo compara os sete métodos dentro de cada característica e deriva os
 resultados utilizados na seleção genômica.
 
+A mudança em relação ao módulo anterior é, portanto, de **ajuste para decisão**: o Módulo 03 produziu evidência por característica, fold e método; aqui essa evidência é agregada e organizada para responder qual método deve representar cada característica e quais rankings exploratórios podem ser derivados dessa escolha.
+
 São calculados o desempenho preditivo OOF, DIC e medidas relativas de suporte,
 a decisão do método por característica, a estabilidade entre folds, o tempo
 computacional, a herdabilidade e a acurácia no análogo RR-BLUP/BRR, os valores
@@ -516,6 +518,18 @@ Por fim, são reunidos o método selecionado, os vencedores preditivo e por DIC,
 direção OOF e uma classe nominal do sinal de cada característica. A classe
 nominal é apresentada apenas para tornar explícitas correlações positivas fracas; ela não é usada como filtro de seleção. A fronteira $r > 0$ separa apenas a direção preditiva positiva da não positiva; não constitui teste de significância nem limiar mínimo de utilidade preditiva.
 
+A quantidade `Predictive_loss` registra a diferença entre a correlação OOF agrupada do vencedor preditivo e a correlação OOF agrupada do método efetivamente selecionado:
+
+\[
+\mathrm{Predictive\_loss}
+=
+r_{\mathrm{vencedor\ preditivo}}
+-
+r_{\mathrm{método\ selecionado}}.
+\]
+
+Assim, `Predictive_loss = 0` indica que o método selecionado também é o vencedor preditivo, enquanto um valor positivo quantifica quanto de correlação OOF agrupada foi cedido pela regra hierárquica de seleção. Essa quantidade não é uma função de perda usada no ajuste dos modelos, não combina RMSE ou DIC e não constitui um novo critério de seleção; é apenas um diagnóstico descritivo da diferença de desempenho preditivo.
+
 ```{r final-model-selection}
 # Reúne método selecionado, vencedores preditivo e por DIC e evidência OOF em uma tabela final por característica.
 model_selection <- selection_spec |>
@@ -527,6 +541,7 @@ model_selection <- selection_spec |>
   left_join(predictive_winners, by = "Trait") |>
   left_join(dic_winners, by = "Trait") |>
   mutate(
+    # Quantifica a diferença de correlação OOF entre o vencedor preditivo e o método selecionado.
     Predictive_loss = Predictive_winner_r - r,
     Predictive_winner_agrees =
       Selected_method == Predictive_winner,
@@ -580,7 +595,8 @@ model_selection_display <- model_selection |>
 
 tabela_html(
   model_selection_display,
-  caption = "Método selecionado por característica"
+  caption = "Método selecionado por característica",
+  col.names = c("Característica", "Método selecionado", "Vencedor preditivo", "Vencedor por DIC", "r", "p-valor", "RMSE", "DIC médio", "Delta DIC", "Preferência por RR-BLUP aplicada", "Status da seleção", "Direção preditiva OOF", "Sinal nominal OOF")
 )
 # DISPLAY-ONLY END
 ```
@@ -590,7 +606,8 @@ O resumo de direção conta quantas características terminam com correlação O
 ```{r oof-direction-table}
 tabela_html(
   oof_direction_summary,
-  caption = "Direção preditiva OOF das características"
+  caption = "Direção preditiva OOF das características",
+  col.names = c("Direção preditiva OOF", "Características")
 )
 ```
 
@@ -750,7 +767,8 @@ selected_oof_genomic_values <- predictions |>
 
 tabela_html(
   selection_objectives,
-  caption = "Direção de seleção definida para cada característica"
+  caption = "Direção de seleção definida para cada característica",
+  col.names = c("Característica", "Objetivo de seleção", "Regra de ranking")
 )
 ```
 
@@ -872,7 +890,8 @@ selection_cutoff_display <- selection_cutoff_summary |>
 
 tabela_html(
   selection_cutoff_display,
-  caption = "Escores no limite da seleção proporcional"
+  caption = "Escores no limite da seleção proporcional",
+  col.names = c("Característica", "Candidatos disponíveis", "Candidatos selecionados", "Escore do último selecionado", "Escore do primeiro não selecionado", "Empate exato no limite")
 )
 # DISPLAY-ONLY END
 ```
@@ -1040,7 +1059,9 @@ saveRDS(
 
 ## 14. Próxima etapa
 
-O Módulo 05 utiliza exclusivamente essas derivações para construir as tabelas e figuras de síntese. Os valores genômicos OOF continuam sendo apresentados como escores cross-fitted de validação; este fluxo não os transforma em valores genéticos finais de um refit com todos os 150 fenótipos.
+Ao final deste módulo, a etapa de derivação está concluída: comparação dos métodos, decisão por característica, diagnósticos associados, rankings exploratórios, recorrência e correlações entre escores OOF já estão definidos nos objetos persistidos.
+
+O Módulo 05 muda de **derivação para apresentação e interpretação**. Ele utiliza exclusivamente essas derivações para construir as tabelas e figuras de síntese, sem reaplicar a regra de seleção, refazer rankings ou reajustar modelos. Os valores genômicos OOF continuam sendo escores cross-fitted de validação; este fluxo não os transforma em valores genéticos finais de um refit com todos os 150 fenótipos.
 
 <div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="03_models_pt.html">← Módulo 03 — Ajuste dos modelos</a>

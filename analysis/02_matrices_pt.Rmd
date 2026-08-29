@@ -303,7 +303,8 @@ allele_summary_full <- allele_audit_full |>
 
 tabela_html(
   allele_summary_full,
-  caption = "Colunas de dosagem alélica por loco SSR"
+  caption = "Colunas de dosagem alélica por loco SSR",
+  col.names = c("Loco", "Alelos observados", "Alelos mantidos")
 )
 ```
 
@@ -313,7 +314,7 @@ Das `r nrow(allele_audit_full)` colunas alélicas inicialmente codificadas, `r s
 
 O histograma mostra onde se concentram as frequências das colunas alélicas. As linhas verticais marcam 0,05 e 0,95, e o preenchimento indica a decisão final de retenção, que também exige variação de dosagem positiva. As 20 classes são apenas uma escolha de resolução visual e não participam do filtro.
 
-```{r grafico-frequencias-alelicas, fig.height=5}
+```{r grafico-frequencias-alelicas, fig.height=5, fig.alt="Histograma das frequências das colunas alélicas SSR, com linhas de referência em 0,05 e 0,95 e preenchimento indicando a decisão final de manutenção."}
 # Mostra a distribuição das frequências alélicas e os limites usados no filtro.
 ggplot(
   allele_audit_full,
@@ -400,7 +401,8 @@ data.frame(
 ) |>
   tabela_html(
     digits = 8,
-    caption = "Dimensões e centralização da matriz de marcadores"
+    caption = "Dimensões e centralização da matriz de marcadores",
+  col.names = c("Linhas", "Colunas", "Posto", "Máxima média absoluta da coluna")
   )
 ```
 
@@ -421,9 +423,17 @@ calculada por
 {\sum_j 2p_j(1-p_j)}.
 \]
 
+Como um loco SSR pode originar várias colunas alélicas, essas colunas não devem ser interpretadas como marcadores independentes. Quando todos os alelos de um mesmo loco diploide permanecem representados, suas dosagens somam 2 em cada indivíduo. Depois da centralização, os desvios dessas colunas somam zero, produzindo uma dependência linear estrutural entre elas.
+
+Essa dependência não impede a construção de `G`. A matriz `G` não exige a inversão de `M` nem a estimação separada de um coeficiente identificável para cada coluna alélica. Em vez disso, o produto cruzado `M M^T` agrega, para cada par de indivíduos, a concordância entre seus perfis de desvios de dosagem. Assim, um loco multialélico contribui para o relacionamento por meio do conjunto de seus alelos, enquanto a dependência interna entre as colunas permanece uma propriedade esperada da codificação.
+
 ### 6.2 Construção da matriz G
 
-As frequências alélicas usadas na escala são obtidas das médias das dosagens, pois a dosagem média corresponde a \(2p_j\). O produto \(\mathbf M\mathbf M^{\mathsf T}\) reúne os relacionamentos entre indivíduos a partir das colunas centralizadas e é dividido pelo denominador definido na expressão acima. A matriz resultante é simetrizada numericamente antes da avaliação de seus autovalores.
+As frequências alélicas usadas na escala são obtidas das médias das dosagens, pois a dosagem média corresponde a \(2p_j\). Para cada coluna alélica, o termo \(2p_j(1-p_j)\) fornece uma escala de variabilidade baseada em sua frequência; a soma desses termos forma um denominador global para todas as colunas. Como `M` é centralizada, mas não padronizada coluna a coluna, esse denominador transforma o produto cruzado bruto em uma escala comum de relacionamento genômico.
+
+Para dois indivíduos, uma célula fora da diagonal de \(\mathbf M\mathbf M^{\mathsf T}\) é o produto interno de seus perfis de dosagem centralizada. Desvios na mesma direção contribuem positivamente, enquanto desvios em direções opostas contribuem negativamente. Após a divisão pelo denominador, as células fora da diagonal de `G` descrevem o relacionamento genômico relativo entre pares de indivíduos, tomando as frequências alélicas deste painel como referência. Um valor negativo indica menor similaridade genômica relativa a essa referência, e não uma relação biologicamente antagônica.
+
+Na diagonal, cada indivíduo é comparado consigo mesmo; por isso, os elementos diagonais resumem sua similaridade genômica consigo próprio na escala adotada. Como a normalização é global e não força individualmente cada diagonal, esses valores não precisam ser exatamente iguais a 1. A matriz resultante é simetrizada numericamente antes da avaliação de seus autovalores.
 
 ```{r matriz-relacionamento}
 # Recupera p_j a partir da média da dosagem, que corresponde a 2p_j.
@@ -626,7 +636,7 @@ As 15 linhas exibidas permitem verificar a estrutura da atribuição sem modific
 
 O mapa de calor permite inspecionar a estrutura completa de `G`: a diagonal representa o relacionamento de cada indivíduo consigo mesmo e as células fora da diagonal representam relacionamento genômico entre pares. Os indivíduos permanecem na ordem original do objeto; não é aplicado agrupamento hierárquico nem reordenação para produzir blocos visuais. Assim, padrões aparentes podem sugerir estrutura de relacionamento, mas o gráfico não constitui um teste de agrupamento ou de estrutura populacional.
 
-```{r grafico-relacionamento-genomico, fig.height=8}
+```{r grafico-relacionamento-genomico, fig.height=8, fig.alt="Mapa de calor da matriz de relacionamento genômico G dos 150 indivíduos, mostrando a similaridade genômica relativa entre pares de candidatos."}
 # Converte G para formato longo e constrói o mapa de calor do relacionamento genômico.
 G_long <- as.data.frame(as.table(G_full))
 names(G_long) <- c("Individuo_1", "Individuo_2", "Relacionamento")
