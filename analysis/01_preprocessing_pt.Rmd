@@ -299,6 +299,14 @@ Antes de reordenar qualquer linha, verificamos se as colunas obrigatórias estã
 required_columns <- c("IND", "FAM", TRAITS)
 missing_columns <- setdiff(required_columns, names(pheno_raw))
 
+# Interrompe antes do alinhamento se alguma coluna fenotípica obrigatória estiver ausente.
+if (length(missing_columns) > 0L) {
+  stop(
+    "Colunas fenotípicas obrigatórias ausentes: ",
+    paste(missing_columns, collapse = ", ")
+  )
+}
+
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
 
 # Compara os conjuntos de identificadores nas duas fontes antes de reordenar as linhas.
@@ -357,20 +365,46 @@ tabela_html(
   identifier_summary,
   caption = "Resumo dos identificadores e das colunas"
 )
+
+# Exige os contratos estruturais necessários antes do alinhamento das linhas.
+stopifnot(
+  length(missing_in_pheno) == 0L,
+  length(missing_in_geno) == 0L,
+  sum(is.na(ids) | ids == "") == 0L,
+  anyDuplicated(ids) == 0L,
+  sum(is.na(locus_names) | locus_names == "") == 0L,
+  anyDuplicated(locus_names) == 0L,
+  sum(is.na(pheno_raw$IND) | pheno_raw$IND == "") == 0L,
+  anyDuplicated(pheno_raw$IND) == 0L
+)
 ```
 
 As verificações de consistência apresentam `r sum(identifier_summary$Valor)` ocorrências problemáticas no total. Para os dados analisados, isso confirma ausência de identificadores vazios ou duplicados, nomes de locos ausentes ou duplicados e colunas fenotípicas obrigatórias ausentes.
+
+Essas verificações também passam a funcionar como contratos executáveis: o fluxo é interrompido antes do alinhamento se faltarem colunas obrigatórias, se os identificadores diferirem entre as fontes ou se houver identificadores ou nomes de locos ausentes ou duplicados. As guardas não filtram observações; elas impedem que as etapas seguintes prossigam silenciosamente com uma estrutura de entrada inconsistente.
 
 ### 5.4 Alinhamento efetivo dos fenótipos
 
 Somente depois das verificações anteriores os fenótipos são reordenados para seguir exatamente a sequência dos indivíduos na matriz SSR.
 
 ```{r alinhamento-fenotipos}
+# Armazena explicitamente a correspondência das linhas e exige correspondência completa.
+alignment_index <- match(ids, pheno_raw$IND)
+stopifnot(!anyNA(alignment_index))
+
 # Reordena os fenótipos para a mesma sequência dos indivíduos genotipados.
 pheno <- pheno_raw[
-  match(ids, pheno_raw$IND),
+  alignment_index,
   required_columns
 ]
+
+# Confirma que a ordem efetiva das linhas é exatamente a ordem dos genótipos.
+stopifnot(
+  identical(
+    as.character(pheno$IND),
+    ids
+  )
+)
 
 # Converte explicitamente as dez características para valores numéricos.
 for (trait in TRAITS) {

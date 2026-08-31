@@ -299,6 +299,14 @@ Before any rows are reordered, we verify that required columns are present and t
 required_columns <- c("IND", "FAM", TRAITS)
 missing_columns <- setdiff(required_columns, names(pheno_raw))
 
+# Stop before alignment if any required phenotype column is absent.
+if (length(missing_columns) > 0L) {
+  stop(
+    "Missing required phenotype columns: ",
+    paste(missing_columns, collapse = ", ")
+  )
+}
+
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
 
 # Compare identifier sets in both sources before reordering rows.
@@ -357,20 +365,46 @@ format_table(
   identifier_summary,
   caption = "Summary of identifiers and required columns"
 )
+
+# Enforce the structural contracts required before row alignment.
+stopifnot(
+  length(missing_in_pheno) == 0L,
+  length(missing_in_geno) == 0L,
+  sum(is.na(ids) | ids == "") == 0L,
+  anyDuplicated(ids) == 0L,
+  sum(is.na(locus_names) | locus_names == "") == 0L,
+  anyDuplicated(locus_names) == 0L,
+  sum(is.na(pheno_raw$IND) | pheno_raw$IND == "") == 0L,
+  anyDuplicated(pheno_raw$IND) == 0L
+)
 ```
 
 The consistency checks contain `r sum(identifier_summary$Value)` problematic occurrences in total. For the analyzed data, this confirms the absence of empty or duplicated identifiers, missing or duplicated locus names, and missing required phenotype columns.
+
+These checks are also executable contracts: the workflow stops before alignment if required columns are absent, identifiers differ between sources, or identifiers or locus names are missing or duplicated. The guards do not filter observations; they prevent subsequent code from silently continuing with an inconsistent input structure.
 
 ### 5.4 Effective phenotype alignment
 
 Only after the previous checks are phenotypes reordered to exactly follow the individual sequence in the SSR matrix.
 
 ```{r phenotype-alignment}
+# Store the row correspondence explicitly and require a complete match.
+alignment_index <- match(ids, pheno_raw$IND)
+stopifnot(!anyNA(alignment_index))
+
 # Reorder phenotypes to the same sequence as genotyped individuals.
 pheno <- pheno_raw[
-  match(ids, pheno_raw$IND),
+  alignment_index,
   required_columns
 ]
+
+# Confirm that the effective row order is exactly the genotype order.
+stopifnot(
+  identical(
+    as.character(pheno$IND),
+    ids
+  )
+)
 
 # Explicitly convert the ten traits to numeric values.
 for (trait in TRAITS) {

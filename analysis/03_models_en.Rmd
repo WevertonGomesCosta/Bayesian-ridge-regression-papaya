@@ -124,6 +124,30 @@ M <- matrices_object$M
 G <- matrices_object$G
 cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
+
+# Require all Module 02 objects to preserve the same individuals and row order.
+stopifnot(
+  nrow(metadata) == length(ids),
+  nrow(phenotypes) == length(ids),
+  nrow(X) == length(ids),
+  nrow(M) == length(ids),
+  nrow(G) == length(ids),
+  ncol(G) == length(ids),
+  nrow(cv_folds) == length(ids),
+  identical(as.character(metadata$IND), ids),
+  identical(rownames(phenotypes), ids),
+  identical(rownames(X), ids),
+  identical(rownames(M), ids),
+  identical(rownames(G), ids),
+  identical(colnames(G), ids),
+  identical(as.character(cv_folds$IND), ids),
+  anyDuplicated(cv_folds$IND) == 0L,
+  all(
+    cv_folds$Fold %in%
+      seq_len(matrices_object$settings$n_folds)
+  ),
+  length(traits) > 0L
+)
 ```
 
 ### 2.2 Input compatibility
@@ -144,6 +168,8 @@ data.frame(
 ```
 
 All five inputs retain the same `r nrow(phenotypes)` individuals. The phenotype matrix contains `r ncol(phenotypes)` traits, `X` contains `r ncol(X)` family-design and intercept columns, `M` contains `r ncol(M)` centered dosage columns, and `G` is square with `r ncol(G)` columns. This compatibility allows the same individual order to be used throughout model fitting.
+
+These compatibility conditions are executable contracts: the module stops before model specification if dimensions, individual order, genomic-matrix labels, or fold identifiers no longer agree with `ids`. The guards validate the Module 02 objects without filtering or reconstructing them.
 
 ## 3. Statistical model
 
@@ -325,6 +351,21 @@ RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
 BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
 RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
 
+# Require an internally consistent mapping from iterations to saved posterior draws.
+stopifnot(
+  N_ITER > 0L,
+  BURN_IN >= 0L,
+  BURN_IN < N_ITER,
+  THIN > 0L,
+  N_ITER %% THIN == 0L,
+  BURN_IN %% THIN == 0L,
+  RAW_SAVED_SAMPLES == N_ITER / THIN,
+  BURN_IN_SAVED_SAMPLES == BURN_IN / THIN,
+  RETAINED_SAMPLES ==
+    RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES,
+  RETAINED_SAMPLES > 0L
+)
+
 # Parameterize BayesB2 with a zero-effect probability of 1e-5.
 BAYESB2_ZERO_PROBABILITY <- 1e-5
 BAYESB2_PROB_IN <- 1 - BAYESB2_ZERO_PROBABILITY
@@ -343,6 +384,8 @@ BL_LAMBDA_TYPE <- "FIXED"
 ### 5.3 Written and retained samples
 
 The table summarizes the choices controlling MCMC sampling. With 1,000,000 iterations and `thin = 4`, BGLR writes 250,000 scalar draws; the first 50,000 correspond to the 200,000-iteration burn-in, leaving 200,000 saved draws for the downstream diagnostics. These counts are derived from the three chain parameters.
+
+The iteration-to-sample conversion is also enforced as an executable contract. Iteration and burn-in counts must be exactly divisible by `THIN`, burn-in must remain below the total chain length, and at least one posterior draw must remain after burn-in removal.
 
 ```{r mcmc-settings-table}
 # Collect the MCMC settings in a reference table.
@@ -375,11 +418,38 @@ The following table relates each method to its BGLR component and the genomic in
 
 ```{r model-catalogue}
 # Define the compared methods, display labels, and genomic structure used by each fit.
-method_names <- c(
-  "RRBLUP", "BayesA", "BayesB", "BayesB2",
-  "BayesC", "BL", "GBLUP"
+model_catalogue <- data.frame(
+  Method = c(
+    "RRBLUP", "BayesA", "BayesB", "BayesB2",
+    "BayesC", "BL", "GBLUP"
+  ),
+  Label = c(
+    "RR-BLUP", "BayesA", "BayesB", "BayesB2",
+    "BayesC", "Bayesian Lasso", "GBLUP"
+  ),
+  BGLR_component = c(
+    "BRR", "BayesA", "BayesB", "BayesB",
+    "BayesC", "BL", "RKHS"
+  ),
+  Genomic_input = c(
+    "M", "M", "M", "M", "M", "M", "G"
+  ),
+  Main_assumption = c(
+    "Common Gaussian variance for all marker effects",
+    "Marker-specific scaled-t variances",
+    "Scaled-t slab and a point mass at zero",
+    "BayesB with zero-effect probability near 1e-5",
+    "Common Gaussian slab and a point mass at zero",
+    "Double-exponential marginal prior; lambda fixed at BGLR-calibrated lambda0",
+    "Genomic values structured by G"
+  ),
+  stringsAsFactors = FALSE
 )
 
+# Use the persisted catalogue as the canonical source of method names.
+method_names <- model_catalogue$Method
+
+# Keep tutorial-facing labels separate from the persisted catalogue.
 method_labels <- c(
   RRBLUP = "RR-BLUP/BRR",
   BayesA = "BayesA",
@@ -392,20 +462,9 @@ method_labels <- c(
 
 data.frame(
   Method = unname(method_labels[method_names]),
-  BGLR_component = c(
-    "BRR", "BayesA", "BayesB", "BayesB",
-    "BayesC", "BL", "RKHS"
-  ),
-  Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
-  Structure = c(
-    "Common Gaussian variance for all marker effects",
-    "Marker-specific variances",
-    "Point mass at zero and a continuous component for nonzero effects",
-    "BayesB with zero-effect probability near 1e-5",
-    "Point mass at zero and common variance for nonzero effects",
-    "Double-exponential marginal prior with fixed lambda",
-    "Genomic values structured by matrix G"
-  )
+  BGLR_component = model_catalogue$BGLR_component,
+  Genomic_input = model_catalogue$Genomic_input,
+  Structure = model_catalogue$Main_assumption
 ) |>
   format_table(caption = "Genomic prediction methods evaluated",
   col.names = c("Method", "BGLR component", "Genomic input", "Structure"))
@@ -647,7 +706,13 @@ Each method appears in `r nrow(run_design) / length(method_names)` combinations,
 
 ## 9. Fitting the 350 models
 
-### 9.1 Scalar chains used for diagnostics
+### 9.1 Execution modes
+
+A normal render of this module **does not rerun the 350 fits**. The `fit-models`, `assemble-fit-results`, and `save-results` chunks remain `eval=FALSE`; the page therefore reuses the previously persisted outputs in `output/models/` instead of recalculating the MCMC chains.
+
+A full regeneration is a deliberate operation. It must proceed from top to bottom in the same R session: execute `fit-models`, then `assemble-fit-results`, continue through Sections 10 and 11 — including `combine-results` and the diagnostic updates — and finally execute `save-results`. That sequence replaces the persisted outputs and should be used only when there is an explicit intention to rerun all 350 fits. A normal workflow render does not activate this path.
+
+### 9.2 Scalar chains used for diagnostics
 
 For MCMC diagnostics, each method is associated with the relevant native BGLR scalar file and its representative parameter.
 
@@ -655,7 +720,7 @@ The selected chain is one representative scalar quantity for each specification,
 
 ```{r trace-specifications}
 # Map the chain files and parameters used in the MCMC diagnostics.
-genomic_trace_suffix <- c(
+diagnostic_trace_suffix <- c(
   RRBLUP = "ETA_genomic_varB.dat",
   BayesA = "ETA_genomic_ScaleBayesA.dat",
   BayesB = "ETA_genomic_parBayesB.dat",
@@ -665,7 +730,7 @@ genomic_trace_suffix <- c(
   GBLUP = "ETA_genomic_varU.dat"
 )
 
-genomic_trace_header <- c(
+diagnostic_trace_header <- c(
   RRBLUP = FALSE,
   BayesA = FALSE,
   BayesB = TRUE,
@@ -675,7 +740,7 @@ genomic_trace_header <- c(
   GBLUP = FALSE
 )
 
-genomic_trace_column <- c(
+diagnostic_trace_column <- c(
   RRBLUP = 1L,
   BayesA = 1L,
   BayesB = 2L,
@@ -685,7 +750,7 @@ genomic_trace_column <- c(
   GBLUP = 1L
 )
 
-genomic_trace_parameter <- c(
+diagnostic_trace_parameter <- c(
   RRBLUP = "Marker_variance",
   BayesA = "Scale",
   BayesB = "Scale",
@@ -696,7 +761,7 @@ genomic_trace_parameter <- c(
 )
 ```
 
-### 9.2 Fitting routine and outputs from each combination
+### 9.3 Fitting routine and outputs from each combination
 
 All 350 fits follow the same routine. For each trait–fold–method combination, phenotypes of the 30 validation individuals are masked and the other 120 provide the phenotypic information for fitting. The genotype-derived matrices remain fixed, preserving the validation design described in Module 02.
 
@@ -873,17 +938,24 @@ for (run_index in seq_len(nrow(run_design))) {
     quiet = TRUE
   )
 
-  # Read the scalar chain representing the genomic component.
-  genomic_trace_table <- read.table(
-    paste0(save_prefix, genomic_trace_suffix[method_name]),
-    header = genomic_trace_header[method_name],
+  # Read the method-representative scalar chain used for diagnostics; for BL this is the intercept.
+  diagnostic_trace_table <- read.table(
+    paste0(save_prefix, diagnostic_trace_suffix[method_name]),
+    header = diagnostic_trace_header[method_name],
     check.names = FALSE
   )
 
-  genomic_trace_full <- genomic_trace_table[
+  diagnostic_trace_full <- diagnostic_trace_table[
     ,
-    genomic_trace_column[method_name]
+    diagnostic_trace_column[method_name]
   ]
+
+  # Require both native scalar chains to contain the expected saved draws.
+  stopifnot(
+    length(residual_trace_full) == RAW_SAVED_SAMPLES,
+    nrow(diagnostic_trace_table) == RAW_SAVED_SAMPLES,
+    length(diagnostic_trace_full) == RAW_SAVED_SAMPLES
+  )
 
   # Remove the saved samples corresponding to burn-in.
   posterior_index <- seq.int(
@@ -891,9 +963,19 @@ for (run_index in seq_len(nrow(run_design))) {
     length(residual_trace_full)
   )
 
+  stopifnot(
+    length(posterior_index) == RETAINED_SAMPLES,
+    max(posterior_index) == RAW_SAVED_SAMPLES
+  )
+
   trace_matrix <- cbind(
     Residual_variance = residual_trace_full[posterior_index],
-    Genomic_parameter = genomic_trace_full[posterior_index]
+    Representative_parameter = diagnostic_trace_full[posterior_index]
+  )
+
+  stopifnot(
+    nrow(trace_matrix) == RETAINED_SAMPLES,
+    ncol(trace_matrix) == 2L
   )
 
   # Convert chains to the coda representation.
@@ -909,7 +991,7 @@ for (run_index in seq_len(nrow(run_design))) {
 
   parameter_names <- c(
     "Residual_variance",
-    unname(genomic_trace_parameter[method_name])
+    unname(diagnostic_trace_parameter[method_name])
   )
 
   convergence_parts[[run_index]] <- data.frame(
@@ -932,7 +1014,7 @@ for (run_index in seq_len(nrow(run_design))) {
 }
 ```
 
-### 9.3 Assembling and writing the primary outputs
+### 9.4 Assembling and writing the primary outputs
 
 At the end of the loop, the populated lists are combined into the four tables
 used by the diagnostics and downstream modules. The block below is the direct
@@ -1158,22 +1240,6 @@ analysis_settings <- list(
   traits = traits,
   folds = seq_len(matrices_object$settings$n_folds),
   methods = method_names
-)
-
-# Record the methods, BGLR components, and genomic inputs used by the specifications.
-model_catalogue <- data.frame(
-  Method = method_names,
-  Label = c(
-    "RR-BLUP", "BayesA", "BayesB", "BayesB2",
-    "BayesC", "Bayesian Lasso", "GBLUP"
-  ),
-  BGLR_component = c(
-    "BRR", "BayesA", "BayesB", "BayesB",
-    "BayesC", "BL", "RKHS"
-  ),
-  # Record whether each method uses dosage matrix M or genomic matrix G.
-  Genomic_input = c("M", "M", "M", "M", "M", "M", "G"),
-  stringsAsFactors = FALSE
 )
 
 write.csv(

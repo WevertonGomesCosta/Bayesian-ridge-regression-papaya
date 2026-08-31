@@ -79,7 +79,7 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 
 ### 2.2 Input objects, checks, and graphical style
 
-The module consumes two consolidated objects. `models_object.rds` supplies the settings required to locate and interpret previously saved chains; `module04_results.rds` supplies all tables, decisions, rankings, and correlations derived in Module 04. Labels, colors, base font size, dimensions, and export resolution are presentation choices only and do not enter performance, selection, or inferential calculations. The fixed palette keeps each method visually consistent throughout the page.
+This module consumes the persisted outputs from Modules 03 and 04. The checks below verify their consistency before presentation, while labels and graphical settings affect only how the results are displayed.
 
 ```{r inputs-and-style}
 # Define output paths and load the objects required by this module.
@@ -274,47 +274,13 @@ The synthesis covers `r n_traits` traits and `r n_methods` methods. All `r n_sel
 
 ### 2.4 Figure hierarchy
 
-The figures in this module do not have the same interpretive role. The OOF-correlation comparison in Section 3.2 is the **primary predictive-performance figure**. The `mu` traces and across-fold stability are **descriptive diagnostics** that contextualize the selected methods without redefining the choice. Computational time provides **operational context**. The heatmap of OOF genomic values is an **exploratory summary of associations among cross-fitted scores**, not a genetic-correlation matrix from a multivariate model.
+The figures in this module do not have the same interpretive role. The OOF-correlation comparison in Section 3.1 is the **primary predictive-performance figure**. The `mu` traces and across-fold stability are **descriptive diagnostics** that contextualize the selected methods without redefining the choice. Computational time provides **operational context**. The heatmap of OOF genomic values is an **exploratory summary of associations among cross-fitted scores**, not a genetic-correlation matrix from a multivariate model.
 
 The visual reading should therefore follow this priority: **predictive performance → diagnostics → operational context and exploratory associations**. None of the complementary figures creates an additional selection criterion.
 
 ## 3. Comparison of the seven methods
 
-### 3.1 Tabular comparison
-
-For every trait × method combination, the table reports mean DIC across folds, `Delta_DIC`, `Wprob`, `ER`, pooled OOF correlation, and the nominal p-value. DIC and its relative weights should be compared only among methods for the same trait; OOF correlation represents predictive performance and remains the primary reference. The p-value is descriptive only, as defined in Module 04.
-
-```{r model-comparison-table}
-# DISPLAY-ONLY START
-model_comparison_display <- model_comparison |>
-  mutate(Method_label = unname(method_labels[Method])) |>
-  transmute(
-    Trait,
-    Method,
-    Method_label,
-    DIC = sprintf("%.2f", Mean_DIC),
-    Delta_DIC = sprintf("%.2f", Delta_DIC),
-    Wprob = sprintf("%.3f", Wprob),
-    ER = sprintf("%.3f", ER),
-    r = sprintf("%.3f", r),
-    p_value = if_else(
-      p_value < 0.001,
-      "<0.001",
-      sprintf("%.3f", p_value)
-    )
-  ) |>
-  arrange(match(Trait, traits), match(Method, methods))
-
-format_table(
-  model_comparison_display |>
-    select(Trait, Method_label, DIC, Delta_DIC, Wprob, ER, r, p_value),
-  caption = "Comparison of the seven methods by trait",
-  col.names = c("Trait", "Method", "DIC", "Delta DIC", "Wprob", "ER", "r", "p-value")
-)
-# DISPLAY-ONLY END
-```
-
-### 3.2 Primary figure: visual comparison of OOF performance
+### 3.1 Primary figure: visual comparison of OOF performance
 
 This is the primary figure for comparing predictive performance across the seven methods. The figure translates the OOF-correlation table into a direct visual comparison. The horizontal zero line separates positive from nonpositive association, and every panel uses the same vertical scale so magnitudes can be compared across traits. Bars are point estimates, not uncertainty intervals.
 
@@ -353,6 +319,40 @@ ggsave(
 ```
 
 The comparison shows that predictive magnitude depends strongly on the trait. The largest OOF correlation observed in the comparison occurs for `r highest_oof_trait`, whereas several traits remain in much lower ranges. Within several panels, methods are relatively close for the same trait; method choice therefore remains trait-specific and follows the hierarchical rule consolidated in Module 04 rather than defining one global method.
+
+### 3.2 Detailed tabular comparison
+
+For every trait × method combination, the table reports mean DIC across folds, `Delta_DIC`, `Wprob`, `ER`, pooled OOF correlation, and the nominal p-value. DIC and its relative weights should be compared only among methods for the same trait; OOF correlation represents predictive performance and remains the primary reference. The p-value is descriptive only, as defined in Module 04.
+
+```{r model-comparison-table}
+# DISPLAY-ONLY START
+model_comparison_display <- model_comparison |>
+  mutate(Method_label = unname(method_labels[Method])) |>
+  transmute(
+    Trait,
+    Method,
+    Method_label,
+    DIC = sprintf("%.2f", Mean_DIC),
+    Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Wprob = sprintf("%.3f", Wprob),
+    ER = sprintf("%.3f", ER),
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    )
+  ) |>
+  arrange(match(Trait, traits), match(Method, methods))
+
+format_table(
+  model_comparison_display |>
+    select(Trait, Method_label, DIC, Delta_DIC, Wprob, ER, r, p_value),
+  caption = "Comparison of the seven methods by trait",
+  col.names = c("Trait", "Method", "DIC", "Delta DIC", "Wprob", "ER", "r", "p-value")
+)
+# DISPLAY-ONLY END
+```
 
 ## 4. Selected methods by trait
 
@@ -446,7 +446,7 @@ format_table(
 
 The consolidated decision selects `r selected_method_summary`. All choices remain `Selection_status = rule_based_selected`. Traits with nonpositive OOF correlation — `r format_list_en(nonpositive_oof_traits)` — do not enter the exploratory candidate rankings.
 
-## 5. Illustrative MCMC diagnostic for selected methods
+## 5. Illustrative MCMC trace of mu (fold 1) for selected methods
 
 ### 5.1 Illustrative scope and chain preparation
 
@@ -506,7 +506,6 @@ for (trait_index in seq_along(traits)) {
     Posterior_mu = posterior_mu[keep_index],
     Running_mean = running_mean[keep_index]
   )
-
 }
 
 selected_mu_trace <- bind_rows(trace_parts)
@@ -792,9 +791,7 @@ format_table(
 
 ### 10.3 Candidate preview
 
-The next table shows only the first five individuals from each ranking as a reading preview. The value `n = 5` is a presentation choice; the complete ranking remains available in the object and derived files.
-
-The preview shows five candidates per trait only for readability; the `selected_individuals_by_trait` object remains complete.
+The next table previews only the first five individuals from each ranking (`n = 5`) for readability; the complete `selected_individuals_by_trait` ranking remains available in the object and derived files.
 
 ```{r proportional-selection-preview}
 # DISPLAY-ONLY START
@@ -846,7 +843,7 @@ The recurrence classes shown here are the same ones defined in Module 04. The co
 
 The first recurrence table describes the whole population according to the number of positive-OOF rankings in which each individual appears. The classes are presentation labels defined in Module 04 rather than significance thresholds.
 
-The scientific `multitrait_candidates` object remains defined by recurrence in at least two traits. The `N_traits >= 3` cutoff is applied only to the main table for compact presentation.
+The distribution below therefore describes the full recurrence pattern before the presentation subset used in Section 11.3 is applied.
 
 ```{r recurrence-distribution-table}
 # DISPLAY-ONLY START
@@ -883,7 +880,7 @@ format_table(
 
 To reduce width without removing information, the presentation is divided into two tables. The first summarizes identification, recurrence intensity, involved traits, and overall ranking position. The second separately shows the trait-specific rank profile, making it possible to inspect the lists in which each candidate appeared without overloading the main table.
 
-Both tables show only individuals recurring in three or more traits. This remains a presentation-only filter; the complete `multitrait_candidates` object retains recurrence in at least two traits.
+Both tables use the presentation subset defined in Section 11.1.
 
 ```{r recurrent-candidates-table}
 # DISPLAY-ONLY START
