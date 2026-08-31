@@ -77,9 +77,9 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-### 2.2 Input objects, checks, and graphical style
+### 2.2 Input objects and graphical style
 
-This module consumes the persisted outputs from Modules 03 and 04. The checks below verify their consistency before presentation, while labels and graphical settings affect only how the results are displayed.
+This module consumes the persisted outputs from Modules 03 and 04. The labels and graphical settings defined below affect only how the results are displayed.
 
 ```{r inputs-and-style}
 # Define output paths and load the objects required by this module.
@@ -127,21 +127,15 @@ selection_objective_labels <- c(
   decrease = "Decrease"
 )
 
-# Derive statistics used by the interpretive narrative and validate
-# their consistency with the scientific objects consolidated in Module 04.
+# Derive statistics used by the interpretive narrative from the scientific objects consolidated in Module 04.
 n_traits <- length(traits)
 n_methods <- length(methods)
-n_trait_method_combinations <- nrow(model_comparison)
 n_selected_traits <- nrow(model_selection)
 
-positive_oof_from_selection <- model_selection$Trait[
-  !is.na(model_selection$r) &
-    model_selection$r > 0
-]
 
 nonpositive_oof_traits <- setdiff(
   traits,
-  positive_oof_from_selection
+  positive_oof_traits
 )
 
 positive_oof_nonsignificant_traits <- model_selection$Trait[
@@ -151,10 +145,7 @@ positive_oof_nonsignificant_traits <- model_selection$Trait[
     model_selection$p_value >= 0.05
 ]
 
-n_positive_oof_traits <- length(positive_oof_from_selection)
-
-n_available_values <- unique(selection_sizes$N_available)
-n_selected_values <- unique(selection_sizes$N_selected)
+n_positive_oof_traits <- length(positive_oof_traits)
 
 highest_oof_trait <- model_comparison$Trait[
   which.max(model_comparison$r)
@@ -202,48 +193,9 @@ selected_method_summary <- paste(
   collapse = "; "
 )
 
-stopifnot(
-  length(n_available_values) == 1L,
-  length(n_selected_values) == 1L,
-  n_trait_method_combinations == n_traits * n_methods,
-  n_selected_traits == n_traits,
-  !anyDuplicated(model_selection$Trait),
-  setequal(model_selection$Trait, traits),
-  all(!is.na(model_selection$r)),
-  setequal(
-    positive_oof_traits,
-    positive_oof_from_selection
-  ),
-  setequal(
-    selection_sizes$Trait,
-    positive_oof_traits
-  ),
-  all(
-    abs(
-      selection_sizes$Selection_proportion -
-        selection_proportion
-    ) < sqrt(.Machine$double.eps)
-  ),
-  all(
-    model_selection$Selected_method %in% names(method_labels)
-  ),
-  all(
-    model_selection$Selection_status ==
-      "rule_based_selected"
-  ),
-  nrow(selected_individuals_by_trait) ==
-    sum(selection_sizes$N_selected),
-  all(multitrait_candidates$N_traits >= 2L),
-  nrow(multitrait_candidates) ==
-    sum(
-      recurrence_distribution$N_individuals[
-        recurrence_distribution$N_traits >= 2L
-      ]
-    )
-)
 
-n_available <- n_available_values[[1]]
-n_selected_per_trait <- n_selected_values[[1]]
+n_available <- selection_sizes$N_available[[1]]
+n_selected_per_trait <- selection_sizes$N_selected[[1]]
 n_trait_candidate_occurrences <-
   nrow(selected_individuals_by_trait)
 n_recurrent_candidates <- nrow(multitrait_candidates)

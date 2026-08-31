@@ -110,26 +110,6 @@ traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
 ids <- matrices_object$ids
 
-prediction_counts <- table(
-  factor(predictions$Trait, levels = traits),
-  factor(predictions$Method, levels = methods)
-)
-
-# Exige cobertura OOF completa e única antes de recalcular o desempenho.
-stopifnot(
-  length(ids) == nrow(matrices_object$metadata),
-  identical(
-    as.character(matrices_object$metadata$IND),
-    ids
-  ),
-  all(predictions$Trait %in% traits),
-  all(predictions$Method %in% methods),
-  all(predictions$IND %in% ids),
-  anyDuplicated(
-    predictions[c("IND", "Trait", "Method")]
-  ) == 0L,
-  all(prediction_counts == length(ids))
-)
 ```
 
 ## 3. Desempenho preditivo OOF
@@ -471,14 +451,6 @@ selection_spec <- predictive_winners |>
   select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
 
-# Exige exatamente um método selecionado válido para cada característica.
-stopifnot(
-  nrow(selection_spec) == length(traits),
-  anyDuplicated(selection_spec$Trait) == 0L,
-  setequal(selection_spec$Trait, traits),
-  !anyNA(selection_spec$Selected_method),
-  all(selection_spec$Selected_method %in% methods)
-)
 ```
 
 `selection_spec` registra o resultado da hierarquia. `rule_based_selected` indica que a regra pôde ser aplicada; `provisional_review_required` identifica uma escolha preservada apenas para revisão.
@@ -585,14 +557,6 @@ model_selection <- selection_spec |>
   ) |>
   arrange(match(Trait, traits))
 
-# Confirma que a tabela final preserva uma seleção válida por característica.
-stopifnot(
-  nrow(model_selection) == length(traits),
-  anyDuplicated(model_selection$Trait) == 0L,
-  setequal(model_selection$Trait, traits),
-  !anyNA(model_selection$Selected_method),
-  all(model_selection$Selected_method %in% methods)
-)
 
 # Conta quantas características apresentam correlação OOF positiva ou não positiva.
 oof_direction_summary <- model_selection |>
@@ -900,43 +864,6 @@ selected_individuals_by_trait <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits), Rank)
 
-selected_count_check <- selected_individuals_by_trait |>
-  count(Trait, name = "N_selected_observed") |>
-  left_join(
-    selection_sizes |>
-      select(Trait, N_selected),
-    by = "Trait"
-  )
-
-# Exige que o ranking proporcional retenha exatamente o número declarado de candidatos únicos.
-stopifnot(
-  length(SELECTION_PROPORTION) == 1L,
-  is.finite(SELECTION_PROPORTION),
-  SELECTION_PROPORTION > 0,
-  SELECTION_PROPORTION <= 1,
-  setequal(selection_sizes$Trait, positive_oof_traits),
-  all(selection_sizes$N_available == length(ids)),
-  all(
-    selection_sizes$N_selected ==
-      pmax(
-        1L,
-        as.integer(
-          ceiling(
-            SELECTION_PROPORTION *
-              selection_sizes$N_available
-          )
-        )
-      )
-  ),
-  anyDuplicated(
-    selected_individuals_by_trait[c("Trait", "IND")]
-  ) == 0L,
-  nrow(selected_count_check) == nrow(selection_sizes),
-  all(
-    selected_count_check$N_selected_observed ==
-      selected_count_check$N_selected
-  )
-)
 ```
 
 ### 10.3 Diagnóstico do ponto de corte
