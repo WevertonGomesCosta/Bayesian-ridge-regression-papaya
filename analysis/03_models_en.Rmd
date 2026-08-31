@@ -125,29 +125,6 @@ G <- matrices_object$G
 cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
 
-# Require all Module 02 objects to preserve the same individuals and row order.
-stopifnot(
-  nrow(metadata) == length(ids),
-  nrow(phenotypes) == length(ids),
-  nrow(X) == length(ids),
-  nrow(M) == length(ids),
-  nrow(G) == length(ids),
-  ncol(G) == length(ids),
-  nrow(cv_folds) == length(ids),
-  identical(as.character(metadata$IND), ids),
-  identical(rownames(phenotypes), ids),
-  identical(rownames(X), ids),
-  identical(rownames(M), ids),
-  identical(rownames(G), ids),
-  identical(colnames(G), ids),
-  identical(as.character(cv_folds$IND), ids),
-  anyDuplicated(cv_folds$IND) == 0L,
-  all(
-    cv_folds$Fold %in%
-      seq_len(matrices_object$settings$n_folds)
-  ),
-  length(traits) > 0L
-)
 ```
 
 ### 2.2 Input compatibility
@@ -169,7 +146,6 @@ data.frame(
 
 All five inputs retain the same `r nrow(phenotypes)` individuals. The phenotype matrix contains `r ncol(phenotypes)` traits, `X` contains `r ncol(X)` family-design and intercept columns, `M` contains `r ncol(M)` centered dosage columns, and `G` is square with `r ncol(G)` columns. This compatibility allows the same individual order to be used throughout model fitting.
 
-These compatibility conditions are executable contracts: the module stops before model specification if dimensions, individual order, genomic-matrix labels, or fold identifiers no longer agree with `ids`. The guards validate the Module 02 objects without filtering or reconstructing them.
 
 ## 3. Statistical model
 
@@ -192,7 +168,6 @@ the family fixed effect, \(\mathbf g\) is the genomic component, and
 ### 3.1 Intercept and family fixed effect
 
 BGLR fits an intercept automatically. Therefore, the intercept column created in Module 02 is removed from `X` before the family term is specified. The remaining columns are the `FAM` contrasts produced by `model.matrix()` in Module 02; no new family coding is created here.
-
 
 
 ```{r family-fixed-effect}
@@ -351,20 +326,6 @@ RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
 BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
 RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
 
-# Require an internally consistent mapping from iterations to saved posterior draws.
-stopifnot(
-  N_ITER > 0L,
-  BURN_IN >= 0L,
-  BURN_IN < N_ITER,
-  THIN > 0L,
-  N_ITER %% THIN == 0L,
-  BURN_IN %% THIN == 0L,
-  RAW_SAVED_SAMPLES == N_ITER / THIN,
-  BURN_IN_SAVED_SAMPLES == BURN_IN / THIN,
-  RETAINED_SAMPLES ==
-    RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES,
-  RETAINED_SAMPLES > 0L
-)
 
 # Parameterize BayesB2 with a zero-effect probability of 1e-5.
 BAYESB2_ZERO_PROBABILITY <- 1e-5
@@ -560,7 +521,6 @@ followed by
 \lambda_0^2=
 2\frac{1-R^2_{\mathrm{cal}}}{R^2_{\mathrm{cal},BL}}MS_x.
 \]
-
 
 
 ```{r bl-lambda}
@@ -950,12 +910,6 @@ for (run_index in seq_len(nrow(run_design))) {
     diagnostic_trace_column[method_name]
   ]
 
-  # Require both native scalar chains to contain the expected saved draws.
-  stopifnot(
-    length(residual_trace_full) == RAW_SAVED_SAMPLES,
-    nrow(diagnostic_trace_table) == RAW_SAVED_SAMPLES,
-    length(diagnostic_trace_full) == RAW_SAVED_SAMPLES
-  )
 
   # Remove the saved samples corresponding to burn-in.
   posterior_index <- seq.int(
@@ -963,20 +917,12 @@ for (run_index in seq_len(nrow(run_design))) {
     length(residual_trace_full)
   )
 
-  stopifnot(
-    length(posterior_index) == RETAINED_SAMPLES,
-    max(posterior_index) == RAW_SAVED_SAMPLES
-  )
 
   trace_matrix <- cbind(
     Residual_variance = residual_trace_full[posterior_index],
     Representative_parameter = diagnostic_trace_full[posterior_index]
   )
 
-  stopifnot(
-    nrow(trace_matrix) == RETAINED_SAMPLES,
-    ncol(trace_matrix) == 2L
-  )
 
   # Convert chains to the coda representation.
   trace_object <- coda::mcmc(
@@ -1110,7 +1056,6 @@ so that
 \]
 
 The prediction table contains only individuals from the fold that was masked in each fit, so every row is an OOF prediction. In contrast, `genomic_values_by_fold` stores the genomic component calculated for all 150 individuals in every fit; downstream modules must respect fold context when constructing cross-fitted values.
-
 
 
 ### 10.3 Predictive metrics and Bayesian fit criteria

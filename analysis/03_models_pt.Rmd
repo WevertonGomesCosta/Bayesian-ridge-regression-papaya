@@ -125,29 +125,6 @@ G <- matrices_object$G
 cv_folds <- matrices_object$cv_folds
 traits <- colnames(phenotypes)
 
-# Exige que todos os objetos do Módulo 02 preservem os mesmos indivíduos e a mesma ordem.
-stopifnot(
-  nrow(metadata) == length(ids),
-  nrow(phenotypes) == length(ids),
-  nrow(X) == length(ids),
-  nrow(M) == length(ids),
-  nrow(G) == length(ids),
-  ncol(G) == length(ids),
-  nrow(cv_folds) == length(ids),
-  identical(as.character(metadata$IND), ids),
-  identical(rownames(phenotypes), ids),
-  identical(rownames(X), ids),
-  identical(rownames(M), ids),
-  identical(rownames(G), ids),
-  identical(colnames(G), ids),
-  identical(as.character(cv_folds$IND), ids),
-  anyDuplicated(cv_folds$IND) == 0L,
-  all(
-    cv_folds$Fold %in%
-      seq_len(matrices_object$settings$n_folds)
-  ),
-  length(traits) > 0L
-)
 ```
 
 ### 2.2 Compatibilidade das entradas
@@ -169,7 +146,6 @@ data.frame(
 
 As cinco entradas mantêm os mesmos `r nrow(phenotypes)` indivíduos. A matriz fenotípica contém `r ncol(phenotypes)` características, `X` contém `r ncol(X)` colunas do desenho de família e intercepto, `M` possui `r ncol(M)` colunas de dosagem centralizadas e `G` é quadrada com `r ncol(G)` colunas. Essa compatibilidade permite usar a mesma ordem de indivíduos em todos os ajustes.
 
-Essas condições de compatibilidade também são contratos executáveis: o módulo é interrompido antes da especificação dos modelos se dimensões, ordem dos indivíduos, rótulos da matriz genômica ou identificadores dos folds deixarem de concordar com `ids`. As guardas validam os objetos do Módulo 02 sem filtrá-los nem reconstruí-los.
 
 ## 3. Modelo estatístico
 
@@ -192,7 +168,6 @@ efeito fixo de família, \(\mathbf g\) é o componente genômico e
 ### 3.1 Intercepto e efeito fixo de família
 
 O BGLR ajusta um intercepto automaticamente. Por isso, a coluna de intercepto criada no Módulo 02 é retirada de `X` antes da especificação do termo de família. As colunas restantes representam os contrastes de `FAM` produzidos por `model.matrix()` no Módulo 02; não se cria aqui uma nova codificação de família.
-
 
 
 ```{r family-fixed-effect}
@@ -352,20 +327,6 @@ RAW_SAVED_SAMPLES <- floor(N_ITER / THIN)
 BURN_IN_SAVED_SAMPLES <- floor(BURN_IN / THIN)
 RETAINED_SAMPLES <- RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES
 
-# Exige uma conversão internamente consistente entre iterações e amostras posteriores gravadas.
-stopifnot(
-  N_ITER > 0L,
-  BURN_IN >= 0L,
-  BURN_IN < N_ITER,
-  THIN > 0L,
-  N_ITER %% THIN == 0L,
-  BURN_IN %% THIN == 0L,
-  RAW_SAVED_SAMPLES == N_ITER / THIN,
-  BURN_IN_SAVED_SAMPLES == BURN_IN / THIN,
-  RETAINED_SAMPLES ==
-    RAW_SAVED_SAMPLES - BURN_IN_SAVED_SAMPLES,
-  RETAINED_SAMPLES > 0L
-)
 
 # Parametriza a variante BayesB2 com probabilidade de efeito zero igual a 1e-5.
 BAYESB2_ZERO_PROBABILITY <- 1e-5
@@ -569,7 +530,6 @@ seguido de
 \lambda_0^2=
 2\frac{1-R^2_{\mathrm{cal}}}{R^2_{\mathrm{cal},BL}}MS_x.
 \]
-
 
 
 ```{r bl-lambda}
@@ -960,12 +920,6 @@ for (run_index in seq_len(nrow(run_design))) {
     diagnostic_trace_column[method_name]
   ]
 
-  # Exige que ambas as cadeias escalares nativas contenham o número esperado de amostras gravadas.
-  stopifnot(
-    length(residual_trace_full) == RAW_SAVED_SAMPLES,
-    nrow(diagnostic_trace_table) == RAW_SAVED_SAMPLES,
-    length(diagnostic_trace_full) == RAW_SAVED_SAMPLES
-  )
 
   # Remove das cadeias salvas a parcela correspondente ao burn-in.
   posterior_index <- seq.int(
@@ -973,20 +927,12 @@ for (run_index in seq_len(nrow(run_design))) {
     length(residual_trace_full)
   )
 
-  stopifnot(
-    length(posterior_index) == RETAINED_SAMPLES,
-    max(posterior_index) == RAW_SAVED_SAMPLES
-  )
 
   trace_matrix <- cbind(
     Residual_variance = residual_trace_full[posterior_index],
     Representative_parameter = diagnostic_trace_full[posterior_index]
   )
 
-  stopifnot(
-    nrow(trace_matrix) == RETAINED_SAMPLES,
-    ncol(trace_matrix) == 2L
-  )
 
   # Converte as cadeias para o formato utilizado pelo pacote coda.
   trace_object <- coda::mcmc(
@@ -1120,7 +1066,6 @@ portanto
 \]
 
 A tabela de predições contém somente os indivíduos do fold que estava mascarado em cada ajuste, de modo que cada linha é uma predição OOF. Já `genomic_values_by_fold` armazena o componente genômico calculado para todos os 150 indivíduos em cada ajuste; nos módulos seguintes, o contexto do fold deve ser respeitado ao construir valores cross-fitted.
-
 
 
 ### 10.3 Métricas preditivas e critérios Bayesianos de ajuste

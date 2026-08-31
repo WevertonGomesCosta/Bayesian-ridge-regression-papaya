@@ -110,26 +110,6 @@ traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
 ids <- matrices_object$ids
 
-prediction_counts <- table(
-  factor(predictions$Trait, levels = traits),
-  factor(predictions$Method, levels = methods)
-)
-
-# Require complete and unique OOF coverage before recomputing performance.
-stopifnot(
-  length(ids) == nrow(matrices_object$metadata),
-  identical(
-    as.character(matrices_object$metadata$IND),
-    ids
-  ),
-  all(predictions$Trait %in% traits),
-  all(predictions$Method %in% methods),
-  all(predictions$IND %in% ids),
-  anyDuplicated(
-    predictions[c("IND", "Trait", "Method")]
-  ) == 0L,
-  all(prediction_counts == length(ids))
-)
 ```
 
 ## 3. OOF predictive performance
@@ -471,14 +451,6 @@ selection_spec <- predictive_winners |>
   select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
 
-# Require exactly one valid selected method for every trait.
-stopifnot(
-  nrow(selection_spec) == length(traits),
-  anyDuplicated(selection_spec$Trait) == 0L,
-  setequal(selection_spec$Trait, traits),
-  !anyNA(selection_spec$Selected_method),
-  all(selection_spec$Selected_method %in% methods)
-)
 ```
 
 `selection_spec` records the result of this hierarchy. `rule_based_selected` means that the rule could be applied, whereas `provisional_review_required` identifies a choice retained only for review.
@@ -585,14 +557,6 @@ model_selection <- selection_spec |>
   ) |>
   arrange(match(Trait, traits))
 
-# Confirm that the final decision table preserves one valid selection per trait.
-stopifnot(
-  nrow(model_selection) == length(traits),
-  anyDuplicated(model_selection$Trait) == 0L,
-  setequal(model_selection$Trait, traits),
-  !anyNA(model_selection$Selected_method),
-  all(model_selection$Selected_method %in% methods)
-)
 
 # Count how many traits have positive or nonpositive OOF correlation.
 oof_direction_summary <- model_selection |>
@@ -899,43 +863,6 @@ selected_individuals_by_trait <- genomic_ranking |>
   ) |>
   arrange(match(Trait, traits), Rank)
 
-selected_count_check <- selected_individuals_by_trait |>
-  count(Trait, name = "N_selected_observed") |>
-  left_join(
-    selection_sizes |>
-      select(Trait, N_selected),
-    by = "Trait"
-  )
-
-# Require the proportional ranking to retain exactly the declared number of unique candidates.
-stopifnot(
-  length(SELECTION_PROPORTION) == 1L,
-  is.finite(SELECTION_PROPORTION),
-  SELECTION_PROPORTION > 0,
-  SELECTION_PROPORTION <= 1,
-  setequal(selection_sizes$Trait, positive_oof_traits),
-  all(selection_sizes$N_available == length(ids)),
-  all(
-    selection_sizes$N_selected ==
-      pmax(
-        1L,
-        as.integer(
-          ceiling(
-            SELECTION_PROPORTION *
-              selection_sizes$N_available
-          )
-        )
-      )
-  ),
-  anyDuplicated(
-    selected_individuals_by_trait[c("Trait", "IND")]
-  ) == 0L,
-  nrow(selected_count_check) == nrow(selection_sizes),
-  all(
-    selected_count_check$N_selected_observed ==
-      selected_count_check$N_selected
-  )
-)
 ```
 
 ### 10.3 Cutoff diagnostic

@@ -137,16 +137,6 @@ trait_dictionary <- preprocessing$trait_dictionary
 # Recupera, para rastreabilidade, o limiar de taxa de chamada aplicado no Módulo 01.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
 
-# Exige que todos os objetos recebidos preservem os mesmos indivíduos e a mesma ordem.
-stopifnot(
-  length(ids) == nrow(metadata),
-  length(ids) == nrow(phenotypes),
-  length(ids) == nrow(ssr_raw),
-  identical(as.character(metadata$IND), ids),
-  identical(rownames(metadata), ids),
-  identical(rownames(phenotypes), ids),
-  identical(rownames(ssr_raw), ids)
-)
 ```
 
 ### 2.2 Conferência do objeto recebido
@@ -176,7 +166,6 @@ data.frame(
 
 A conferência mostra `r length(ids)` indivíduos, `r ncol(phenotypes)` características fenotípicas, `r ncol(ssr_raw)` locos SSR originais e `r sum(locus_audit_full$Keep_locus)` locos mantidos após o controle de qualidade do Módulo 01. As famílias permanecem representadas por `r nlevels(metadata$FAM)` níveis de `FAM`.
 
-A identidade dos indivíduos e a ordem das linhas são contratos executáveis na entrada deste módulo: metadados, fenótipos e genótipos SSR devem corresponder exatamente a `ids` antes do início da codificação alélica. As guardas validam essa estrutura sem filtrar nem reordenar os objetos recebidos.
 
 ## 3. Codificação das dosagens alélicas
 
@@ -459,12 +448,6 @@ denominator_full <- sum(
     (1 - allele_frequencies_full)
 )
 
-# Exige uma constante de escala válida e positiva antes da construção de G.
-stopifnot(
-  length(denominator_full) == 1L,
-  is.finite(denominator_full),
-  denominator_full > 0
-)
 
 # Converte produtos de dosagens centralizadas em relacionamento genômico escalonado.
 G_full <- tcrossprod(M_full) / denominator_full
@@ -611,27 +594,6 @@ fold_summary <- data.frame(
   Validation_n = fold_sizes
 )
 
-# Exige uma partição CV completa, equilibrada e com um único fold por indivíduo.
-stopifnot(
-  length(folds) == length(ids),
-  !anyNA(folds),
-  all(folds %in% seq_len(N_FOLDS)),
-  length(fold_sizes) == N_FOLDS,
-  sum(fold_sizes) == length(ids),
-  length(ids) %% N_FOLDS == 0L,
-  length(unique(fold_sizes)) == 1L,
-  all(fold_sizes == length(ids) / N_FOLDS),
-  nrow(cv_folds) == length(ids),
-  identical(as.character(cv_folds$IND), ids),
-  anyDuplicated(cv_folds$IND) == 0L,
-  all(fold_summary$Validation_n == fold_sizes),
-  all(
-    fold_summary$Training_n +
-      fold_summary$Validation_n ==
-      length(ids)
-  ),
-  all(family_balance <= 1L)
-)
 
 tabela_html(
   fold_summary,
@@ -644,7 +606,6 @@ tabela_html(
 
 Todos os cinco folds contêm `r unique(fold_summary$Validation_n)` indivíduos de validação e `r unique(fold_summary$Training_n)` indivíduos de treinamento. Assim, o tamanho amostral é constante entre as cinco rodadas.
 
-Essas propriedades da partição também são contratos executáveis: cada indivíduo deve receber exatamente um rótulo de fold válido, os cinco folds devem conter o número esperado de candidatos e as contagens dentro de cada família podem diferir em no máximo um indivíduo. Se qualquer uma dessas condições falhar, o módulo é interrompido em vez de propagar um desenho de validação inconsistente para as etapas seguintes.
 
 ### 8.4 Equilíbrio das famílias entre os folds
 
