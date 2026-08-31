@@ -108,6 +108,28 @@ convergence <- models_object$convergence_diagnostics
 
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
+ids <- matrices_object$ids
+
+prediction_counts <- table(
+  factor(predictions$Trait, levels = traits),
+  factor(predictions$Method, levels = methods)
+)
+
+# Require complete and unique OOF coverage before recomputing performance.
+stopifnot(
+  length(ids) == nrow(matrices_object$metadata),
+  identical(
+    as.character(matrices_object$metadata$IND),
+    ids
+  ),
+  all(predictions$Trait %in% traits),
+  all(predictions$Method %in% methods),
+  all(predictions$IND %in% ids),
+  anyDuplicated(
+    predictions[c("IND", "Trait", "Method")]
+  ) == 0L,
+  all(prediction_counts == length(ids))
+)
 ```
 
 ## 3. OOF predictive performance
@@ -219,21 +241,17 @@ In the joint comparison, methods with similar DIC can have different OOF perform
 
 ## 5. Selecting a method for each trait
 
-OOF predictive ability is the primary criterion. DIC provides complementary
-information about fit and complexity, while variation across folds and MCMC
-diagnostics help evaluate the stability of the decision.
+Selection is trait-specific and hierarchical: predictive evidence, DIC support, and the monitored MCMC diagnostics remain separate rather than being collapsed into a single score.
 
-A method is considered predictively competitive when its mean fold correlation
-is within one standard error below the largest mean and its mean RMSE is within
-one standard error above the smallest mean RMSE. DIC fit is considered similar
-when `Delta_DIC <= 2`. These thresholds define an operational competitive set,
-not a formal equivalence test.
+The selection hierarchy is applied identically to every trait and can be read as one five-step algorithm:
 
-When RR-BLUP/BRR belongs to this competitive set and has no convergence flags,
-it is preferred as the homogeneous-shrinkage benchmark with the simpler
-parameterization. Otherwise, the best competitive candidate without flags is
-used; when no rule-based candidate is available, the predictive winner is
-retained as a provisional choice for review.
+1. identify the OOF predictive winner and the DIC winner separately;
+2. define the predictively competitive set by simultaneously requiring the descriptive one-standard-error tolerances for `Mean_fold_r` and `Mean_fold_RMSE`;
+3. classify a method as an automatic candidate only if it also satisfies `Delta_DIC <= 2` and has no flags in the monitored MCMC diagnostics;
+4. among automatic candidates, prioritize RR-BLUP; if RR-BLUP is not in that set, order the remaining candidates by pooled OOF correlation, RMSE, MAE, and DIC;
+5. if no automatic candidate exists, retain the predictive winner as a provisional choice requiring review; then attach the selected method's metrics and calculate `Predictive_loss` only as a descriptive diagnostic.
+
+The blocks below implement these five steps while keeping predictive evidence, DIC fit evidence, and MCMC diagnostics conceptually separate.
 
 ### 5.1 Predictive and DIC winners
 
@@ -301,11 +319,7 @@ convergence_by_trait_method <- convergence |>
 
 ### 5.3 Competitive set
 
-The one-standard-error rule is applied to mean fold correlation and RMSE. For each trait, the correlation tolerance uses the across-fold standard deviation of the method with the largest `Mean_fold_r`, divided by `sqrt(5)`; analogously, the RMSE tolerance uses the method with the smallest `Mean_fold_RMSE`. A candidate must satisfy both tolerances simultaneously.
-
-The tolerances are derived from the method with the largest mean correlation and the method with the smallest mean RMSE. A method must satisfy both correlation and RMSE tolerances to be classified as predictively competitive.
-
-Next, `Delta_DIC <= 2` restricts the set to fits with operationally similar DIC, and any flag among the monitored diagnostics prevents classification as an automatic candidate. Because training sets overlap across folds, these standard errors are descriptive tolerances rather than independent-sample inferential standard errors.
+Steps 2 and 3 are implemented here. Predictive competitiveness simultaneously requires the one-standard-error tolerances for correlation and RMSE: the former uses the across-fold standard deviation of the method with the largest `Mean_fold_r`, and the latter uses the method with the smallest `Mean_fold_RMSE`, both divided by `sqrt(5)`. `Delta_DIC <= 2` and the absence of flags in the monitored diagnostics then define an automatic candidate. Because training sets overlap across folds, these tolerances are descriptive rather than independent-sample inferential standard errors.
 
 ```{r selection-competitive-set}
 # Combine performance, DIC, and MCMC diagnostics to define the competitive set for each trait.
@@ -379,7 +393,7 @@ model_selection_support <- model_comparison |>
 
 ### 5.4 Method choice
 
-RR-BLUP receives priority among automatic candidates as an explicit parsimony choice and homogeneous-shrinkage benchmark; this priority does not imply universal statistical superiority of RR-BLUP. If RR-BLUP is not an automatic candidate, the remaining candidates are ordered by pooled OOF correlation, followed by RMSE, MAE, and DIC. If no automatic candidate exists, the predictive winner is retained only as a provisional choice requiring review.
+Steps 4 and 5 are implemented here. RR-BLUP receives priority only within the automatic-candidate set as an explicit parsimony choice and homogeneous-shrinkage benchmark, without implying universal statistical superiority. If RR-BLUP is absent from that set, the remaining candidates follow the order `r`, RMSE, MAE, and DIC; if no automatic candidate exists, the predictive winner is retained provisionally for review.
 
 
 ```{r selection-choice}
@@ -456,6 +470,15 @@ selection_spec <- predictive_winners |>
   ) |>
   select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
+
+# Require exactly one valid selected method for every trait.
+stopifnot(
+  nrow(selection_spec) == length(traits),
+  anyDuplicated(selection_spec$Trait) == 0L,
+  setequal(selection_spec$Trait, traits),
+  !anyNA(selection_spec$Selected_method),
+  all(selection_spec$Selected_method %in% methods)
+)
 ```
 
 `selection_spec` records the result of this hierarchy. `rule_based_selected` means that the rule could be applied, whereas `provisional_review_required` identifies a choice retained only for review.
@@ -562,13 +585,22 @@ model_selection <- selection_spec |>
   ) |>
   arrange(match(Trait, traits))
 
+# Confirm that the final decision table preserves one valid selection per trait.
+stopifnot(
+  nrow(model_selection) == length(traits),
+  anyDuplicated(model_selection$Trait) == 0L,
+  setequal(model_selection$Trait, traits),
+  !anyNA(model_selection$Selected_method),
+  all(model_selection$Selected_method %in% methods)
+)
+
 # Count how many traits have positive or nonpositive OOF correlation.
 oof_direction_summary <- model_selection |>
   count(OOF_predictive_direction, name = "Traits") |>
   arrange(OOF_predictive_direction)
 ```
 
-This is the main decision table by trait. In addition to the selected method, it preserves the predictive and DIC winners, records whether the RR-BLUP preference was applied, and makes the direction and nominal strength of the OOF signal explicit.
+This is the main decision table by trait. In addition to the selected method, it preserves the predictive and DIC winners, displays `Predictive_loss` as a descriptive diagnostic, records whether the RR-BLUP preference was applied, and makes the direction and nominal strength of the OOF signal explicit.
 
 ```{r model-selection-table}
 # DISPLAY-ONLY START
@@ -587,6 +619,7 @@ model_selection_display <- model_selection |>
     RMSE = sprintf("%.3f", RMSE),
     Mean_DIC = sprintf("%.2f", Mean_DIC),
     Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Predictive_loss = sprintf("%.3f", Predictive_loss),
     RRBLUP_preference_applied,
     Selection_status,
     OOF_predictive_direction,
@@ -596,7 +629,7 @@ model_selection_display <- model_selection |>
 format_table(
   model_selection_display,
   caption = "Method selected for each trait",
-  col.names = c("Trait", "Selected method", "Predictive winner", "DIC winner", "r", "p-value", "RMSE", "Mean DIC", "Delta DIC", "RR-BLUP preference applied", "Selection status", "OOF predictive direction", "OOF nominal signal")
+  col.names = c("Trait", "Selected method", "Predictive winner", "DIC winner", "r", "p-value", "RMSE", "Mean DIC", "Delta DIC", "Predictive loss", "RR-BLUP preference applied", "Selection status", "OOF predictive direction", "OOF nominal signal")
 )
 # DISPLAY-ONLY END
 ```
@@ -865,6 +898,44 @@ selected_individuals_by_trait <- genomic_ranking |>
     Selection_proportion, N_available, N_selected
   ) |>
   arrange(match(Trait, traits), Rank)
+
+selected_count_check <- selected_individuals_by_trait |>
+  count(Trait, name = "N_selected_observed") |>
+  left_join(
+    selection_sizes |>
+      select(Trait, N_selected),
+    by = "Trait"
+  )
+
+# Require the proportional ranking to retain exactly the declared number of unique candidates.
+stopifnot(
+  length(SELECTION_PROPORTION) == 1L,
+  is.finite(SELECTION_PROPORTION),
+  SELECTION_PROPORTION > 0,
+  SELECTION_PROPORTION <= 1,
+  setequal(selection_sizes$Trait, positive_oof_traits),
+  all(selection_sizes$N_available == length(ids)),
+  all(
+    selection_sizes$N_selected ==
+      pmax(
+        1L,
+        as.integer(
+          ceiling(
+            SELECTION_PROPORTION *
+              selection_sizes$N_available
+          )
+        )
+      )
+  ),
+  anyDuplicated(
+    selected_individuals_by_trait[c("Trait", "IND")]
+  ) == 0L,
+  nrow(selected_count_check) == nrow(selection_sizes),
+  all(
+    selected_count_check$N_selected_observed ==
+      selected_count_check$N_selected
+  )
+)
 ```
 
 ### 10.3 Cutoff diagnostic

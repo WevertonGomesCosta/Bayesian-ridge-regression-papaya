@@ -135,6 +135,17 @@ locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
 # Recover, for provenance, the call-rate threshold applied in Module 01.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
+
+# Require every received object to preserve the same individuals and row order.
+stopifnot(
+  length(ids) == nrow(metadata),
+  length(ids) == nrow(phenotypes),
+  length(ids) == nrow(ssr_raw),
+  identical(as.character(metadata$IND), ids),
+  identical(rownames(metadata), ids),
+  identical(rownames(phenotypes), ids),
+  identical(rownames(ssr_raw), ids)
+)
 ```
 
 ### 2.2 Check of the received object
@@ -163,6 +174,8 @@ data.frame(
 ```
 
 The check shows `r length(ids)` individuals, `r ncol(phenotypes)` phenotype traits, `r ncol(ssr_raw)` original SSR loci, and `r sum(locus_audit_full$Keep_locus)` loci retained after Module 01 quality control. Family remains represented by `r nlevels(metadata$FAM)` levels of `FAM`.
+
+Individual identity and row order are executable contracts at this module boundary: metadata, phenotypes, and SSR genotypes must all correspond exactly to `ids` before allele coding begins. The guards validate this structure without filtering or reordering the received objects.
 
 ## 3. Allele-dosage coding
 
@@ -444,6 +457,13 @@ denominator_full <- sum(
     (1 - allele_frequencies_full)
 )
 
+# Require a valid positive scaling constant before constructing G.
+stopifnot(
+  length(denominator_full) == 1L,
+  is.finite(denominator_full),
+  denominator_full > 0
+)
+
 # Convert cross-products of centered dosages into scaled genomic relationships.
 G_full <- tcrossprod(M_full) / denominator_full
 
@@ -588,6 +608,28 @@ fold_summary <- data.frame(
   Validation_n = fold_sizes
 )
 
+# Require a complete, balanced, one-fold-per-individual CV partition.
+stopifnot(
+  length(folds) == length(ids),
+  !anyNA(folds),
+  all(folds %in% seq_len(N_FOLDS)),
+  length(fold_sizes) == N_FOLDS,
+  sum(fold_sizes) == length(ids),
+  length(ids) %% N_FOLDS == 0L,
+  length(unique(fold_sizes)) == 1L,
+  all(fold_sizes == length(ids) / N_FOLDS),
+  nrow(cv_folds) == length(ids),
+  identical(as.character(cv_folds$IND), ids),
+  anyDuplicated(cv_folds$IND) == 0L,
+  all(fold_summary$Validation_n == fold_sizes),
+  all(
+    fold_summary$Training_n +
+      fold_summary$Validation_n ==
+      length(ids)
+  ),
+  all(family_balance <= 1L)
+)
+
 format_table(
   fold_summary,
   col.names = c("Fold", "Training N", "Validation N"),
@@ -598,6 +640,8 @@ format_table(
 ### 8.3 Training and validation sizes
 
 All five folds contain `r unique(fold_summary$Validation_n)` validation individuals and `r unique(fold_summary$Training_n)` training individuals. Sample size is therefore constant across the five rounds.
+
+These partition properties are also executable contracts: every individual must receive exactly one valid fold label, all five folds must contain the expected number of candidates, and within-family counts may differ by at most one individual. Failure of any of these conditions stops the module rather than allowing an inconsistent validation design to propagate downstream.
 
 ### 8.4 Family balance across folds
 
@@ -670,7 +714,7 @@ In the analyzed data set, the 72 dosage columns do not represent 72 independent 
 
 ### 10.2 Consolidated numerical checks
 
-The diploid property is checked by confirming that allele dosages at each locus sum to 2 for every individual. Centering of `M` is evaluated through its column means, and `G` is reconstructed from `M` to confirm numerical consistency. Symmetry, rank, diagonal values, and the smallest eigenvalue complete the diagnostics of the genomic relationship matrix.
+The diploid coding property is checked before allele-column filtering: for every retained SSR locus from Module 01, dosages across all alleles originally coded for an observed genotype must sum to 2. Missing SSR calls are excluded from this coding check rather than imputed for it. Centering of `M` is evaluated through its column means, and `G` is reconstructed from `M` to confirm numerical consistency. Symmetry, rank, diagonal values, and the smallest eigenvalue complete the diagnostics of the genomic relationship matrix.
 
 ```{r matrix-diagnostics}
 # Check dimensions, ranks, linear dependencies, and numerical properties of X, M, and G.
@@ -689,27 +733,29 @@ maximum_G_reconstruction_difference <- max(
   abs(G_full - G_reconstructed)
 )
 
-locus_names <- unique(
-  allele_audit_full$Locus[
-    allele_audit_full$Keep_allele
-  ]
-)
+# Check the diploid coding before allele-column filtering.
+# Use every allele originally coded for each retained SSR locus.
+coded_locus_names <- unique(allele_audit_full$Locus)
 
-dosage_sum_error <- numeric(length(locus_names))
+dosage_sum_error <- numeric(length(coded_locus_names))
 
-for (j in seq_along(locus_names)) {
-  # Select dosage columns belonging to the same locus.
+for (j in seq_along(coded_locus_names)) {
+  locus_name <- coded_locus_names[j]
+
+  # Select all originally coded allele columns from the current locus.
   locus_columns <- allele_audit_full$Marker[
-    allele_audit_full$Keep_allele &
-      allele_audit_full$Locus == locus_names[j]
+    allele_audit_full$Locus == locus_name
   ]
 
-  # In a diploid individual, dosage sums to 2 within a locus.
+  # Evaluate only individuals with an observed SSR genotype at this locus.
+  observed_rows <- !is.na(ssr_full[, locus_name])
+
+  # For an observed diploid genotype, allele dosages across the locus sum to 2.
   dosage_sum_error[j] <- max(
     abs(
       rowSums(
-        dosage_full_imputed[
-          ,
+        dosage_full_raw[
+          observed_rows,
           locus_columns,
           drop = FALSE
         ]
@@ -800,7 +846,7 @@ format_table(
 # DISPLAY-ONLY END
 ```
 
-The final inventory collects the preceding checks in one table. For the analyzed data, `M` contains `r ncol(M_full)` columns and rank `r qr(M_full)$rank`, equal to the structural rank bound `r structural_rank_bound_M`; dosage sums within loci and reconstruction of `G` have maximum errors close to zero, and all five folds retain the same training and validation sizes.
+The final inventory collects the preceding checks in one table. For the analyzed data, `M` contains `r ncol(M_full)` columns and rank `r qr(M_full)$rank`, equal to the structural rank bound `r structural_rank_bound_M`; the pre-filter diploid dosage coding and reconstruction of `G` have maximum errors close to zero, and all five folds retain the same training and validation sizes.
 
 ## 11. Saving matrices and folds
 

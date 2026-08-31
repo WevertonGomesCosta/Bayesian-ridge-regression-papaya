@@ -136,6 +136,17 @@ locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
 # Recupera, para rastreabilidade, o limiar de taxa de chamada aplicado no Módulo 01.
 CALL_RATE_MIN <- preprocessing$settings$call_rate_min
+
+# Exige que todos os objetos recebidos preservem os mesmos indivíduos e a mesma ordem.
+stopifnot(
+  length(ids) == nrow(metadata),
+  length(ids) == nrow(phenotypes),
+  length(ids) == nrow(ssr_raw),
+  identical(as.character(metadata$IND), ids),
+  identical(rownames(metadata), ids),
+  identical(rownames(phenotypes), ids),
+  identical(rownames(ssr_raw), ids)
+)
 ```
 
 ### 2.2 Conferência do objeto recebido
@@ -164,6 +175,8 @@ data.frame(
 ```
 
 A conferência mostra `r length(ids)` indivíduos, `r ncol(phenotypes)` características fenotípicas, `r ncol(ssr_raw)` locos SSR originais e `r sum(locus_audit_full$Keep_locus)` locos mantidos após o controle de qualidade do Módulo 01. As famílias permanecem representadas por `r nlevels(metadata$FAM)` níveis de `FAM`.
+
+A identidade dos indivíduos e a ordem das linhas são contratos executáveis na entrada deste módulo: metadados, fenótipos e genótipos SSR devem corresponder exatamente a `ids` antes do início da codificação alélica. As guardas validam essa estrutura sem filtrar nem reordenar os objetos recebidos.
 
 ## 3. Codificação das dosagens alélicas
 
@@ -446,6 +459,13 @@ denominator_full <- sum(
     (1 - allele_frequencies_full)
 )
 
+# Exige uma constante de escala válida e positiva antes da construção de G.
+stopifnot(
+  length(denominator_full) == 1L,
+  is.finite(denominator_full),
+  denominator_full > 0
+)
+
 # Converte produtos de dosagens centralizadas em relacionamento genômico escalonado.
 G_full <- tcrossprod(M_full) / denominator_full
 
@@ -591,6 +611,28 @@ fold_summary <- data.frame(
   Validation_n = fold_sizes
 )
 
+# Exige uma partição CV completa, equilibrada e com um único fold por indivíduo.
+stopifnot(
+  length(folds) == length(ids),
+  !anyNA(folds),
+  all(folds %in% seq_len(N_FOLDS)),
+  length(fold_sizes) == N_FOLDS,
+  sum(fold_sizes) == length(ids),
+  length(ids) %% N_FOLDS == 0L,
+  length(unique(fold_sizes)) == 1L,
+  all(fold_sizes == length(ids) / N_FOLDS),
+  nrow(cv_folds) == length(ids),
+  identical(as.character(cv_folds$IND), ids),
+  anyDuplicated(cv_folds$IND) == 0L,
+  all(fold_summary$Validation_n == fold_sizes),
+  all(
+    fold_summary$Training_n +
+      fold_summary$Validation_n ==
+      length(ids)
+  ),
+  all(family_balance <= 1L)
+)
+
 tabela_html(
   fold_summary,
   col.names = c("Fold", "N treinamento", "N validação"),
@@ -601,6 +643,8 @@ tabela_html(
 ### 8.3 Tamanhos de treinamento e validação
 
 Todos os cinco folds contêm `r unique(fold_summary$Validation_n)` indivíduos de validação e `r unique(fold_summary$Training_n)` indivíduos de treinamento. Assim, o tamanho amostral é constante entre as cinco rodadas.
+
+Essas propriedades da partição também são contratos executáveis: cada indivíduo deve receber exatamente um rótulo de fold válido, os cinco folds devem conter o número esperado de candidatos e as contagens dentro de cada família podem diferir em no máximo um indivíduo. Se qualquer uma dessas condições falhar, o módulo é interrompido em vez de propagar um desenho de validação inconsistente para as etapas seguintes.
 
 ### 8.4 Equilíbrio das famílias entre os folds
 
@@ -673,7 +717,7 @@ No conjunto de dados analisado, as 72 colunas de dosagem não representam 72 dim
 
 ### 10.2 Verificações numéricas consolidadas
 
-A propriedade diploide é verificada confirmando que as dosagens alélicas de cada loco somam 2 por indivíduo. A centralização de `M` é avaliada pelas médias de suas colunas, e `G` é reconstruída a partir de `M` para confirmar consistência numérica. Simetria, posto, diagonal e menor autovalor completam os diagnósticos da matriz de relacionamento genômico.
+A propriedade diploide da codificação é verificada antes do filtro das colunas alélicas: para cada loco SSR mantido no Módulo 01, as dosagens de todos os alelos originalmente codificados para um genótipo observado devem somar 2. Chamadas SSR ausentes são excluídas dessa verificação da codificação, em vez de serem imputadas para esse fim. A centralização de `M` é avaliada pelas médias de suas colunas, e `G` é reconstruída a partir de `M` para confirmar consistência numérica. Simetria, posto, diagonal e menor autovalor completam os diagnósticos da matriz de relacionamento genômico.
 
 ```{r diagnostico-matrizes}
 # Verifica dimensões, postos, dependências lineares e propriedades numéricas de X, M e G.
@@ -692,27 +736,29 @@ maximum_G_reconstruction_difference <- max(
   abs(G_full - G_reconstructed)
 )
 
-locus_names <- unique(
-  allele_audit_full$Locus[
-    allele_audit_full$Keep_allele
-  ]
-)
+# Verifica a codificação diploide antes do filtro das colunas alélicas.
+# Usa todos os alelos originalmente codificados de cada loco SSR mantido.
+coded_locus_names <- unique(allele_audit_full$Locus)
 
-dosage_sum_error <- numeric(length(locus_names))
+dosage_sum_error <- numeric(length(coded_locus_names))
 
-for (j in seq_along(locus_names)) {
-  # Seleciona as colunas de dosagem pertencentes ao mesmo loco.
+for (j in seq_along(coded_locus_names)) {
+  locus_name <- coded_locus_names[j]
+
+  # Seleciona todas as colunas alélicas originalmente codificadas do loco atual.
   locus_columns <- allele_audit_full$Marker[
-    allele_audit_full$Keep_allele &
-      allele_audit_full$Locus == locus_names[j]
+    allele_audit_full$Locus == locus_name
   ]
 
-  # Em um indivíduo diploide, a soma das dosagens do loco é igual a 2.
+  # Avalia somente indivíduos com genótipo SSR observado neste loco.
+  observed_rows <- !is.na(ssr_full[, locus_name])
+
+  # Para um genótipo diploide observado, as dosagens do loco somam 2.
   dosage_sum_error[j] <- max(
     abs(
       rowSums(
-        dosage_full_imputed[
-          ,
+        dosage_full_raw[
+          observed_rows,
           locus_columns,
           drop = FALSE
         ]
@@ -803,7 +849,7 @@ tabela_html(
 # DISPLAY-ONLY END
 ```
 
-O inventário final reúne em uma única tabela as verificações anteriores. Para os dados analisados, `M` possui `r ncol(M_full)` colunas e posto `r qr(M_full)$rank`, igual ao limite estrutural de posto `r structural_rank_bound_M`; a soma das dosagens por loco e a reconstrução de `G` apresentam erros máximos próximos de zero, e os cinco folds mantêm os mesmos tamanhos de treinamento e validação.
+O inventário final reúne em uma única tabela as verificações anteriores. Para os dados analisados, `M` possui `r ncol(M_full)` colunas e posto `r qr(M_full)$rank`, igual ao limite estrutural de posto `r structural_rank_bound_M`; a codificação diploide anterior ao filtro e a reconstrução de `G` apresentam erros máximos próximos de zero, e os cinco folds mantêm os mesmos tamanhos de treinamento e validação.
 
 ## 11. Gravação das matrizes e dos folds
 

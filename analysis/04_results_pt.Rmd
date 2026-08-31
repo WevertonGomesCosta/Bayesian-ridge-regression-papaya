@@ -108,6 +108,28 @@ convergence <- models_object$convergence_diagnostics
 
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
+ids <- matrices_object$ids
+
+prediction_counts <- table(
+  factor(predictions$Trait, levels = traits),
+  factor(predictions$Method, levels = methods)
+)
+
+# Exige cobertura OOF completa e única antes de recalcular o desempenho.
+stopifnot(
+  length(ids) == nrow(matrices_object$metadata),
+  identical(
+    as.character(matrices_object$metadata$IND),
+    ids
+  ),
+  all(predictions$Trait %in% traits),
+  all(predictions$Method %in% methods),
+  all(predictions$IND %in% ids),
+  anyDuplicated(
+    predictions[c("IND", "Trait", "Method")]
+  ) == 0L,
+  all(prediction_counts == length(ids))
+)
 ```
 
 ## 3. Desempenho preditivo OOF
@@ -219,21 +241,17 @@ Na comparação conjunta, métodos com DIC próximos podem apresentar desempenho
 
 ## 5. Seleção do método por característica
 
-A capacidade preditiva OOF é o critério principal. DIC fornece evidência
-complementar sobre ajuste e complexidade, enquanto a variação entre folds e os
-diagnósticos MCMC ajudam a avaliar a estabilidade da escolha.
+A seleção é específica por característica e hierárquica: evidência preditiva, suporte por DIC e diagnósticos MCMC monitorados permanecem separados, em vez de serem combinados em um único escore.
 
-Um método é considerado preditivamente competitivo quando sua média de
-correlação entre folds está até um erro-padrão abaixo da maior média e seu RMSE
-médio está até um erro-padrão acima do menor RMSE médio. O ajuste por DIC é
-considerado semelhante quando `Delta_DIC <= 2`. Esses limites definem um
-conjunto competitivo operacional, e não um teste formal de equivalência.
+A hierarquia de seleção é aplicada da mesma forma a cada característica e pode ser lida como um único algoritmo de cinco passos:
 
-Quando RR-BLUP/BRR pertence a esse conjunto competitivo e não apresenta flags
-de convergência, ele é preferido como referência de contração homogênea e de
-parametrização mais simples. Caso contrário, é utilizado o melhor candidato
-competitivo sem flags; se não houver candidato elegível pela regra, o vencedor
-preditivo é mantido como escolha provisória para revisão.
+1. identificar separadamente o vencedor preditivo OOF e o vencedor por DIC;
+2. definir o conjunto preditivamente competitivo, exigindo simultaneamente as tolerâncias descritivas de um erro-padrão para `Mean_fold_r` e `Mean_fold_RMSE`;
+3. classificar como candidato automático apenas o método que também satisfaça `Delta_DIC <= 2` e não apresente flags nos diagnósticos MCMC monitorados;
+4. entre os candidatos automáticos, priorizar RR-BLUP; se RR-BLUP não estiver nesse conjunto, ordenar os demais por correlação OOF agrupada, RMSE, MAE e DIC;
+5. se não existir candidato automático, manter o vencedor preditivo como escolha provisória para revisão; em seguida, anexar as métricas do método escolhido e calcular `Predictive_loss` apenas como diagnóstico descritivo.
+
+Os blocos seguintes implementam esses cinco passos e preservam separadamente evidência preditiva, ajuste por DIC e diagnósticos MCMC.
 
 ### 5.1 Vencedores preditivo e por DIC
 
@@ -301,11 +319,7 @@ convergence_by_trait_method <- convergence |>
 
 ### 5.3 Conjunto competitivo
 
-A regra de um erro-padrão é aplicada à correlação e ao RMSE médios entre folds. Para cada característica, a tolerância de correlação usa o desvio-padrão entre folds do método com a maior `Mean_fold_r`, dividido por `sqrt(5)`; analogamente, a tolerância de RMSE usa o método com a menor `Mean_fold_RMSE`. Um candidato precisa satisfazer simultaneamente as duas tolerâncias.
-
-As tolerâncias são derivadas do método de maior correlação média e do método de menor RMSE médio. Um método precisa satisfazer simultaneamente as tolerâncias de correlação e RMSE para ser classificado como preditivamente competitivo.
-
-Em seguida, `Delta_DIC <= 2` restringe o conjunto a ajustes com DIC operacionalmente semelhante e qualquer flag entre os diagnósticos monitorados impede a classificação como candidato automático. Como os conjuntos de treinamento se sobrepõem entre folds, esses erros-padrão são tolerâncias descritivas e não são interpretados como erros-padrão inferenciais de amostras independentes.
+Os passos 2 e 3 são implementados aqui. A competitividade preditiva exige simultaneamente as tolerâncias de um erro-padrão para correlação e RMSE: a primeira usa o desvio-padrão entre folds do método com maior `Mean_fold_r`, e a segunda usa o método com menor `Mean_fold_RMSE`, ambas divididas por `sqrt(5)`. Em seguida, `Delta_DIC <= 2` e a ausência de flags nos diagnósticos monitorados definem o candidato automático. Como os conjuntos de treinamento se sobrepõem entre folds, essas tolerâncias são descritivas e não erros-padrão inferenciais de amostras independentes.
 
 ```{r selection-competitive-set}
 # Combina desempenho, DIC e diagnósticos MCMC para definir o conjunto competitivo de cada característica.
@@ -379,7 +393,7 @@ model_selection_support <- model_comparison |>
 
 ### 5.4 Escolha do método
 
-Entre os candidatos automáticos, RR-BLUP recebe prioridade como escolha explícita de parcimônia e referência de contração homogênea; essa prioridade não implica superioridade estatística universal do RR-BLUP. Se RR-BLUP não for candidato automático, os demais são ordenados pela correlação OOF agrupada, seguida de RMSE, MAE e DIC. Na ausência de qualquer candidato automático, o vencedor preditivo é mantido apenas como escolha provisória que requer revisão.
+Os passos 4 e 5 são implementados aqui. RR-BLUP recebe prioridade somente dentro do conjunto de candidatos automáticos como escolha explícita de parcimônia e referência de contração homogênea, sem implicar superioridade estatística universal. Na ausência de RR-BLUP nesse conjunto, os demais candidatos seguem a ordem `r`, RMSE, MAE e DIC; se não houver candidato automático, o vencedor preditivo é preservado provisoriamente para revisão.
 
 
 ```{r selection-choice}
@@ -456,6 +470,15 @@ selection_spec <- predictive_winners |>
   ) |>
   select(-Predictive_winner, -Convergence_review) |>
   arrange(match(Trait, traits))
+
+# Exige exatamente um método selecionado válido para cada característica.
+stopifnot(
+  nrow(selection_spec) == length(traits),
+  anyDuplicated(selection_spec$Trait) == 0L,
+  setequal(selection_spec$Trait, traits),
+  !anyNA(selection_spec$Selected_method),
+  all(selection_spec$Selected_method %in% methods)
+)
 ```
 
 `selection_spec` registra o resultado da hierarquia. `rule_based_selected` indica que a regra pôde ser aplicada; `provisional_review_required` identifica uma escolha preservada apenas para revisão.
@@ -562,13 +585,22 @@ model_selection <- selection_spec |>
   ) |>
   arrange(match(Trait, traits))
 
+# Confirma que a tabela final preserva uma seleção válida por característica.
+stopifnot(
+  nrow(model_selection) == length(traits),
+  anyDuplicated(model_selection$Trait) == 0L,
+  setequal(model_selection$Trait, traits),
+  !anyNA(model_selection$Selected_method),
+  all(model_selection$Selected_method %in% methods)
+)
+
 # Conta quantas características apresentam correlação OOF positiva ou não positiva.
 oof_direction_summary <- model_selection |>
   count(OOF_predictive_direction, name = "Traits") |>
   arrange(OOF_predictive_direction)
 ```
 
-Esta é a tabela principal de decisão por característica. Além do método selecionado, ela preserva os vencedores preditivo e por DIC, registra se a preferência por RR-BLUP foi aplicada e explicita a direção e a força nominal do sinal OOF.
+Esta é a tabela principal de decisão por característica. Além do método selecionado, ela preserva os vencedores preditivo e por DIC, mostra `Predictive_loss` como diagnóstico descritivo, registra se a preferência por RR-BLUP foi aplicada e explicita a direção e a força nominal do sinal OOF.
 
 ```{r model-selection-table}
 # DISPLAY-ONLY START
@@ -587,6 +619,7 @@ model_selection_display <- model_selection |>
     RMSE = sprintf("%.3f", RMSE),
     Mean_DIC = sprintf("%.2f", Mean_DIC),
     Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Predictive_loss = sprintf("%.3f", Predictive_loss),
     RRBLUP_preference_applied,
     Selection_status,
     OOF_predictive_direction,
@@ -596,7 +629,7 @@ model_selection_display <- model_selection |>
 tabela_html(
   model_selection_display,
   caption = "Método selecionado por característica",
-  col.names = c("Característica", "Método selecionado", "Vencedor preditivo", "Vencedor por DIC", "r", "p-valor", "RMSE", "DIC médio", "Delta DIC", "Preferência por RR-BLUP aplicada", "Status da seleção", "Direção preditiva OOF", "Sinal nominal OOF")
+  col.names = c("Característica", "Método selecionado", "Vencedor preditivo", "Vencedor por DIC", "r", "p-valor", "RMSE", "DIC médio", "Delta DIC", "Perda preditiva", "Preferência por RR-BLUP aplicada", "Status da seleção", "Direção preditiva OOF", "Sinal nominal OOF")
 )
 # DISPLAY-ONLY END
 ```
@@ -866,6 +899,44 @@ selected_individuals_by_trait <- genomic_ranking |>
     Selection_proportion, N_available, N_selected
   ) |>
   arrange(match(Trait, traits), Rank)
+
+selected_count_check <- selected_individuals_by_trait |>
+  count(Trait, name = "N_selected_observed") |>
+  left_join(
+    selection_sizes |>
+      select(Trait, N_selected),
+    by = "Trait"
+  )
+
+# Exige que o ranking proporcional retenha exatamente o número declarado de candidatos únicos.
+stopifnot(
+  length(SELECTION_PROPORTION) == 1L,
+  is.finite(SELECTION_PROPORTION),
+  SELECTION_PROPORTION > 0,
+  SELECTION_PROPORTION <= 1,
+  setequal(selection_sizes$Trait, positive_oof_traits),
+  all(selection_sizes$N_available == length(ids)),
+  all(
+    selection_sizes$N_selected ==
+      pmax(
+        1L,
+        as.integer(
+          ceiling(
+            SELECTION_PROPORTION *
+              selection_sizes$N_available
+          )
+        )
+      )
+  ),
+  anyDuplicated(
+    selected_individuals_by_trait[c("Trait", "IND")]
+  ) == 0L,
+  nrow(selected_count_check) == nrow(selection_sizes),
+  all(
+    selected_count_check$N_selected_observed ==
+      selected_count_check$N_selected
+  )
+)
 ```
 
 ### 10.3 Diagnóstico do ponto de corte
