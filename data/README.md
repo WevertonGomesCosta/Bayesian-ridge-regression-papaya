@@ -1,22 +1,25 @@
 # Data contract
 
 The project uses two canonical source workbooks. Their filenames were normalized
-to make paths portable across operating systems.
+to make paths portable across operating systems. The workbooks are required
+locally for a full reproduction of the analysis but are intentionally excluded
+from Git; this versioned file preserves their provenance and validation
+fingerprints.
 
 The genotype workbook is the normalized version of the originally supplied SSR
 workbook. The phenotype workbook is the **corrected canonical phenotype file**
 currently used by the analytical workflow. The fingerprints below identify the
 exact current canonical workbooks and are the authoritative provenance record
-for reproducibility.
+for verifying local copies.
 
-| Project file | Provenance | Current SHA-256 | Current Git blob SHA |
-|---|---|---|---|
-| `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; portable filename | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` | `0f310c634fc3f8f152a660efb6395491a21008c3` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; corrected canonical phenotype workbook | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` | `7ea40c6a7bd4e54462ef3343c151c0a5194f7bc6` |
+| Project file | Provenance | Current SHA-256 |
+|---|---|---|
+| `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; portable filename | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; corrected canonical phenotype workbook | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` |
 
-The SHA-256 values identify the exact current workbook bytes for external
-verification and archiving. The Git blob SHA identifies the corresponding file
-object versioned in this repository.
+The SHA-256 values identify the exact canonical workbook bytes and allow local
+copies to be checked against the files used by the validated workflow. The
+workbooks themselves are not tracked in the current Git tree.
 
 ## Genotypes
 

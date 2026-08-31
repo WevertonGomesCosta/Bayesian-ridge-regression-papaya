@@ -35,9 +35,9 @@ Genotype-derived matrices are constructed from the aligned genotyped candidate p
 ### Repository structure
 
 - `analysis/`: bilingual `workflowr` source pages for the site and Modules 01--05;
-- `data/`: canonical source workbooks and the data contract;
+- `data/`: local canonical source workbooks, excluded from Git, plus the versioned data contract in `data/README.md`;
 - `docs/`: rendered tutorial website;
-- `output/`: analytical objects, diagnostics, tables, and figures created by the workflow; this directory is ignored by Git;
+- `output/`: analytical objects, diagnostics, tables, and figures created by the workflow; generated artifacts are ignored by default, while selected result tables under `output/results/m04/` are versioned;
 - `renv.lock` and `renv/`: metadata for the reproducible R environment.
 
 ### Reproducing the workflow
@@ -53,7 +53,7 @@ Then inspect [`data/README.md`](data/README.md) for the source-data contract and
 
 ### Data and references
 
-The source workbooks are versioned in `data/` with portable filenames. Their original names, SHA-256 checksums, and alignment invariants are documented in [`data/README.md`](data/README.md).
+The canonical source workbooks are kept locally in `data/` with portable filenames and are excluded from Git. Their original names, SHA-256 checksums, and alignment invariants are documented in [`data/README.md`](data/README.md).
 
 The main methodological reference for the comparative analytical structure is:
 
@@ -90,9 +90,9 @@ As matrizes derivadas dos genótipos são construídas a partir do painel alinha
 ### Estrutura do repositório
 
 - `analysis/`: páginas-fonte bilíngues do `workflowr` para o site e os Módulos 01--05;
-- `data/`: planilhas-fonte canônicas e contrato dos dados;
+- `data/`: planilhas-fonte canônicas mantidas localmente e excluídas do Git, além do contrato versionado em `data/README.md`;
 - `docs/`: site tutorial renderizado;
-- `output/`: objetos analíticos, diagnósticos, tabelas e figuras produzidos pelo fluxo; esse diretório é ignorado pelo Git;
+- `output/`: objetos analíticos, diagnósticos, tabelas e figuras produzidos pelo fluxo; os artefatos gerados são ignorados por padrão, enquanto tabelas selecionadas de `output/results/m04/` são versionadas;
 - `renv.lock` e `renv/`: metadados do ambiente R reprodutível.
 
 ### Reprodução do fluxo
@@ -108,7 +108,7 @@ Em seguida, consulte [`data/README.md`](data/README.md) para o contrato dos dado
 
 ### Dados e referências
 
-As planilhas-fonte são versionadas em `data/` com nomes portáveis. Seus nomes originais, hashes SHA-256 e invariantes de alinhamento estão documentados em [`data/README.md`](data/README.md).
+As planilhas-fonte canônicas são mantidas localmente em `data/` com nomes portáveis e são excluídas do Git. Seus nomes originais, hashes SHA-256 e invariantes de alinhamento estão documentados em [`data/README.md`](data/README.md).
 
 A principal referência metodológica para a estrutura comparativa das análises é:
 
