@@ -40,7 +40,7 @@ A coluna de bloco (`BL`) é removida porque não participa do modelo estatístic
 
 O pré-processamento produz três objetos centrais para as etapas seguintes: a matriz fenotípica alinhada, a matriz SSR após o controle de qualidade dos locos e os metadados com indivíduo e família. Os diagnósticos verificam a consistência desses objetos antes da construção das matrizes genômicas.
 
-## 2. Pacotes, arquivos e parâmetros
+## 2. Pacotes utilizados
 
 Os pacotes utilizados neste módulo têm funções distintas:
 
@@ -48,6 +48,7 @@ Os pacotes utilizados neste módulo têm funções distintas:
 - `dplyr`: seleção, transformação e organização das tabelas;
 - `tidyr`: reorganização dos dados entre formatos largo e longo;
 - `ggplot2`: construção dos gráficos de controle de qualidade e distribuição fenotípica;
+- `ggthemes`: aplicação do tema e da escala de cores GDocs nas figuras;
 - `knitr`: formatação de tabelas em documentos R Markdown;
 - `here`: construção de caminhos de arquivos independentes do diretório local do computador.
 
@@ -56,6 +57,7 @@ library(readxl)  # Leitura de arquivos Excel.
 library(dplyr)   # Manipulação e transformação de tabelas.
 library(tidyr)   # Reorganização de dados entre formatos largo e longo.
 library(ggplot2) # Construção de gráficos.
+library(ggthemes) # Tema e escala de cores GDocs.
 library(knitr)   # Formatação de tabelas e saídas do R Markdown.
 library(here)    # Construção de caminhos portáveis dentro do projeto.
 ```
@@ -83,25 +85,6 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-Dois parâmetros de controle são fixados:
-
-- `CALL_RATE_MIN = 0.90`: exige que pelo menos 90% das chamadas de um loco estejam disponíveis. Como o painel possui 150 indivíduos, isso corresponde a pelo menos 135 genótipos observados por loco. Em conjunto com a exigência de pelo menos duas classes genotípicas, o critério evita manter locos com informação insuficiente para representar variação.
-- `PHENOTYPE_DISTANCE_THRESHOLD = 4`: identifica, apenas para inspeção, observações a pelo menos quatro desvios-padrão da média da característica. Essa regra é diagnóstica: nenhum fenótipo é removido, limitado a um valor de corte ou alterado por esse critério.
-
-```{r caminhos}
-# Define os dois arquivos de entrada e a pasta em que o pré-processamento será salvo.
-GENOTYPE_FILE <- here("data", "papaya_ssr_genotypes.xlsx")
-PHENOTYPE_FILE <- here("data", "papaya_phenotypes_2024_2025.xlsx")
-OUTPUT_DIR <- here("output", "preprocessing")
-
-# Exige pelo menos 90% de chamadas disponíveis para manter um loco SSR.
-CALL_RATE_MIN <- 0.90
-# Usa quatro desvios-padrão somente como limiar de sinalização diagnóstica.
-PHENOTYPE_DISTANCE_THRESHOLD <- 4
-
-dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
-```
-
 ## 3. Leitura das planilhas originais
 
 ### 3.1 Dados genotípicos
@@ -112,14 +95,14 @@ A aba `Genealex` fornece os identificadores dos indivíduos e os nomes dos locos
 
 ```{r leitura-genotipos}
 genes <- read_excel(
-  GENOTYPE_FILE,
+  here("data", "papaya_ssr_genotypes.xlsx"),
   sheet = "Genes",
   col_names = FALSE,
   na = c("", "NA")
 )
 
 genealex <- read_excel(
-  GENOTYPE_FILE,
+  here("data", "papaya_ssr_genotypes.xlsx"),
   sheet = "Genealex",
   col_names = FALSE,
   na = c("", "NA")
@@ -139,33 +122,32 @@ A prévia mostra o formato bruto dos genótipos: a primeira coluna é um índice
 
 Os dados fenotípicos estão na aba `Médias_IND_artigo`, que já possui nomes de colunas. Essa fonte contém os identificadores dos indivíduos, a família e as características avaliadas.
 
-A coluna `BL`, correspondente ao bloco experimental, é removida imediatamente após a leitura porque não participa do modelo estatístico adotado. `IND`, `FAM` e as dez características permanecem disponíveis para o alinhamento com os genótipos.
+A coluna `BL`, correspondente ao bloco experimental, é mantida neste primeiro momento para que `pheno_raw` represente fielmente a planilha original. Como `BL` não participa do modelo estatístico adotado, ela será deixada de fora quando o conjunto de colunas analíticas for definido na Seção 5.
 
 ```{r leitura-fenotipos}
 pheno_raw <- read_excel(
-  PHENOTYPE_FILE,
+  here("data", "papaya_phenotypes_2024_2025.xlsx"),
   sheet = "Médias_IND_artigo",
   na = c("", "NA")
-) |>
-  select(-BL)
+)
 ```
 
-A tabela fenotípica é inspecionada após a remoção de `BL`:
+A tabela fenotípica é inspecionada ainda em sua forma original:
 
 ```{r previa-fenotipos}
 head(pheno_raw) |>
-  tabela_html(caption = "Prévia dos dados fenotípicos")
+  tabela_html(caption = "Prévia dos dados fenotípicos originais")
 ```
 
-A prévia apresenta `IND`, `FAM` e as dez características utilizadas na análise. A ausência de `BL` confirma que essa coluna foi retirada antes do alinhamento com os genótipos.
+A prévia mostra a estrutura da planilha fenotípica antes da seleção das variáveis analíticas, incluindo `IND`, `FAM`, `BL` e as dez características avaliadas.
 
 ### 3.3 Verificação inicial das fontes
 
-Antes de organizar e alinhar os dados, as dimensões das três estruturas importadas são comparadas. Essa verificação é estrutural: `Genes` contém os códigos genotípicos, `Genealex` preserva os metadados do formato GenAlEx e `pheno_raw` contém os fenótipos.
+Antes de organizar e alinhar os dados, as dimensões das três estruturas importadas são comparadas. Essa verificação é estrutural: `Genes` contém os códigos genotípicos, `Genealex` preserva os metadados do formato GenAlEx e `pheno_raw` preserva a planilha fenotípica original.
 
 ```{r dimensoes-dados}
 data.frame(
-  Fonte = c("Genes", "Genealex", "Médias_IND_artigo sem BL"),
+  Fonte = c("Genes", "Genealex", "Médias_IND_artigo"),
   Linhas = c(nrow(genes), nrow(genealex), nrow(pheno_raw)),
   Colunas = c(ncol(genes), ncol(genealex), ncol(pheno_raw))
 ) |>
@@ -180,14 +162,19 @@ A tabela confirma que `Genes` contém `r nrow(genes)` indivíduos e `r ncol(gene
 
 A primeira coluna da aba `Genes` contém um índice sequencial de grupos populacionais e não representa a variável fenotípica `FAM`. As 35 colunas restantes correspondem aos locos SSR originais.
 
-Na aba `Genealex`, os identificadores dos indivíduos e os nomes dos locos ocupam posições fixas da estrutura GenAlEx. Essas posições são recuperadas primeiro, antes da construção da matriz genotípica, para que linhas e colunas possam receber os identificadores corretos.
+Na aba `Genealex`, os identificadores dos indivíduos começam na quarta linha da segunda coluna, após as três linhas de metadados. Os nomes dos locos começam na terceira coluna e aparecem a cada duas colunas. O número de indivíduos e de locos a recuperar é obtido diretamente das dimensões da aba `Genes`.
 
 ```{r identificadores-ssr}
-n_individuals <- nrow(genes)
-n_loci <- ncol(genes) - 1
+individual_rows <- seq(
+  from = 4,
+  length.out = nrow(genes)
+)
 
-individual_rows <- 4:(3 + n_individuals)
-locus_columns <- seq(3, 2 + 2 * n_loci, by = 2)
+locus_columns <- seq(
+  from = 3,
+  by = 2,
+  length.out = ncol(genes) - 1
+)
 
 ids <- trimws(
   as.character(genealex[[2]][individual_rows])
@@ -199,6 +186,32 @@ locus_names <- trimws(
   )
 )
 ```
+
+Antes de construir a matriz SSR, verificamos os identificadores recuperados da estrutura GenAlEx. Essa checagem permanece junto da etapa que criou `ids` e `locus_names`, facilitando a interpretação de eventuais inconsistências.
+
+```{r verificacao-identificadores-ssr}
+ssr_identifier_checks <- data.frame(
+  Verificacao = c(
+    "Identificadores genotípicos ausentes",
+    "Identificadores genotípicos duplicados",
+    "Nomes de locos ausentes",
+    "Nomes de locos duplicados"
+  ),
+  Valor = c(
+    sum(is.na(ids) | ids == ""),
+    sum(duplicated(ids)),
+    sum(is.na(locus_names) | locus_names == ""),
+    sum(duplicated(locus_names))
+  )
+)
+
+tabela_html(
+  ssr_identifier_checks,
+  caption = "Verificação dos identificadores genotípicos e dos locos"
+)
+```
+
+As verificações apresentam `r sum(ssr_identifier_checks$Valor)` ocorrências problemáticas, confirmando que os identificadores dos indivíduos e os nomes dos locos podem ser usados na construção da matriz SSR.
 
 ### 4.2 Construção da matriz SSR
 
@@ -229,7 +242,7 @@ O valor `33` observado em `P3K3256CC` não representa erro ou categoria especial
 
 ## 5. Organização e alinhamento dos fenótipos
 
-Esta etapa transforma a tabela fenotípica bruta em objetos alinhados à matriz SSR. O processo é apresentado em cinco partes: definição das características, correspondência dos indivíduos, verificação dos identificadores, alinhamento efetivo e separação entre metadados e fenótipos numéricos.
+Esta etapa transforma a tabela fenotípica bruta em objetos alinhados à matriz SSR. O processo é apresentado em quatro partes: definição das características, verificação e correspondência dos indivíduos, alinhamento efetivo e separação entre metadados e fenótipos numéricos.
 
 ### 5.1 Características utilizadas
 
@@ -290,21 +303,34 @@ tabela_html(
 
 O dicionário evidencia que produção e massa são expressas em kg, dimensões dos frutos em cm, firmeza em N e sólidos solúveis em °Brix. Essa diferença de unidades explica por que as escalas numéricas das características não devem ser comparadas diretamente.
 
-### 5.2 Correspondência entre indivíduos genotipados e fenotipados
+### 5.2 Colunas analíticas e correspondência entre indivíduos
 
-Antes de reordenar qualquer linha, verificamos se as colunas obrigatórias estão presentes e se as duas fontes representam o mesmo conjunto de plantas.
+Antes de reordenar qualquer linha, definimos as colunas que formarão a tabela analítica. `BL` fica de fora porque não participa do modelo estatístico adotado. Em seguida, verificamos os identificadores fenotípicos e comparamos o conjunto de plantas das duas fontes.
 
 ```{r correspondencia-individuos}
-# Define as colunas que precisam estar presentes antes do alinhamento.
+# Define as colunas analíticas; BL fica de fora porque não participa do modelo.
 required_columns <- c("IND", "FAM", TRAITS)
-missing_columns <- setdiff(required_columns, names(pheno_raw))
 
-
+# Padroniza os identificadores fenotípicos antes da comparação com os genótipos.
 pheno_raw$IND <- trimws(as.character(pheno_raw$IND))
 
-# Compara os conjuntos de identificadores nas duas fontes antes de reordenar as linhas.
-missing_in_pheno <- setdiff(ids, pheno_raw$IND)
-missing_in_geno <- setdiff(pheno_raw$IND, ids)
+phenotype_checks <- data.frame(
+  Verificacao = c(
+    "Identificadores fenotípicos ausentes",
+    "Identificadores fenotípicos duplicados",
+    "Colunas fenotípicas obrigatórias ausentes"
+  ),
+  Valor = c(
+    sum(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
+    sum(duplicated(pheno_raw$IND)),
+    length(setdiff(required_columns, names(pheno_raw)))
+  )
+)
+
+tabela_html(
+  phenotype_checks,
+  caption = "Verificação dos identificadores e das colunas fenotípicas"
+)
 
 alignment <- data.frame(
   Verificacao = c(
@@ -316,8 +342,8 @@ alignment <- data.frame(
   Valor = c(
     length(ids),
     nrow(pheno_raw),
-    length(missing_in_pheno),
-    length(missing_in_geno)
+    length(setdiff(ids, pheno_raw$IND)),
+    length(setdiff(pheno_raw$IND, ids))
   )
 )
 
@@ -327,67 +353,22 @@ tabela_html(
 )
 ```
 
-A tabela confirma `r length(ids)` indivíduos genotipados e `r nrow(pheno_raw)` indivíduos fenotipados, sem indivíduos presentes em apenas uma das fontes. Assim, o alinhamento pode ser realizado sem descartar plantas.
+As verificações fenotípicas apresentam `r sum(phenotype_checks$Valor)` ocorrências problemáticas. A tabela de alinhamento confirma `r length(ids)` indivíduos genotipados e `r nrow(pheno_raw)` indivíduos fenotipados, sem plantas presentes em apenas uma das fontes. Assim, o alinhamento pode ser realizado sem descartar indivíduos.
 
-### 5.3 Verificação dos identificadores
-
-```{r verificacao-identificadores}
-# Resume os resultados no objeto `identifier_summary`.
-identifier_summary <- data.frame(
-  Verificacao = c(
-    "Identificadores genotípicos ausentes",
-    "Identificadores genotípicos duplicados",
-    "Nomes de locos ausentes",
-    "Nomes de locos duplicados",
-    "Identificadores fenotípicos ausentes",
-    "Identificadores fenotípicos duplicados",
-    "Colunas fenotípicas obrigatórias ausentes"
-  ),
-  Valor = c(
-    sum(is.na(ids) | ids == ""),
-    sum(duplicated(ids)),
-    sum(is.na(locus_names) | locus_names == ""),
-    sum(duplicated(locus_names)),
-    sum(is.na(pheno_raw$IND) | pheno_raw$IND == ""),
-    sum(duplicated(pheno_raw$IND)),
-    length(missing_columns)
-  )
-)
-
-tabela_html(
-  identifier_summary,
-  caption = "Resumo dos identificadores e das colunas"
-)
-
-```
-
-As verificações de consistência apresentam `r sum(identifier_summary$Valor)` ocorrências problemáticas no total. Para os dados analisados, isso confirma ausência de identificadores vazios ou duplicados, nomes de locos ausentes ou duplicados e colunas fenotípicas obrigatórias ausentes.
-
-
-### 5.4 Alinhamento efetivo dos fenótipos
+### 5.3 Alinhamento efetivo dos fenótipos
 
 Somente depois das verificações anteriores os fenótipos são reordenados para seguir exatamente a sequência dos indivíduos na matriz SSR.
 
 ```{r alinhamento-fenotipos}
-# Armazena explicitamente a correspondência das linhas.
-alignment_index <- match(ids, pheno_raw$IND)
-
 # Reordena os fenótipos para a mesma sequência dos indivíduos genotipados.
 pheno <- pheno_raw[
-  alignment_index,
+  match(ids, pheno_raw$IND),
   required_columns
 ]
 
-
-# Converte explicitamente as dez características para valores numéricos.
-for (trait in TRAITS) {
-  pheno[[trait]] <- as.numeric(
-    as.character(pheno[[trait]])
-  )
-}
 ```
 
-### 5.5 Metadados e matriz fenotípica
+### 5.4 Metadados e matriz fenotípica
 
 Depois do alinhamento, `metadata` mantém `IND` e `FAM`, enquanto `phenotypes` contém somente as dez características numéricas. Assim, a família permanece categórica e não é misturada aos fenótipos.
 
@@ -423,35 +404,27 @@ O controle de qualidade considera duas propriedades de cada loco: a proporção 
 Esses critérios distinguem falta de dados de ausência de variação. Assim, um loco com alta taxa de chamada ainda pode ser removido se for monomórfico no painel. O filtro atua somente sobre os locos: `ssr_raw` preserva a matriz original para diagnóstico, enquanto `ssr` contém os locos que seguem para a codificação alélica no Módulo 02.
 
 ```{r qualidade-marcadores}
-# Calcula taxa de chamada e diversidade de classes genotípicas para decidir quais locos SSR serão mantidos.
-genotype_classes <- integer(ncol(ssr_raw))
+# Define o limiar de taxa de chamada imediatamente antes de aplicá-lo no controle de qualidade.
+CALL_RATE_MIN <- 0.90
 
-for (j in seq_len(ncol(ssr_raw))) {
-  # Conta quantas classes genotípicas foram observadas no loco.
-  genotype_classes[j] <- length(
-    unique(na.omit(ssr_raw[, j]))
-  )
-}
-
+# Resume, para cada loco, completude e diversidade genotípica.
 locus_audit <- data.frame(
   Locus = colnames(ssr_raw),
   N_called = colSums(!is.na(ssr_raw)),
   Call_rate = colMeans(!is.na(ssr_raw)),
-  N_genotype_classes = genotype_classes
+  N_genotype_classes = apply(
+    ssr_raw,
+    2,
+    function(genotypes) length(unique(na.omit(genotypes)))
+  )
 )
-
-rownames(locus_audit) <- NULL
 
 locus_audit$Keep_locus <-
   locus_audit$Call_rate >= CALL_RATE_MIN &
   locus_audit$N_genotype_classes >= 2
 
 # Mantém na matriz SSR apenas os locos que passaram os critérios de qualidade.
-ssr <- ssr_raw[
-  ,
-  locus_audit$Keep_locus,
-  drop = FALSE
-]
+ssr <- ssr_raw[, locus_audit$Keep_locus, drop = FALSE]
 
 tabela_html(
   locus_audit,
@@ -467,35 +440,50 @@ Dos `r nrow(locus_audit)` locos avaliados, `r sum(locus_audit$Keep_locus)` atend
 
 ### 6.3 Visualização da taxa de chamada
 
-A figura ordena os locos pela taxa de chamada e posiciona uma linha horizontal em 0,90. A cor informa a decisão final de retenção, que depende também do número de classes genotípicas; portanto, um loco pode estar acima da linha de taxa de chamada e ainda assim ser removido por falta de variação genotípica.
+A figura resume simultaneamente a completude dos locos e a decisão final do controle de qualidade. Cada barra representa a proporção de genótipos observados em um loco, e a linha pontilhada marca a taxa mínima de chamada de 0,90. As cores seguem a decisão final de retenção: atingir 0,90 é necessário, mas o loco também precisa apresentar pelo menos duas classes genotípicas.
 
-```{r grafico-qualidade-marcadores, fig.height=7, fig.alt="Gráfico de controle de qualidade mostrando as taxas de chamada dos locos SSR, o limite de referência de 0,90 e a decisão final de manutenção de cada loco."}
-# Constrói o gráfico de taxa de chamada dos locos e destaca o limite mínimo de qualidade.
+```{r grafico-qualidade-marcadores, fig.height=8, fig.alt="Gráfico de barras horizontais mostrando a taxa de chamada dos 35 locos SSR, a linha de referência de 90% e a decisão final de manutenção ou remoção de cada loco."}
 ggplot(
   locus_audit,
   aes(
     x = reorder(Locus, Call_rate),
     y = Call_rate,
-    fill = Keep_locus
+    fill = factor(
+      Keep_locus,
+      levels = c(TRUE, FALSE),
+      labels = c("Mantido", "Removido")
+    )
   )
 ) +
-  geom_col() +
+  geom_col(width = 0.8) +
   geom_hline(
-    # Adiciona a linha horizontal que representa o limite mínimo de taxa de chamada.
     yintercept = CALL_RATE_MIN,
-    linetype = 2
+    linetype = 2,
+    linewidth = 0.6
   ) +
   coord_flip() +
+  scale_y_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.2),
+    labels = paste0(seq(0, 100, 20), "%"),
+    expand = expansion(mult = c(0, 0.02))
+  ) +
+  scale_fill_gdocs(name = "Decisão") +
   labs(
     x = NULL,
     y = "Taxa de chamada",
-    fill = "Mantido",
-    title = "Taxa de chamada dos locos SSR"
+    title = "Completude e retenção dos locos SSR",
+    subtitle = "A linha pontilhada marca a taxa mínima de chamada de 90%; a retenção também exige pelo menos duas classes genotípicas",
+    caption = "A cor representa a decisão final do controle de qualidade, e não apenas a taxa de chamada."
   ) +
-  theme_bw()
+  theme_gdocs() +
+  theme(
+    legend.position = "top",
+    axis.text.y = element_text(size = 8)
+  )
 ```
 
-A figura mostra que a decisão de retenção não depende apenas da posição em relação à linha de 0,90. Um loco pode apresentar alta taxa de chamada e ainda ser excluído se somente uma classe genotípica estiver representada, como ocorre com o loco identificado na tabela anterior.
+A leitura da figura deve combinar altura e cor das barras. A altura informa a completude do loco, enquanto a cor informa o resultado dos dois critérios usados em conjunto. Por isso, um loco pode alcançar ou ultrapassar a linha de 90% e ainda assim ser removido se apenas uma classe genotípica estiver representada. A figura não indica exclusão de indivíduos; o filtro atua somente sobre os locos.
 
 ## 7. Completude genotípica por indivíduo
 
@@ -511,7 +499,7 @@ individual_audit <- data.frame(
 
 rownames(individual_audit) <- NULL
 
-individual_call_rate_summary <- data.frame(
+data.frame(
   Medida = c("Mínimo", "Média", "Mediana", "Máximo"),
   # Lista as taxas de chamada usadas no resumo por indivíduo.
   Call_rate = c(
@@ -520,14 +508,12 @@ individual_call_rate_summary <- data.frame(
     median(individual_audit$Call_rate),
     max(individual_audit$Call_rate)
   )
-)
-
-tabela_html(
-  individual_call_rate_summary,
-  digits = 3,
-  caption = "Distribuição da taxa de chamada SSR por indivíduo",
-  col.names = c("Medida", "Taxa de chamada")
-)
+) |>
+  tabela_html(
+    digits = 3,
+    caption = "Distribuição da taxa de chamada SSR por indivíduo",
+    col.names = c("Medida", "Taxa de chamada")
+  )
 ```
 
 A taxa de chamada por indivíduo varia de `r sprintf("%.1f%%", 100 * min(individual_audit$Call_rate))` a `r sprintf("%.1f%%", 100 * max(individual_audit$Call_rate))`, com média de `r sprintf("%.1f%%", 100 * mean(individual_audit$Call_rate))`. Como não há regra de exclusão por indivíduo, essas diferenças são registradas apenas como informação de completude genotípica.
@@ -539,25 +525,14 @@ A taxa de chamada por indivíduo varia de `r sprintf("%.1f%%", 100 * min(individ
 As estatísticas descritivas permitem verificar diretamente a escala, a dispersão e a amplitude das dez características antes de qualquer ajuste de predição. `N` também confirma a disponibilidade de fenótipos por característica. Nenhuma transformação ou padronização permanente dos fenótipos é realizada nesta etapa; os valores originais são preservados para os modelos.
 
 ```{r resumo-fenotipos}
-# Calcula estatísticas descritivas para caracterizar a escala e a variabilidade dos fenótipos.
-phenotype_sd <- numeric(ncol(phenotypes))
-phenotype_minimum <- numeric(ncol(phenotypes))
-phenotype_maximum <- numeric(ncol(phenotypes))
-
-for (j in seq_len(ncol(phenotypes))) {
-  phenotype_sd[j] <- sd(phenotypes[, j])
-  phenotype_minimum[j] <- min(phenotypes[, j])
-  phenotype_maximum[j] <- max(phenotypes[, j])
-}
-
-# Resume os resultados no objeto `phenotype_summary`.
+# Resume diretamente disponibilidade, posição, dispersão e amplitude de cada característica.
 phenotype_summary <- data.frame(
   Trait = colnames(phenotypes),
   N = colSums(!is.na(phenotypes)),
   Mean = colMeans(phenotypes),
-  SD = phenotype_sd,
-  Minimum = phenotype_minimum,
-  Maximum = phenotype_maximum
+  SD = apply(phenotypes, 2, sd),
+  Minimum = apply(phenotypes, 2, min),
+  Maximum = apply(phenotypes, 2, max)
 )
 
 rownames(phenotype_summary) <- NULL
@@ -569,31 +544,29 @@ tabela_html(
 )
 ```
 
-Todas as dez características apresentam `r min(phenotype_summary$N)` observações disponíveis, confirmando ausência de dados fenotípicos faltantes nas variáveis analisadas. Como as características utilizam unidades e amplitudes distintas, desvios-padrão e intervalos devem ser interpretados dentro de cada característica, e não comparados diretamente entre unidades diferentes.
+Todas as dez características apresentam `r min(phenotype_summary$N)` observações disponíveis, confirmando ausência de dados fenotípicos faltantes nas variáveis analisadas. A média localiza o centro de cada distribuição, o desvio-padrão resume sua dispersão e os valores mínimo e máximo delimitam a amplitude observada. Como as características utilizam unidades diferentes, essas medidas devem ser interpretadas dentro de cada característica e não comparadas diretamente entre escalas distintas.
 
 ### 8.2 Observações fenotípicas distantes da média
 
-Os valores padronizados são utilizados somente como diagnóstico descritivo. Para cada característica, calcula-se
+Os valores padronizados permitem comparar a distância de cada observação em relação à média de sua própria característica, independentemente da unidade original. Para cada característica, calcula-se
 
 \[
 z = \frac{y-\bar{y}}{s},
 \]
 
-em que $y$ é o valor observado, $\bar{y}$ é a média e $s$ é o desvio-padrão amostral. Observações cuja distância padronizada absoluta é de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão são destacadas para inspeção. Esse procedimento não remove, limita ou transforma os fenótipos usados posteriormente nos modelos.
+em que $y$ é o valor observado, $\bar{y}$ é a média e $s$ é o desvio-padrão amostral. As médias e os desvios-padrão já calculados em `phenotype_summary` são reutilizados nesta etapa, evitando repetir os mesmos cálculos.
+
+Observações cuja distância padronizada absoluta é de pelo menos quatro desvios-padrão são destacadas para inspeção. Esse limiar é apenas diagnóstico: nenhuma observação é removida, limitada ou transformada por esse critério.
 
 ```{r valores-fenotipicos-distantes}
-# Padroniza os fenótipos e identifica observações distantes da média segundo o limite definido.
-phenotype_means <- colMeans(phenotypes)
-phenotype_standard_deviations <- numeric(ncol(phenotypes))
+# Define o limiar diagnóstico imediatamente antes de identificar observações distantes da média.
+PHENOTYPE_DISTANCE_THRESHOLD <- 4
 
-for (j in seq_len(ncol(phenotypes))) {
-  phenotype_standard_deviations[j] <- sd(phenotypes[, j])
-}
-
+# Padroniza cada característica usando a média e o desvio-padrão já resumidos na seção anterior.
 phenotype_standardized <- scale(
   phenotypes,
-  center = phenotype_means,
-  scale = phenotype_standard_deviations
+  center = phenotype_summary$Mean,
+  scale = phenotype_summary$SD
 )
 
 # Localiza as observações cuja distância padronizada alcança o limite definido.
@@ -606,8 +579,8 @@ phenotype_extremes <- data.frame(
   IND = rownames(phenotypes)[extreme_positions[, "row"]],
   Trait = colnames(phenotypes)[extreme_positions[, "col"]],
   Value = phenotypes[extreme_positions],
-  Trait_mean = phenotype_means[extreme_positions[, "col"]],
-  Trait_SD = phenotype_standard_deviations[extreme_positions[, "col"]],
+  Trait_mean = phenotype_summary$Mean[extreme_positions[, "col"]],
+  Trait_SD = phenotype_summary$SD[extreme_positions[, "col"]],
   Standardized_value = phenotype_standardized[extreme_positions],
   Absolute_standardized_distance = abs(
     phenotype_standardized[extreme_positions]
@@ -640,14 +613,75 @@ tabela_html(
 )
 ```
 
-Foram destacadas `r nrow(phenotype_extremes)` observações com distância padronizada de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. Essas observações permanecem nos dados e nos modelos; a tabela apenas documenta quais valores merecem inspeção adicional.
+Foram destacadas `r nrow(phenotype_extremes)` observações com distância padronizada de pelo menos `r PHENOTYPE_DISTANCE_THRESHOLD` desvios-padrão. A tabela identifica o indivíduo, a característica, o valor original e sua distância em unidades de desvio-padrão, permitindo inspecionar cada caso sem alterar os dados usados posteriormente.
+
+A figura seguinte mostra o mesmo diagnóstico para todas as 1.500 combinações indivíduo × característica. Valores próximos de zero estão próximos da média da respectiva característica; valores negativos e positivos indicam observações abaixo ou acima dessa média. Como o eixo está em unidades de desvio-padrão, as dez características podem ser comparadas na mesma escala diagnóstica.
+
+```{r grafico-distancia-fenotipica, fig.height=7.5, fig.alt="Gráfico de pontos mostrando os valores fenotípicos padronizados das dez características, com linhas verticais em menos quatro e mais quatro desvios-padrão e destaque das observações que alcançam ou ultrapassam esses limites."}
+data.frame(
+  IND = rownames(phenotypes),
+  as.data.frame(phenotype_standardized, check.names = FALSE),
+  check.names = FALSE
+) |>
+  pivot_longer(
+    cols = -IND,
+    names_to = "Trait",
+    values_to = "Standardized_value"
+  ) |>
+  mutate(
+    Trait = factor(Trait, levels = rev(TRAITS)),
+    Diagnostico = factor(
+      abs(Standardized_value) >= PHENOTYPE_DISTANCE_THRESHOLD,
+      levels = c(FALSE, TRUE),
+      labels = c("Dentro do limite", "Destacada")
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Standardized_value,
+      y = Trait,
+      colour = Diagnostico
+    )
+  ) +
+  geom_vline(
+    xintercept = c(
+      -PHENOTYPE_DISTANCE_THRESHOLD,
+      PHENOTYPE_DISTANCE_THRESHOLD
+    ),
+    linetype = 2,
+    linewidth = 0.6
+  ) +
+  geom_point(
+    position = position_jitter(
+      width = 0,
+      height = 0.16,
+      seed = 2026
+    ),
+    alpha = 0.7,
+    size = 1.6
+  ) +
+  scale_color_gdocs(
+    name = "Diagnóstico",
+    drop = FALSE
+  ) +
+  labs(
+    x = "Distância padronizada em relação à média (desvios-padrão)",
+    y = NULL,
+    title = "Distância padronizada das observações fenotípicas",
+    subtitle = "As linhas pontilhadas marcam os limites diagnósticos de -4 e +4 desvios-padrão",
+    caption = "Cada ponto representa uma combinação indivíduo × característica; nenhuma observação é removida por este diagnóstico."
+  ) +
+  theme_gdocs() +
+  theme(legend.position = "top")
+```
+
+A maior parte das observações deve se concentrar em torno de zero, enquanto os pontos destacados aparecem nas regiões mais afastadas das respectivas médias. As linhas em -4 e +4 tornam visualmente explícito o critério usado na tabela anterior. O gráfico serve para localizar observações incomuns em escala padronizada; ele não é um teste de normalidade e não define exclusões automáticas.
 
 ### 8.3 Distribuições fenotípicas
 
-Os histogramas complementam as estatísticas descritivas ao mostrar concentração, dispersão e assimetria em cada característica. São usadas 20 classes apenas para padronizar a resolução visual. Como as características possuem unidades e amplitudes distintas, cada painel utiliza sua própria escala horizontal; por isso, os limites dos eixos não devem ser comparados diretamente entre características.
+Os histogramas complementam a tabela anterior ao mostrar a forma das distribuições. Cada painel representa uma característica e identifica sua unidade de medida. São usadas 20 classes para manter a mesma resolução visual entre os painéis. Como as unidades e amplitudes diferem, somente o eixo horizontal varia livremente; a escala vertical de contagens permanece comum às dez características. A linha pontilhada marca a média apresentada em `phenotype_summary`.
 
-```{r grafico-fenotipos, fig.height=8, fig.alt="Gráfico fenotípico em painéis mostrando as distribuições das dez características de produção e qualidade dos frutos no painel analítico."}
-# Reorganiza os fenótipos em formato longo e mostra suas distribuições em histogramas.
+```{r grafico-fenotipos, fig.height=10, fig.alt="Conjunto de dez histogramas das características fenotípicas, com uma cor da escala GDocs para cada característica e uma linha pontilhada indicando a média em cada painel."}
 phenotype_long <- data.frame(
   IND = rownames(phenotypes),
   phenotypes,
@@ -657,44 +691,86 @@ phenotype_long <- data.frame(
     cols = -IND,
     names_to = "Trait",
     values_to = "Value"
-  )
+  ) |>
+  mutate(Trait = factor(Trait, levels = TRAITS))
 
-# Constrói o gráfico usado na interpretação.
-ggplot(phenotype_long, aes(x = Value)) +
-  # Usa 20 classes apenas para padronizar a resolução visual dos histogramas.
-  geom_histogram(bins = 20) +
-  # Usa escala horizontal própria para cada característica, pois as unidades e amplitudes diferem.
-  facet_wrap(~ Trait, scales = "free", ncol = 2) +
+ggplot(
+  phenotype_long,
+  aes(x = Value, fill = Trait)
+) +
+  geom_histogram(
+    bins = 20,
+    colour = "white",
+    linewidth = 0.25
+  ) +
+  geom_vline(
+    data = phenotype_summary,
+    aes(xintercept = Mean),
+    inherit.aes = FALSE,
+    linetype = 2,
+    linewidth = 0.6
+  ) +
+  facet_wrap(
+    ~ Trait,
+    scales = "free_x",
+    ncol = 2,
+    labeller = as_labeller(
+      setNames(
+        paste0(trait_dictionary$Trait, " (", trait_dictionary$Unit, ")"),
+        trait_dictionary$Trait
+      )
+    )
+  ) +
+  scale_fill_gdocs(guide = "none") +
   labs(
     x = "Valor observado",
     y = "Número de indivíduos",
-    title = "Distribuições fenotípicas"
+    title = "Distribuições fenotípicas das dez características",
+    subtitle = "Cada painel possui sua própria escala horizontal; a linha pontilhada indica a média da característica",
+    caption = "Os histogramas são diagnósticos descritivos e não constituem testes de normalidade."
   ) +
-  theme_bw()
+  theme_gdocs() +
+  theme(
+    strip.text = element_text(face = "bold"),
+    axis.text = element_text(size = 9)
+  )
 ```
 
-Os histogramas permitem avaliar concentração, dispersão e assimetria dentro de cada característica. Eles são diagnósticos descritivos e não constituem testes de normalidade nem implicam transformação automática dos fenótipos.
+A interpretação deve ser feita dentro de cada painel. A largura ocupada pelos valores mostra a dispersão observada, a concentração das barras indica onde a maior parte dos indivíduos se encontra e a posição da média em relação à massa principal da distribuição ajuda a visualizar assimetrias. Como o eixo vertical é comum, diferenças na concentração das contagens também podem ser comparadas entre características. Essas formas são apenas descritivas: assimetria ou caudas mais longas não implicam, por si só, transformação dos fenótipos nem exclusão de observações.
 
 ## 9. Gravação dos resultados do pré-processamento
 
-Os objetos necessários para as etapas seguintes são reunidos em `preprocessing_object.rds`, que constitui a interface principal com o Módulo 02. O arquivo preserva conjuntamente fenótipos alinhados, matrizes SSR, metadados, dicionário de características, diagnósticos e parâmetros do pré-processamento.
+Ao final do módulo, os objetos analíticos são reunidos em um único arquivo RDS e os principais diagnósticos são exportados separadamente em CSV. O arquivo `preprocessing_object.rds` é a interface principal com o Módulo 02; os CSVs servem para inspeção direta das verificações realizadas no pré-processamento.
 
-As principais verificações também são exportadas em CSV para inspeção independente, sem alterar os objetos utilizados na análise.
+### 9.1 Objeto principal do pré-processamento
 
-```{r salvamento-saidas}
-# Reúne os objetos do pré-processamento e grava as saídas usadas no módulo seguinte.
+A pasta de saída é criada somente agora, quando os resultados efetivamente serão gravados. Dentro de `preprocessing_object`, os componentes seguem a sequência construída ao longo do módulo: identificação e fenótipos alinhados, matrizes SSR, diagnósticos, dicionário das características e, por último, os parâmetros que documentam as decisões do pré-processamento.
+
+```{r salvamento-objeto-principal}
+dir.create(
+  here("output", "preprocessing"),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
 preprocessing_object <- list(
+  # Identificação, metadados e fenótipos alinhados.
   ids = ids,
   metadata = metadata,
   phenotypes = phenotypes,
+
+  # Matrizes SSR antes e depois do controle de qualidade dos locos.
   ssr_raw = ssr_raw,
   ssr = ssr,
+
+  # Diagnósticos produzidos ao longo do módulo.
   locus_audit = locus_audit,
   individual_audit = individual_audit,
   phenotype_summary = phenotype_summary,
   phenotype_extremes = phenotype_extremes,
+
+  # Referência das características e parâmetros necessários para reproduzir esta etapa.
   trait_dictionary = trait_dictionary,
-  # Registra os parâmetros e limites necessários para reproduzir esta etapa.
   settings = list(
     call_rate_min = CALL_RATE_MIN,
     phenotype_distance_threshold = PHENOTYPE_DISTANCE_THRESHOLD,
@@ -702,29 +778,63 @@ preprocessing_object <- list(
   )
 )
 
-# Salva o objeto RDS que será lido diretamente pelo Módulo 02.
 saveRDS(
   preprocessing_object,
-  file.path(OUTPUT_DIR, "preprocessing_object.rds")
+  here("output", "preprocessing", "preprocessing_object.rds")
 )
-
-# Exporta diagnósticos tabulares em CSV para inspeção independente do objeto RDS.
-write.csv(alignment, file.path(OUTPUT_DIR, "alignment_summary.csv"), row.names = FALSE)
-write.csv(locus_audit, file.path(OUTPUT_DIR, "locus_audit.csv"), row.names = FALSE)
-write.csv(individual_audit, file.path(OUTPUT_DIR, "individual_audit.csv"), row.names = FALSE)
-write.csv(phenotype_summary, file.path(OUTPUT_DIR, "phenotype_summary.csv"), row.names = FALSE)
-write.csv(
-  phenotype_extremes,
-  file.path(OUTPUT_DIR, "phenotype_extreme_values.csv"),
-  row.names = FALSE
-)
-write.csv(trait_dictionary, file.path(OUTPUT_DIR, "trait_dictionary.csv"), row.names = FALSE)
 ```
 
-O inventário final reúne as dimensões que devem ser conferidas antes de seguir: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade, número de famílias, chamadas SSR ausentes e observações fenotípicas apenas destacadas para inspeção.
+O RDS preserva em conjunto os objetos que serão reutilizados no Módulo 02. `settings` permanece ao final porque registra as decisões metodológicas do pré-processamento; ele documenta como os objetos foram produzidos, mas não representa uma nova tabela analítica.
+
+### 9.2 Diagnósticos tabulares
+
+As verificações mais úteis para inspeção independente também são gravadas em CSV. Cada comando mostra explicitamente o objeto exportado e seu destino. Esses arquivos não substituem o RDS como entrada do módulo seguinte; eles tornam os diagnósticos acessíveis sem exigir a abertura do objeto completo.
+
+```{r salvamento-diagnosticos}
+write.csv(
+  alignment,
+  here("output", "preprocessing", "alignment_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  locus_audit,
+  here("output", "preprocessing", "locus_audit.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  individual_audit,
+  here("output", "preprocessing", "individual_audit.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  phenotype_summary,
+  here("output", "preprocessing", "phenotype_summary.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  phenotype_extremes,
+  here("output", "preprocessing", "phenotype_extreme_values.csv"),
+  row.names = FALSE
+)
+
+write.csv(
+  trait_dictionary,
+  here("output", "preprocessing", "trait_dictionary.csv"),
+  row.names = FALSE
+)
+```
+
+Assim, `alignment_summary.csv` documenta a correspondência entre indivíduos, `locus_audit.csv` e `individual_audit.csv` registram a completude genotípica, `phenotype_summary.csv` e `phenotype_extreme_values.csv` resumem os diagnósticos fenotípicos e `trait_dictionary.csv` preserva a descrição e a unidade das dez características.
+
+### 9.3 Inventário final
+
+Antes de seguir para o Módulo 02, o inventário final reúne as dimensões e contagens que sintetizam o resultado do pré-processamento: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade, número de famílias, chamadas SSR ausentes e observações fenotípicas apenas destacadas para inspeção.
 
 ```{r inventario-final}
-# Resume as dimensões finais e as contagens de dados ausentes ou destacados no pré-processamento.
 data.frame(
   Item = c(
     "Indivíduos",
@@ -748,7 +858,7 @@ data.frame(
   tabela_html(caption = "Resumo final do pré-processamento")
 ```
 
-O resumo confirma as condições necessárias para seguir à construção das matrizes genômicas: indivíduos e fenótipos permanecem alinhados, o filtro atua sobre locos SSR — não sobre indivíduos — e as observações fenotípicas destacadas continuam nos dados, pois sua identificação é apenas diagnóstica.
+O resumo confirma as condições necessárias para seguir à construção das matrizes genômicas: os 150 indivíduos permanecem alinhados aos fenótipos, o controle de qualidade atua sobre os locos SSR — não sobre indivíduos — e as observações fenotípicas destacadas continuam nos dados porque sua identificação é apenas diagnóstica.
 
 ## 10. Próxima etapa
 
