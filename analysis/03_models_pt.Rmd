@@ -56,13 +56,15 @@ Os métodos avaliados são RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,
 Lasso Bayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR
 [@perez2014bglr].
 
-## 2. Pacotes, entradas e diretórios de saída
+## 2. Pacotes e objeto de entrada
 
 Os pacotes utilizados têm funções distintas:
 
 - `BGLR`: ajuste dos modelos de regressão Bayesiana, RR-BLUP/BRR e GBLUP;
 - `coda`: cálculo dos diagnósticos das cadeias MCMC, incluindo ESS e Geweke;
 - `dplyr`: organização, seleção e resumo das tabelas de resultados;
+- `ggplot2`: construção do diagnóstico gráfico das cadeias MCMC;
+- `ggthemes`: aplicação do tema e da escala de cores GDocs;
 - `knitr`: formatação das tabelas apresentadas no documento;
 - `here`: construção de caminhos relativos ao projeto.
 
@@ -70,6 +72,8 @@ Os pacotes utilizados têm funções distintas:
 library(BGLR)  # Ajuste dos modelos de predição genômica.
 library(coda)  # Diagnósticos das cadeias MCMC.
 library(dplyr) # Manipulação e resumo de tabelas.
+library(ggplot2) # Construção de gráficos diagnósticos.
+library(ggthemes) # Tema e escala de cores GDocs.
 library(knitr) # Formatação de tabelas.
 library(here)  # Caminhos relativos ao projeto.
 ```
@@ -97,22 +101,17 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-### 2.1 Entradas e diretórios de saída
+### 2.1 Objeto de entrada e saídas persistidas
 
-As matrizes construídas no Módulo 02 são lidas diretamente. Os arquivos
-gerados nesta etapa são gravados em `output/models/`, enquanto as cadeias
-nativas do BGLR ficam organizadas em `output/models/bglr/`.
+As matrizes construídas no Módulo 02 são lidas diretamente de `output/matrices/`. Durante a renderização normal, o módulo apenas consulta as saídas já persistidas em `output/models/`; nenhum diretório de cadeias é criado e nenhum ajuste é iniciado. A pasta `output/models/bglr/` é preparada somente dentro do bloco de regeneração integral da Seção 9.
 
 ```{r inputs}
-# Define os caminhos de saída e carrega os objetos necessários para este módulo.
-MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
+# Define a pasta das saídas persistidas e carrega diretamente o objeto matricial do Módulo 02.
 OUTPUT_DIR <- here("output", "models")
-BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
 
-dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
-dir.create(BGLR_DIR, recursive = TRUE, showWarnings = FALSE)
-
-matrices_object <- readRDS(MATRICES_FILE)
+matrices_object <- readRDS(
+  here("output", "matrices", "matrices_object.rds")
+)
 
 ids <- matrices_object$ids
 metadata <- matrices_object$metadata
@@ -178,8 +177,10 @@ X_fixed <- X[
 ]
 
 data.frame(Coluna_de_familia = colnames(X_fixed)) |>
-  tabela_html(caption = "Colunas de família usadas como efeitos fixos",
-  col.names = c("Coluna de família"))
+  tabela_html(
+    caption = "Colunas de família usadas como efeitos fixos",
+    col.names = c("Coluna de família")
+  )
 ```
 
 Após a remoção do intercepto, `X_fixed` contém `r ncol(X_fixed)` colunas de contraste de família. Essas colunas entram como um único termo fixo comum aos sete métodos.
@@ -347,7 +348,7 @@ BL_LAMBDA_TYPE <- "FIXED"
 
 A tabela resume as escolhas que controlam a amostragem. Com 1.000.000 de iterações e `thin = 4`, o BGLR grava 250.000 amostras escalares; as primeiras 50.000 correspondem ao burn-in de 200.000 iterações, restando 200.000 amostras salvas para os diagnósticos posteriores. Esses números são derivados dos três parâmetros da cadeia.
 
-A conversão entre iterações e amostras também passa a ser exigida como contrato executável. Os números de iterações e de burn-in devem ser exatamente divisíveis por `THIN`, o burn-in deve permanecer abaixo do comprimento total da cadeia e pelo menos uma amostra posterior deve restar após sua remoção.
+Nos arquivos escalares `*.dat` usados abaixo, o BGLR grava uma amostra a cada `THIN` iterações ao longo de toda a cadeia, inclusive durante o burn-in. Por isso, a rotina de diagnóstico remove explicitamente as primeiras `BURN_IN_SAVED_SAMPLES` amostras gravadas. Com os valores adotados, tanto `N_ITER` quanto `BURN_IN` são divisíveis por `THIN`, de modo que a conversão entre iterações e amostras gravadas é exata e restam `RETAINED_SAMPLES` amostras posteriores.
 
 ```{r mcmc-settings-table}
 # Reúne os parâmetros MCMC em uma tabela de referência.
@@ -356,6 +357,8 @@ data.frame(
     "Iterações",
     "Burn-in",
     "Thinning",
+    "Amostras escalares gravadas",
+    "Amostras gravadas correspondentes ao burn-in",
     "Amostras posteriores mantidas",
     "R2 global (calibração a priori)",
     "Probabilidade de efeito zero no BayesB2"
@@ -364,6 +367,8 @@ data.frame(
     N_ITER,
     BURN_IN,
     THIN,
+    RAW_SAVED_SAMPLES,
+    BURN_IN_SAVED_SAMPLES,
     RETAINED_SAMPLES,
     R2_PRIOR,
     BAYESB2_ZERO_PROBABILITY
@@ -538,7 +543,7 @@ BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 
 BL_MSX <-
-  sum(apply(M, 2, function(x) sum(x^2))) / nrow(M) -
+  sum(M^2) / nrow(M) -
   sum(colMeans(M)^2)
 
 BL_LAMBDA_SQUARED <-
@@ -668,8 +673,12 @@ run_design$Run_id <- paste(
 
 run_design |>
   count(Method, name = "Numero_de_ajustes") |>
-  tabela_html(caption = "Número de ajustes por método",
-  col.names = c("Método", "Número de ajustes"))
+  mutate(Metodo = unname(method_labels[Method])) |>
+  select(Metodo, Numero_de_ajustes) |>
+  tabela_html(
+    caption = "Número de ajustes por método",
+    col.names = c("Método", "Número de ajustes")
+  )
 ```
 
 Cada método aparece em `r nrow(run_design) / length(method_names)` combinações, totalizando `r nrow(run_design)` ajustes. Como a mesma grade de característica × fold é usada para todos os métodos, as comparações posteriores partem do mesmo desenho de validação.
@@ -686,7 +695,7 @@ Uma regeneração integral é uma operação deliberada. Ela deve ocorrer de cim
 
 Para os diagnósticos MCMC, cada método é associado ao arquivo escalar nativo do BGLR e ao parâmetro representativo correspondente.
 
-A cadeia escolhida é uma quantidade escalar representativa de cada especificação, não um diagnóstico exaustivo de todos os efeitos de marcador. No BL, como lambda é fixo e não possui cadeia atualizada, o segundo diagnóstico usa `mu.dat` e é rotulado como intercepto; portanto, ele não deve ser interpretado como uma cadeia do componente genômico.
+A cadeia escolhida é uma quantidade escalar representativa de cada especificação, não um diagnóstico exaustivo de todos os efeitos de marcador. Os arquivos escalares nativos do BGLR registram as amostras a cada `THIN` iterações desde o início da cadeia; assim, a parcela correspondente ao burn-in permanece nesses arquivos e é removida explicitamente antes do cálculo de ESS e Geweke. No BL, como lambda é fixo e não possui cadeia atualizada, o segundo diagnóstico usa `mu.dat` e é rotulado como intercepto; portanto, ele não deve ser interpretado como uma cadeia do componente genômico.
 
 ```{r trace-specifications}
 # Mapeia os arquivos e parâmetros das cadeias usados nos diagnósticos MCMC.
@@ -748,6 +757,10 @@ Para acompanhar o bloco longo sem depender de seus detalhes de programação, ca
 O código implementa repetidamente esse mesmo fluxo para as 350 combinações; decisões metodológicas não são tomadas dentro do laço com base nos resultados de uma característica ou fold.
 
 ```{r fit-models, eval=FALSE}
+# Prepara a árvore de diretórios somente quando a regeneração integral é executada.
+BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
+dir.create(BGLR_DIR, recursive = TRUE, showWarnings = FALSE)
+
 # Listas que recebem as saídas de cada ajuste.
 metric_parts <- vector("list", nrow(run_design))
 prediction_parts <- vector("list", nrow(run_design))
@@ -1132,10 +1145,8 @@ convergence_summary <- convergence_diagnostics |>
     .groups = "drop"
   )
 
-convergence_summary$Metodo <-
-  unname(method_labels[convergence_summary$Method])
-
 convergence_summary |>
+  mutate(Metodo = unname(method_labels[Method])) |>
   select(
     Metodo, Runs, Parameters_reviewed,
     Parameters_flagged, Runs_with_flags,
@@ -1144,13 +1155,73 @@ convergence_summary |>
   tabela_html(
     digits = 3,
     caption = "Resumo dos diagnósticos MCMC por método",
-  col.names = c("Método", "Execuções", "Parâmetros avaliados", "Parâmetros sinalizados", "Execuções com flags", "ESS mínimo", "ESS mediano", "Máximo |Geweke Z|")
+    col.names = c("Método", "Execuções", "Parâmetros avaliados", "Parâmetros sinalizados", "Execuções com flags", "ESS mínimo", "ESS mediano", "Máximo |Geweke Z|")
   )
 ```
 
 O resumo informa quantas cadeias foram avaliadas e quantas ultrapassaram pelo menos um limiar de triagem em cada método. `Minimum_ESS`, `Median_ESS` e `Maximum_absolute_Geweke` descrevem a intensidade dos sinais de autocorrelação ou instabilidade, sem transformar os limiares em testes formais de validade.
 
-### 11.3 Cadeias sinalizadas para inspeção
+### 11.3 Mapa de triagem ESS × Geweke
+
+O gráfico reúne as 700 cadeias escalares em um único diagnóstico visual. O eixo horizontal mostra ESS em escala logarítmica e o eixo vertical mostra \(|Z_{Geweke}|\). As linhas pontilhadas representam exatamente os dois limiares de revisão usados na tabela anterior. A cor identifica o método e a forma distingue cadeias dentro dos limiares daquelas encaminhadas para revisão.
+
+A figura serve como mapa de triagem: pontos à esquerda de ESS = 1.000 ou acima de \(|Z| = 2\) merecem inspeção adicional, mas a posição no gráfico não funciona como regra automática de exclusão de ajustes ou predições.
+
+```{r convergence-map, fig.width=8, fig.height=5.5, fig.alt="Dispersão das 700 cadeias escalares avaliadas, com ESS em escala logarítmica, valor absoluto de Geweke, linhas de revisão em ESS igual a 1000 e Geweke igual a 2, cores GDocs por método e forma indicando a sinalização."}
+convergence_diagnostics |>
+  mutate(
+    Metodo = factor(
+      unname(method_labels[Method]),
+      levels = unname(method_labels[method_names])
+    ),
+    Geweke_absoluto = abs(Geweke_Z),
+    Revisao = factor(
+      Review_flag,
+      levels = c(FALSE, TRUE),
+      labels = c("Dentro dos limiares", "Revisar")
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Effective_sample_size,
+      y = Geweke_absoluto,
+      color = Metodo,
+      shape = Revisao
+    )
+  ) +
+  geom_point(alpha = 0.65, size = 1.8) +
+  geom_vline(
+    xintercept = ESS_REVIEW_THRESHOLD,
+    linetype = 2,
+    linewidth = 0.5
+  ) +
+  geom_hline(
+    yintercept = GEWEKE_REVIEW_THRESHOLD,
+    linetype = 2,
+    linewidth = 0.5
+  ) +
+  scale_x_log10(
+    labels = function(x) format(
+      x,
+      scientific = FALSE,
+      big.mark = ".",
+      trim = TRUE
+    )
+  ) +
+  scale_color_gdocs(name = "Método") +
+  labs(
+    x = "Tamanho efetivo da amostra (escala log10)",
+    y = "|Geweke Z|",
+    shape = "Triagem",
+    title = "Triagem conjunta dos diagnósticos MCMC",
+    subtitle = "Linhas pontilhadas marcam ESS = 1.000 e |Geweke Z| = 2",
+    caption = "Cada ponto representa uma das duas cadeias escalares avaliadas por ajuste; a sinalização orienta revisão e não implica exclusão automática."
+  ) +
+  theme_gdocs() +
+  theme(legend.position = "top")
+```
+
+### 11.4 Cadeias sinalizadas para inspeção
 
 A tabela abaixo lista somente as cadeias que ultrapassam pelo menos um dos limiares de triagem. Uma linha sinalizada identifica a combinação característica–fold–método e o parâmetro que merece inspeção; ela não implica, isoladamente, que todas as predições daquele ajuste sejam inválidas.
 
@@ -1165,7 +1236,7 @@ convergence_diagnostics |>
   tabela_html(
     digits = 4,
     caption = "Cadeias destacadas pelos diagnósticos ESS ou Geweke",
-  col.names = c("Característica", "Fold", "Método", "Parâmetro", "Tamanho efetivo da amostra", "Geweke Z")
+    col.names = c("Característica", "Fold", "Método", "Parâmetro", "Tamanho efetivo da amostra", "Geweke Z")
   )
 ```
 
@@ -1173,7 +1244,7 @@ A tabela detalhada localiza exatamente característica, fold, método e parâmet
 
 ## 12. Gravação dos diagnósticos e do objeto final
 
-Após os diagnósticos, a tabela de convergência é atualizada com os indicadores de revisão e o resumo por método é gravado. O arquivo `models_object.rds` consolida configurações, desenho dos ajustes, catálogo dos métodos, predições, valores genômicos, métricas e diagnósticos para uso nos módulos seguintes.
+Após os diagnósticos, a tabela de convergência é atualizada com os indicadores de revisão e o resumo por método é gravado. O objeto canônico `convergence_summary` mantém somente identificadores e quantidades independentes do idioma; os rótulos `Método`/`Method` são acrescentados apenas na tabela HTML. Assim, uma regeneração a partir da versão PT ou EN produz o mesmo `convergence_summary.csv`. O arquivo `models_object.rds` consolida configurações, desenho dos ajustes, catálogo dos métodos, predições, valores genômicos, métricas e diagnósticos para uso nos módulos seguintes.
 
 ```{r save-results, eval=FALSE}
 # Agrupa configurações, resultados e diagnósticos no objeto final do módulo.
@@ -1231,7 +1302,8 @@ Este módulo respondeu **como cada método foi ajustado e o que cada combinaçã
 
 Assim, o Módulo 04 utiliza as predições OOF, as métricas por fold, os valores genômicos e os diagnósticos MCMC obtidos aqui; nenhum dos 350 modelos precisa ser reajustado para realizar essa comparação.
 
-<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="02_matrices_pt.html">← Módulo 02 — Construção das matrizes</a>
-<a href="04_results_pt.html">Módulo 04 — Comparação e seleção →</a>
+<a href="03_models_en.html" style="text-align:center;">English</a>
+<a href="04_results_pt.html" style="text-align:right;">Módulo 04 — Comparação e seleção →</a>
 </div>

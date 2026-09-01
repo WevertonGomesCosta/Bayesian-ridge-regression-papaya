@@ -56,13 +56,15 @@ The evaluated methods are RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,
 Bayesian Lasso (BL), and GBLUP. All models are fitted with BGLR
 [@perez2014bglr].
 
-## 2. Packages, inputs, and output directories
+## 2. Packages and input object
 
 The packages used here have distinct roles:
 
 - `BGLR`: fits Bayesian regression, RR-BLUP/BRR, and GBLUP models;
 - `coda`: computes MCMC diagnostics, including ESS and Geweke statistics;
 - `dplyr`: organizes, selects, and summarizes result tables;
+- `ggplot2`: builds the graphical MCMC diagnostic;
+- `ggthemes`: applies the GDocs theme and color scale;
 - `knitr`: formats the tables presented in the document;
 - `here`: builds project-relative file paths.
 
@@ -70,6 +72,8 @@ The packages used here have distinct roles:
 library(BGLR)  # Fit genomic prediction models.
 library(coda)  # Diagnose MCMC chains.
 library(dplyr) # Manipulate and summarize tables.
+library(ggplot2) # Build diagnostic figures.
+library(ggthemes) # Apply the GDocs theme and color scale.
 library(knitr) # Format tables.
 library(here)  # Build project-relative paths.
 ```
@@ -97,22 +101,17 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-### 2.1 Inputs and output directories
+### 2.1 Input object and persisted outputs
 
-The matrices constructed in Module 02 are read directly. Outputs from this
-module are written to `output/models/`, while the native BGLR chains are
-organized under `output/models/bglr/`.
+The matrices constructed in Module 02 are read directly from `output/matrices/`. During normal rendering, the module only reads outputs already persisted in `output/models/`; no chain directory is created and no fit is started. The `output/models/bglr/` directory is prepared only inside the full-regeneration block in Section 9.
 
 ```{r inputs}
-# Define output paths and load the objects required by this module.
-MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
+# Define the persisted-output directory and directly load the matrix object from Module 02.
 OUTPUT_DIR <- here("output", "models")
-BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
 
-dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE)
-dir.create(BGLR_DIR, recursive = TRUE, showWarnings = FALSE)
-
-matrices_object <- readRDS(MATRICES_FILE)
+matrices_object <- readRDS(
+  here("output", "matrices", "matrices_object.rds")
+)
 
 ids <- matrices_object$ids
 metadata <- matrices_object$metadata
@@ -178,8 +177,10 @@ X_fixed <- X[
 ]
 
 data.frame(Family_column = colnames(X_fixed)) |>
-  format_table(caption = "Family columns used as fixed effects",
-  col.names = c("Family column"))
+  format_table(
+    caption = "Family columns used as fixed effects",
+    col.names = c("Family column")
+  )
 ```
 
 After the intercept is removed, `X_fixed` contains `r ncol(X_fixed)` family-contrast columns. These columns enter as one fixed term shared by all seven methods.
@@ -346,7 +347,7 @@ BL_LAMBDA_TYPE <- "FIXED"
 
 The table summarizes the choices controlling MCMC sampling. With 1,000,000 iterations and `thin = 4`, BGLR writes 250,000 scalar draws; the first 50,000 correspond to the 200,000-iteration burn-in, leaving 200,000 saved draws for the downstream diagnostics. These counts are derived from the three chain parameters.
 
-The iteration-to-sample conversion is also enforced as an executable contract. Iteration and burn-in counts must be exactly divisible by `THIN`, burn-in must remain below the total chain length, and at least one posterior draw must remain after burn-in removal.
+In the scalar `*.dat` files used below, BGLR writes one draw every `THIN` iterations across the full chain, including burn-in. The diagnostic routine therefore explicitly removes the first `BURN_IN_SAVED_SAMPLES` written draws. With the settings used here, both `N_ITER` and `BURN_IN` are divisible by `THIN`, so conversion between iterations and written draws is exact and `RETAINED_SAMPLES` posterior draws remain.
 
 ```{r mcmc-settings-table}
 # Collect the MCMC settings in a reference table.
@@ -355,6 +356,8 @@ data.frame(
     "Iterations",
     "Burn-in",
     "Thinning",
+    "Written scalar draws",
+    "Written draws corresponding to burn-in",
     "Retained posterior samples",
     "Global R2 (prior calibration)",
     "BayesB2 zero-effect probability"
@@ -363,6 +366,8 @@ data.frame(
     N_ITER,
     BURN_IN,
     THIN,
+    RAW_SAVED_SAMPLES,
+    BURN_IN_SAVED_SAMPLES,
     RETAINED_SAMPLES,
     R2_PRIOR,
     BAYESB2_ZERO_PROBABILITY
@@ -529,7 +534,7 @@ BL_N_LINEAR_TERMS <- 2L
 BL_COMPONENT_R2 <- R2_PRIOR / BL_N_LINEAR_TERMS
 
 BL_MSX <-
-  sum(apply(M, 2, function(x) sum(x^2))) / nrow(M) -
+  sum(M^2) / nrow(M) -
   sum(colMeans(M)^2)
 
 BL_LAMBDA_SQUARED <-
@@ -658,8 +663,12 @@ run_design$Run_id <- paste(
 
 run_design |>
   count(Method, name = "Number_of_fits") |>
-  format_table(caption = "Number of fits by method",
-  col.names = c("Method", "Number of fits"))
+  mutate(Method_label = unname(method_labels[Method])) |>
+  select(Method_label, Number_of_fits) |>
+  format_table(
+    caption = "Number of fits by method",
+    col.names = c("Method", "Number of fits")
+  )
 ```
 
 Each method appears in `r nrow(run_design) / length(method_names)` combinations, for `r nrow(run_design)` fits overall. Because the same trait × fold grid is used for every method, downstream comparisons start from the same validation design.
@@ -676,7 +685,7 @@ A full regeneration is a deliberate operation. It must proceed from top to botto
 
 For MCMC diagnostics, each method is associated with the relevant native BGLR scalar file and its representative parameter.
 
-The selected chain is one representative scalar quantity for each specification, not an exhaustive diagnostic of every marker effect. For BL, lambda is fixed and has no updated chain, so the second diagnostic uses `mu.dat` and is labelled as the intercept; it must not be interpreted as a genomic-component chain.
+The selected chain is one representative scalar quantity for each specification, not an exhaustive diagnostic of every marker effect. BGLR's native scalar files record draws every `THIN` iterations from the start of the chain, so the burn-in portion remains in those files and is explicitly removed before ESS and Geweke are computed. For BL, lambda is fixed and has no updated chain, so the second diagnostic uses `mu.dat` and is labelled as the intercept; it must not be interpreted as a genomic-component chain.
 
 ```{r trace-specifications}
 # Map the chain files and parameters used in the MCMC diagnostics.
@@ -738,6 +747,10 @@ To follow the long block without relying on programming details, each loop itera
 The code repeats this same workflow for all 350 combinations; no methodological decision is made inside the loop based on the results of a particular trait or fold.
 
 ```{r fit-models, eval=FALSE}
+# Prepare the directory tree only when a full regeneration is deliberately executed.
+BGLR_DIR <- file.path(OUTPUT_DIR, "bglr")
+dir.create(BGLR_DIR, recursive = TRUE, showWarnings = FALSE)
+
 # Lists that collect the outputs from each fit.
 metric_parts <- vector("list", nrow(run_design))
 prediction_parts <- vector("list", nrow(run_design))
@@ -1122,10 +1135,8 @@ convergence_summary <- convergence_diagnostics |>
     .groups = "drop"
   )
 
-convergence_summary$Method_label <-
-  unname(method_labels[convergence_summary$Method])
-
 convergence_summary |>
+  mutate(Method_label = unname(method_labels[Method])) |>
   select(
     Method_label, Runs, Parameters_reviewed,
     Parameters_flagged, Runs_with_flags,
@@ -1134,13 +1145,73 @@ convergence_summary |>
   format_table(
     digits = 3,
     caption = "Summary of MCMC diagnostics by method",
-  col.names = c("Method", "Runs", "Parameters reviewed", "Parameters flagged", "Runs with flags", "Minimum ESS", "Median ESS", "Maximum |Geweke Z|")
+    col.names = c("Method", "Runs", "Parameters reviewed", "Parameters flagged", "Runs with flags", "Minimum ESS", "Median ESS", "Maximum |Geweke Z|")
   )
 ```
 
 The summary reports how many chains were evaluated and how many crossed at least one screening threshold for each method. `Minimum_ESS`, `Median_ESS`, and `Maximum_absolute_Geweke` describe the strength of autocorrelation or stability signals without treating the thresholds as formal validity tests.
 
-### 11.3 Chains flagged for inspection
+### 11.3 ESS × Geweke screening map
+
+The figure places all 700 scalar chains in one visual diagnostic. The horizontal axis shows ESS on a logarithmic scale and the vertical axis shows \(|Z_{Geweke}|\). Dashed lines reproduce the two review thresholds used in the preceding table. Color identifies the method, while point shape distinguishes chains within the thresholds from those flagged for review.
+
+The figure is a screening map: points to the left of ESS = 1,000 or above \(|Z| = 2\) deserve additional inspection, but their location is not an automatic rule for excluding fits or predictions.
+
+```{r convergence-map, fig.width=8, fig.height=5.5, fig.alt="Scatter plot of the 700 scalar chains reviewed, with ESS on a logarithmic scale, absolute Geweke statistic, review lines at ESS 1000 and Geweke 2, GDocs colors by method, and point shape indicating review status."}
+convergence_diagnostics |>
+  mutate(
+    Method_label = factor(
+      unname(method_labels[Method]),
+      levels = unname(method_labels[method_names])
+    ),
+    Absolute_Geweke = abs(Geweke_Z),
+    Review = factor(
+      Review_flag,
+      levels = c(FALSE, TRUE),
+      labels = c("Within thresholds", "Review")
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Effective_sample_size,
+      y = Absolute_Geweke,
+      color = Method_label,
+      shape = Review
+    )
+  ) +
+  geom_point(alpha = 0.65, size = 1.8) +
+  geom_vline(
+    xintercept = ESS_REVIEW_THRESHOLD,
+    linetype = 2,
+    linewidth = 0.5
+  ) +
+  geom_hline(
+    yintercept = GEWEKE_REVIEW_THRESHOLD,
+    linetype = 2,
+    linewidth = 0.5
+  ) +
+  scale_x_log10(
+    labels = function(x) format(
+      x,
+      scientific = FALSE,
+      big.mark = ",",
+      trim = TRUE
+    )
+  ) +
+  scale_color_gdocs(name = "Method") +
+  labs(
+    x = "Effective sample size (log10 scale)",
+    y = "|Geweke Z|",
+    shape = "Screening",
+    title = "Joint screening of MCMC diagnostics",
+    subtitle = "Dashed lines mark ESS = 1,000 and |Geweke Z| = 2",
+    caption = "Each point represents one of the two scalar chains reviewed per fit; a flag guides inspection and does not imply automatic exclusion."
+  ) +
+  theme_gdocs() +
+  theme(legend.position = "top")
+```
+
+### 11.4 Chains flagged for inspection
 
 The table below lists only chains that cross at least one screening threshold. A flagged row identifies the trait–fold–method combination and parameter that deserves inspection; by itself, it does not imply that all predictions from that fit are invalid.
 
@@ -1155,7 +1226,7 @@ convergence_diagnostics |>
   format_table(
     digits = 4,
     caption = "Chains highlighted by ESS or Geweke diagnostics",
-  col.names = c("Trait", "Fold", "Method", "Parameter", "Effective sample size", "Geweke Z")
+    col.names = c("Trait", "Fold", "Method", "Parameter", "Effective sample size", "Geweke Z")
   )
 ```
 
@@ -1163,7 +1234,7 @@ The detailed table identifies the exact trait, fold, method, and parameter assoc
 
 ## 12. Saving diagnostics and the final object
 
-After diagnostics, the convergence table is updated with review flags and the method-level summary is saved. The `models_object.rds` file consolidates settings, run design, method catalogue, predictions, genomic values, metrics, and diagnostics for downstream modules.
+After diagnostics, the convergence table is updated with review flags and the method-level summary is saved. The canonical `convergence_summary` object retains only language-independent identifiers and quantities; localized `Method`/`Método` labels are added only to the HTML table. A regeneration from either the PT or EN source therefore writes the same `convergence_summary.csv`. The `models_object.rds` file consolidates settings, run design, method catalogue, predictions, genomic values, metrics, and diagnostics for downstream modules.
 
 ```{r save-results, eval=FALSE}
 # Collect settings, results, and diagnostics in the final module object.
@@ -1221,7 +1292,8 @@ This module answered **how each method was fitted and what each trait–fold–m
 
 Thus, Module 04 uses the OOF predictions, fold-level metrics, genomic values, and MCMC diagnostics obtained here; none of the 350 models needs to be refitted for that comparison.
 
-<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="02_matrices_en.html">← Module 02 — Matrix construction</a>
-<a href="04_results_en.html">Module 04 — Comparison and selection →</a>
+<a href="03_models_pt.html" style="text-align:center;">Português</a>
+<a href="04_results_en.html" style="text-align:right;">Module 04 — Comparison and selection →</a>
 </div>
