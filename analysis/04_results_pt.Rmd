@@ -55,13 +55,17 @@ Os pacotes utilizados têm funções distintas nesta etapa:
 
 - `dplyr`: agrupamento, junção, ordenação e resumo das tabelas de resultados;
 - `tidyr`: reorganização de tabelas entre formatos longo e largo;
+- `ggplot2`: construção do diagnóstico gráfico da regra de seleção;
+- `ggthemes`: aplicação do tema e da escala de cores GDocs;
 - `knitr`: formatação de tabelas em documentos R Markdown;
 - `here`: construção de caminhos relativos ao projeto.
 
 ```{r packages, warning=FALSE, message=FALSE}
 library(dplyr) # Agrupamento, junção e resumo de tabelas.
-library(tidyr) # Reorganização entre formatos longo e largo.
-library(knitr) # Formatação de tabelas em documentos R Markdown.
+library(tidyr)   # Reorganização entre formatos longo e largo.
+library(ggplot2) # Construção de gráficos diagnósticos.
+library(ggthemes) # Aplicação do tema e da escala GDocs.
+library(knitr)   # Formatação de tabelas em documentos R Markdown.
 library(here)  # Construção de caminhos relativos ao projeto.
 ```
 
@@ -88,19 +92,18 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-### 2.2 Objetos de entrada e diretório de resultados
+### 2.2 Objetos de entrada
 
-O módulo usa dois objetos consolidados: `matrices_object.rds`, que fornece fenótipos, metadados e definições do Módulo 02, e `models_object.rds`, que fornece métricas por fold, predições OOF e diagnósticos MCMC do Módulo 03.
+O módulo usa dois objetos consolidados: `matrices_object.rds`, que fornece fenótipos, metadados e definições do Módulo 02, e `models_object.rds`, que fornece métricas por fold, predições OOF e diagnósticos MCMC do Módulo 03. Durante a derivação, nenhum diretório de saída é criado; `output/results/m04/` é preparado somente na Seção 13, imediatamente antes da persistência dos resultados.
 
 ```{r inputs}
-MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
-MODELS_FILE <- here("output", "models", "models_object.rds")
-RESULTS_DIR <- here("output", "results", "m04")
+matrices_object <- readRDS(
+  here("output", "matrices", "matrices_object.rds")
+)
 
-dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
-
-matrices_object <- readRDS(MATRICES_FILE)
-models_object <- readRDS(MODELS_FILE)
+models_object <- readRDS(
+  here("output", "models", "models_object.rds")
+)
 
 metrics <- models_object$metrics_by_fold
 predictions <- models_object$predictions
@@ -108,8 +111,6 @@ convergence <- models_object$convergence_diagnostics
 
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
-ids <- matrices_object$ids
-
 ```
 
 ## 3. Desempenho preditivo OOF
@@ -213,7 +214,30 @@ model_comparison <- pooled_metrics |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
 
-### 4.2 Relação entre ajuste Bayesiano e desempenho preditivo
+### 4.2 Diagnóstico da normalização de `Wprob`
+
+A normalização pode ser inspecionada diretamente por característica. A soma dos sete pesos deve permanecer numericamente igual a 1, enquanto o melhor método por DIC tem `ER = 1`. Esta tabela é apenas um diagnóstico visível da transformação já definida acima.
+
+```{r wprob-diagnostic}
+model_comparison |>
+  group_by(Trait) |>
+  summarise(
+    Sum_Wprob = sum(Wprob),
+    Maximum_Wprob = max(Wprob),
+    Minimum_ER = min(ER),
+    .groups = "drop"
+  ) |>
+  tabela_html(
+    digits = 8,
+    caption = "Diagnóstico da normalização dos pesos derivados do DIC",
+    col.names = c(
+      "Característica", "Soma de Wprob",
+      "Maior Wprob", "Menor ER"
+    )
+  )
+```
+
+### 4.3 Relação entre ajuste Bayesiano e desempenho preditivo
 
 `model_comparison` reúne, para cada característica e método, desempenho OOF e suporte relativo derivado do DIC. As medidas de DIC são comparáveis apenas dentro da mesma característica e não substituem a evidência preditiva.
 
@@ -371,6 +395,33 @@ model_selection_support <- model_comparison |>
 
 `Automatic_candidate = TRUE` exige simultaneamente competitividade preditiva, `Delta_DIC <= 2` e ausência de flags nos diagnósticos monitorados.
 
+A tabela seguinte torna visíveis os limites derivados da regra e o tamanho dos conjuntos produzidos em cada característica. Ela não adiciona critérios à decisão.
+
+```{r competitive-set-diagnostic}
+model_selection_support |>
+  group_by(Trait) |>
+  summarise(
+    Minimum_competitive_mean_r =
+      first(Best_mean_fold_r - Best_mean_fold_r_SE),
+    Maximum_competitive_mean_RMSE =
+      first(Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE),
+    Predictively_competitive_n = sum(Predictively_competitive),
+    DIC_and_predictive_competitive_n = sum(Competitive_for_selection),
+    Automatic_candidate_n = first(Automatic_candidate_n),
+    RRBLUP_automatic_candidate = first(RRBLUP_automatic_candidate),
+    .groups = "drop"
+  ) |>
+  tabela_html(
+    digits = 4,
+    caption = "Limites e tamanhos do conjunto competitivo por característica",
+    col.names = c(
+      "Característica", "r médio mínimo", "RMSE médio máximo",
+      "Competitivos preditivos", "Competitivos + DIC",
+      "Candidatos automáticos", "RR-BLUP candidato automático"
+    )
+  )
+```
+
 ### 5.4 Escolha do método
 
 Os passos 4 e 5 são implementados aqui. RR-BLUP recebe prioridade somente dentro do conjunto de candidatos automáticos como escolha explícita de parcimônia e referência de contração homogênea, sem implicar superioridade estatística universal. Na ausência de RR-BLUP nesse conjunto, os demais candidatos seguem a ordem `r`, RMSE, MAE e DIC; se não houver candidato automático, o vencedor preditivo é preservado provisoriamente para revisão.
@@ -507,7 +558,65 @@ selected_performance <- model_selection_support |>
 
 `selected_performance` preserva, para cada característica, as métricas OOF, DIC e diagnósticos correspondentes ao método efetivamente selecionado.
 
-### 5.6 Resultado final da seleção e evidência preditiva
+### 5.6 Mapa diagnóstico da regra de seleção
+
+O gráfico posiciona os sete métodos de cada característica pelas duas quantidades usadas para definir competitividade preditiva entre folds. As linhas pontilhadas mostram os limites de um erro-padrão; métodos à direita da linha vertical e abaixo da linha horizontal satisfazem a parte preditiva da regra. A forma do ponto informa se, além disso, `Delta_DIC <= 2` e os diagnósticos MCMC permitem classificá-lo como candidato automático.
+
+```{r selection-rule-map, fig.width=10, fig.height=8, fig.alt="Painéis por característica com correlação média entre folds no eixo horizontal, RMSE médio no eixo vertical, limites pontilhados de um erro-padrão e métodos coloridos; a forma indica se o método é candidato automático."}
+selection_rule_boundaries <- model_selection_support |>
+  distinct(
+    Trait, Best_mean_fold_r, Best_mean_fold_r_SE,
+    Best_mean_fold_RMSE, Best_mean_fold_RMSE_SE
+  )
+
+model_selection_support |>
+  mutate(
+    Automatic_candidate_label = factor(
+      Automatic_candidate,
+      levels = c(FALSE, TRUE),
+      labels = c("Não", "Sim")
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Mean_fold_r,
+      y = Mean_fold_RMSE,
+      color = Method,
+      shape = Automatic_candidate_label
+    )
+  ) +
+  geom_vline(
+    data = selection_rule_boundaries,
+    aes(xintercept = Best_mean_fold_r - Best_mean_fold_r_SE),
+    linetype = 2,
+    linewidth = 0.5,
+    inherit.aes = FALSE
+  ) +
+  geom_hline(
+    data = selection_rule_boundaries,
+    aes(yintercept = Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE),
+    linetype = 2,
+    linewidth = 0.5,
+    inherit.aes = FALSE
+  ) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  facet_wrap(~ Trait, scales = "free", ncol = 2) +
+  scale_color_gdocs(name = "Método") +
+  labs(
+    x = "Correlação média entre folds",
+    y = "RMSE médio entre folds",
+    shape = "Candidato automático",
+    title = "Competitividade preditiva e candidatos automáticos",
+    subtitle = "As linhas pontilhadas representam as tolerâncias descritivas de um erro-padrão",
+    caption = "A forma 'Sim' exige também Delta DIC <= 2 e ausência de flags nos diagnósticos MCMC monitorados."
+  ) +
+  theme_gdocs() +
+  theme(legend.position = "top")
+```
+
+O mapa é diagnóstico: ele mostra como a regra classifica os métodos, mas não transforma as tolerâncias entre folds em testes formais de equivalência.
+
+### 5.7 Resultado final da seleção e evidência preditiva
 
 Por fim, são reunidos o método selecionado, os vencedores preditivo e por DIC, a
 direção OOF e uma classe nominal do sinal de cada característica. A classe
@@ -999,9 +1108,17 @@ selected_oof_correlations <- cor(
 
 ## 13. Gravação dos resultados
 
-As tabelas derivadas e o objeto `module04_results.rds` são persistidos para uso direto no Módulo 05. Nenhum modelo genômico é reajustado nesta etapa.
+As tabelas derivadas e o objeto `module04_results.rds` são persistidos para uso direto no Módulo 05. Nenhum modelo genômico é reajustado nesta etapa. O diretório de saída é criado somente agora, depois de concluídas todas as derivações.
 
 ```{r save-results}
+RESULTS_DIR <- here("output", "results", "m04")
+
+dir.create(
+  RESULTS_DIR,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
 # Grava as tabelas derivadas pelo módulo antes de montar o objeto RDS consolidado.
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
 write.csv(model_selection_support, file.path(RESULTS_DIR, "model_selection_support.csv"), row.names = FALSE)
@@ -1061,7 +1178,8 @@ Ao final deste módulo, a etapa de derivação está concluída: comparação do
 
 O Módulo 05 muda de **derivação para apresentação e interpretação**. Ele utiliza exclusivamente essas derivações para construir as tabelas e figuras de síntese, sem reaplicar a regra de seleção, refazer rankings ou reajustar modelos. Os valores genômicos OOF continuam sendo escores cross-fitted de validação; este fluxo não os transforma em valores genéticos finais de um refit com todos os 150 fenótipos.
 
-<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="03_models_pt.html">← Módulo 03 — Ajuste dos modelos</a>
-<a href="05_results_pt.html">Módulo 05 — Síntese dos resultados →</a>
+<a href="04_results_en.html" style="text-align:center;">English</a>
+<a href="05_results_pt.html" style="text-align:right;">Módulo 05 — Síntese dos resultados →</a>
 </div>
