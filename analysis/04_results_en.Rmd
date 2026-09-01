@@ -55,13 +55,17 @@ The packages used here have distinct roles:
 
 - `dplyr`: grouping, joining, ordering, and summarizing result tables;
 - `tidyr`: reshaping tables between long and wide formats;
+- `ggplot2`: building the graphical diagnostic of the selection rule;
+- `ggthemes`: applying the GDocs theme and color scale;
 - `knitr`: formatting tables in R Markdown documents;
 - `here`: building project-relative file paths.
 
 ```{r packages, warning=FALSE, message=FALSE}
 library(dplyr) # Group, join, and summarize tables.
-library(tidyr) # Reshape data between long and wide formats.
-library(knitr) # Format tables in R Markdown documents.
+library(tidyr)   # Reshape data between long and wide formats.
+library(ggplot2) # Build diagnostic figures.
+library(ggthemes) # Apply the GDocs theme and color scale.
+library(knitr)   # Format tables in R Markdown documents.
 library(here)  # Build project-relative paths.
 ```
 
@@ -88,19 +92,18 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-### 2.2 Input objects and results directory
+### 2.2 Input objects
 
-The module uses two consolidated objects: `matrices_object.rds`, which supplies phenotypes, metadata, and definitions from Module 02, and `models_object.rds`, which supplies fold-level metrics, OOF predictions, and MCMC diagnostics from Module 03.
+The module uses two consolidated objects: `matrices_object.rds`, which supplies phenotypes, metadata, and definitions from Module 02, and `models_object.rds`, which supplies fold-level metrics, OOF predictions, and MCMC diagnostics from Module 03. During derivation, no output directory is created; `output/results/m04/` is prepared only in Section 13, immediately before the results are persisted.
 
 ```{r inputs}
-MATRICES_FILE <- here("output", "matrices", "matrices_object.rds")
-MODELS_FILE <- here("output", "models", "models_object.rds")
-RESULTS_DIR <- here("output", "results", "m04")
+matrices_object <- readRDS(
+  here("output", "matrices", "matrices_object.rds")
+)
 
-dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
-
-matrices_object <- readRDS(MATRICES_FILE)
-models_object <- readRDS(MODELS_FILE)
+models_object <- readRDS(
+  here("output", "models", "models_object.rds")
+)
 
 metrics <- models_object$metrics_by_fold
 predictions <- models_object$predictions
@@ -108,8 +111,6 @@ convergence <- models_object$convergence_diagnostics
 
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
-ids <- matrices_object$ids
-
 ```
 
 ## 3. OOF predictive performance
@@ -213,7 +214,30 @@ model_comparison <- pooled_metrics |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
 
-### 4.2 Relationship between Bayesian fit and predictive performance
+### 4.2 Diagnostic of `Wprob` normalization
+
+The normalization can be inspected directly within each trait. The seven weights should sum numerically to 1, while the best DIC-supported method has `ER = 1`. This table is only a visible diagnostic of the transformation defined above.
+
+```{r wprob-diagnostic}
+model_comparison |>
+  group_by(Trait) |>
+  summarise(
+    Sum_Wprob = sum(Wprob),
+    Maximum_Wprob = max(Wprob),
+    Minimum_ER = min(ER),
+    .groups = "drop"
+  ) |>
+  format_table(
+    digits = 8,
+    caption = "Diagnostic of DIC-derived weight normalization",
+    col.names = c(
+      "Trait", "Sum of Wprob",
+      "Largest Wprob", "Smallest ER"
+    )
+  )
+```
+
+### 4.3 Relationship between Bayesian fit and predictive performance
 
 `model_comparison` combines OOF performance and DIC-derived relative support for every trait and method. DIC quantities are comparable only within the same trait and do not replace predictive evidence.
 
@@ -371,6 +395,33 @@ model_selection_support <- model_comparison |>
 
 `Automatic_candidate = TRUE` simultaneously requires predictive competitiveness, `Delta_DIC <= 2`, and no flags in the monitored diagnostics.
 
+The following table makes the derived rule boundaries and resulting set sizes visible for every trait. It does not add any criterion to the decision.
+
+```{r competitive-set-diagnostic}
+model_selection_support |>
+  group_by(Trait) |>
+  summarise(
+    Minimum_competitive_mean_r =
+      first(Best_mean_fold_r - Best_mean_fold_r_SE),
+    Maximum_competitive_mean_RMSE =
+      first(Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE),
+    Predictively_competitive_n = sum(Predictively_competitive),
+    DIC_and_predictive_competitive_n = sum(Competitive_for_selection),
+    Automatic_candidate_n = first(Automatic_candidate_n),
+    RRBLUP_automatic_candidate = first(RRBLUP_automatic_candidate),
+    .groups = "drop"
+  ) |>
+  format_table(
+    digits = 4,
+    caption = "Competitive-set boundaries and sizes by trait",
+    col.names = c(
+      "Trait", "Minimum mean r", "Maximum mean RMSE",
+      "Predictive competitors", "Predictive + DIC competitors",
+      "Automatic candidates", "RR-BLUP automatic candidate"
+    )
+  )
+```
+
 ### 5.4 Method choice
 
 Steps 4 and 5 are implemented here. RR-BLUP receives priority only within the automatic-candidate set as an explicit parsimony choice and homogeneous-shrinkage benchmark, without implying universal statistical superiority. If RR-BLUP is absent from that set, the remaining candidates follow the order `r`, RMSE, MAE, and DIC; if no automatic candidate exists, the predictive winner is retained provisionally for review.
@@ -508,7 +559,65 @@ selected_performance <- model_selection_support |>
 
 `selected_performance` retains, for every trait, the OOF metrics, DIC, and diagnostics corresponding to the method actually selected.
 
-### 5.6 Final selection result and predictive evidence
+### 5.6 Diagnostic map of the selection rule
+
+The figure positions all seven methods for each trait using the two quantities that define predictive competitiveness across folds. Dashed lines show the one-standard-error boundaries; methods to the right of the vertical line and below the horizontal line satisfy the predictive part of the rule. Point shape indicates whether `Delta_DIC <= 2` and the monitored MCMC diagnostics additionally allow the method to be classified as an automatic candidate.
+
+```{r selection-rule-map, fig.width=10, fig.height=8, fig.alt="Trait panels with mean fold correlation on the horizontal axis, mean RMSE on the vertical axis, dashed one-standard-error boundaries, and colored methods; point shape indicates whether the method is an automatic candidate."}
+selection_rule_boundaries <- model_selection_support |>
+  distinct(
+    Trait, Best_mean_fold_r, Best_mean_fold_r_SE,
+    Best_mean_fold_RMSE, Best_mean_fold_RMSE_SE
+  )
+
+model_selection_support |>
+  mutate(
+    Automatic_candidate_label = factor(
+      Automatic_candidate,
+      levels = c(FALSE, TRUE),
+      labels = c("No", "Yes")
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = Mean_fold_r,
+      y = Mean_fold_RMSE,
+      color = Method,
+      shape = Automatic_candidate_label
+    )
+  ) +
+  geom_vline(
+    data = selection_rule_boundaries,
+    aes(xintercept = Best_mean_fold_r - Best_mean_fold_r_SE),
+    linetype = 2,
+    linewidth = 0.5,
+    inherit.aes = FALSE
+  ) +
+  geom_hline(
+    data = selection_rule_boundaries,
+    aes(yintercept = Best_mean_fold_RMSE + Best_mean_fold_RMSE_SE),
+    linetype = 2,
+    linewidth = 0.5,
+    inherit.aes = FALSE
+  ) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  facet_wrap(~ Trait, scales = "free", ncol = 2) +
+  scale_color_gdocs(name = "Method") +
+  labs(
+    x = "Mean correlation across folds",
+    y = "Mean RMSE across folds",
+    shape = "Automatic candidate",
+    title = "Predictive competitiveness and automatic candidates",
+    subtitle = "Dashed lines show the descriptive one-standard-error tolerances",
+    caption = "A 'Yes' shape additionally requires Delta DIC <= 2 and no flags in the monitored MCMC diagnostics."
+  ) +
+  theme_gdocs() +
+  theme(legend.position = "top")
+```
+
+The map is diagnostic: it shows how the rule classifies methods but does not turn the across-fold tolerances into formal equivalence tests.
+
+### 5.7 Final selection result and predictive evidence
 
 Finally, the selected method, predictive and DIC winners, OOF direction, and a
 nominal signal class are brought together for each trait. The nominal class is shown only to make weak positive correlations explicit; it is not used as a selection filter. The $r > 0$ boundary separates only positive from nonpositive predictive direction; it is neither a significance test nor a minimum predictive-utility threshold.
@@ -998,9 +1107,17 @@ selected_oof_correlations <- cor(
 
 ## 13. Saving the results
 
-The derived tables and `module04_results.rds` object are persisted for direct use in Module 05. No genomic model is refitted at this stage.
+The derived tables and `module04_results.rds` object are persisted for direct use in Module 05. No genomic model is refitted at this stage. The output directory is created only now, after all derivations have been completed.
 
 ```{r save-results}
+RESULTS_DIR <- here("output", "results", "m04")
+
+dir.create(
+  RESULTS_DIR,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
 # Save the tables derived by the module before assembling the consolidated RDS object.
 write.csv(model_comparison, file.path(RESULTS_DIR, "model_comparison.csv"), row.names = FALSE)
 write.csv(model_selection_support, file.path(RESULTS_DIR, "model_selection_support.csv"), row.names = FALSE)
@@ -1063,7 +1180,8 @@ By the end of this module, the derivation stage is complete: method comparison, 
 
 Module 05 changes from **derivation to presentation and interpretation**. It uses only these derivations to build summary tables and figures, without reapplying the selection rule, rebuilding rankings, or refitting models. OOF genomic values remain cross-fitted validation scores; this workflow does not transform them into final breeding values from a refit using all 150 phenotypes.
 
-<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="03_models_en.html">← Module 03 — Model fitting</a>
-<a href="05_results_en.html">Module 05 — Results synthesis →</a>
+<a href="04_results_pt.html" style="text-align:center;">Português</a>
+<a href="05_results_en.html" style="text-align:right;">Module 05 — Results synthesis →</a>
 </div>
