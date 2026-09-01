@@ -71,7 +71,8 @@ defective-fruit production.
 - Their identifier sets and row order are identical after the M01 alignment.
 - No phenotype is missing for the ten canonical traits.
 - Block (`BL`) is present in the canonical source phenotype worksheet and is
-  removed immediately when M01 reads the phenotype data; it is not propagated
-  to metadata, `X`, cross-validation folds, or prediction models.
+  retained in `pheno_raw` during source inspection, then excluded when M01
+  defines the analytical columns; it is not propagated to metadata, `X`,
+  cross-validation folds, or prediction models.
 - Family (`FAM`) is retained and is the only categorical fixed effect used in
   the prediction models.
