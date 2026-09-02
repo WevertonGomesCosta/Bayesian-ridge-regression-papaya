@@ -10,7 +10,7 @@
 
 ### Purpose
 
-This repository contains a bilingual and reproducible `workflowr` tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers. The tutorial is organized to guide the reader from source-data inspection and quality control to genomic matrices, cross-validation, model fitting, diagnostics, model comparison, and exploratory candidate prioritization.
+This repository contains a bilingual `workflowr` tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers. The tutorial guides the reader from source-data inspection and quality control to genomic matrices, cross-validation, model fitting, diagnostics, model comparison, and exploratory candidate prioritization.
 
 The analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is included as the only categorical fixed effect; block is removed during preprocessing and is not used in the prediction models.
 
@@ -30,30 +30,51 @@ The modules are intended to be read in sequence because each stage creates the o
 
 The five-fold cross-validation is stratified by family. With 150 individuals, each fold contains 30 validation individuals and 120 training individuals, and every individual is used once for OOF validation. This design evaluates prediction within the represented breeding population; it is not a leave-family-out assessment of entirely new families.
 
-Genotype-derived matrices are constructed from the aligned genotyped candidate panel, whereas validation phenotypes are masked during each fit. Consequently, the OOF genomic values are cross-fitted predictions rather than final breeding values from a full-data refit. Candidate rankings are therefore presented as exploratory proportional prioritizations and are constructed only for traits with positive pooled OOF correlation, selecting the top 20% of candidates within each eligible trait. A positive OOF correlation alone is not treated as demonstrated predictive utility when its corresponding significance assessment remains weak.
+Genotype-derived matrices are constructed from the aligned genotyped candidate panel, whereas validation phenotypes are masked during each fit. Consequently, the OOF genomic values are cross-fitted predictions rather than final breeding values from a full-data refit. Candidate rankings are exploratory proportional prioritizations constructed only for traits with positive pooled OOF correlation, selecting the top 20% of candidates within each eligible trait. A positive OOF correlation alone is not treated as demonstrated predictive utility when its corresponding significance assessment remains weak.
 
 ### Repository structure
 
 - `analysis/`: bilingual `workflowr` source pages for the site and Modules 01--05;
 - `data/`: local canonical source workbooks, excluded from Git, plus the versioned data contract in `data/README.md`;
-- `docs/`: rendered tutorial website;
-- `output/`: analytical objects, diagnostics, tables, and figures created by the workflow; generated artifacts are ignored by default, while selected result tables under `output/results/m04/` are versioned;
-- `renv.lock` and `renv/`: metadata for the reproducible R environment.
+- `docs/`: rendered tutorial website tracked by Git;
+- `output/`: locally generated analytical objects, diagnostics, tables, and figures; generated artifacts are ignored by default, while a defined public subset of M04 result tables is versioned;
+- `renv.lock` and `renv/`: metadata for the reproducible R environment;
+- `.github/workflows/`: lightweight repository-integrity CI that validates the tracked project structure without requiring private/local workbooks or rerunning the 350 model fits.
 
-### Reproducing the workflow
+### Reproducibility modes
 
-Restore the recorded R environment before executing the tutorial:
+This repository supports two distinct forms of reproducibility and they should not be conflated.
+
+#### 1. Read or inspect the validated analysis
+
+The rendered `docs/` website is versioned in Git and published through GitHub Pages. A fresh clone is sufficient to inspect the validated tutorial, code, tables, and rendered figures that are committed to the repository.
+
+The public M04 tables intentionally versioned under `output/results/m04/` provide a machine-readable subset of the final scientific results.
+
+#### 2. Reconstruct the analytical workflow
+
+A fresh clone **cannot by itself rerun the complete analysis from raw inputs**. The following inputs or generated intermediates are intentionally not distributed in Git:
+
+- the two canonical Excel workbooks in `data/`;
+- generated M01/M02/M03/M04 `.rds` objects and most generated CSV files;
+- native BGLR chain files (`*.dat`/`*.bin`), including the fold-1 `mu` chains used by the illustrative M05 trace.
+
+To reconstruct the analysis, first obtain the two canonical workbooks from the project data provider/author, place them in `data/` using the portable filenames documented in [`data/README.md`](data/README.md), and verify their SHA-256 fingerprints. The repository does not currently provide a public download URL for those workbooks.
+
+Then restore the recorded R environment:
 
 ```r
 renv::restore()
 renv::status()
 ```
 
-Then inspect [`data/README.md`](data/README.md) for the source-data contract and follow Modules 01--05 in order. Routine website rendering reproduces the documented pages but does not automatically launch the computationally intensive model-fitting chunks in Module 03; a full refit requires those fitting steps to be executed intentionally as documented in that module.
+Execute Modules 01 and 02 in sequence to recreate preprocessing and matrix objects. Module 03 contains the complete code for the 350 trait × fold × method fits, but its computationally intensive fitting chunks are intentionally `eval=FALSE`; a full reconstruction therefore requires those fitting blocks to be run deliberately before the downstream persisted outputs are assembled. Modules 04 and 05 then consume those regenerated outputs.
+
+Routine `workflowr` rendering should not be interpreted as a substitute for this full computational reconstruction: downstream pages require persisted objects or chain files that are deliberately excluded from Git.
 
 ### Data and references
 
-The canonical source workbooks are kept locally in `data/` with portable filenames and are excluded from Git. Their original names, SHA-256 checksums, and alignment invariants are documented in [`data/README.md`](data/README.md).
+The canonical source workbooks are kept locally in `data/` with portable filenames and are excluded from Git. Their original names, SHA-256 checksums, placement instructions, and alignment invariants are documented in [`data/README.md`](data/README.md).
 
 The main methodological reference for the comparative analytical structure is:
 
@@ -65,7 +86,7 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR
 
 ### Objetivo
 
-Este repositório contém um tutorial bilíngue e reprodutível em `workflowr` para predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos. O tutorial foi organizado para conduzir o leitor desde a inspeção e o controle de qualidade dos dados-fonte até a construção das matrizes genômicas, validação cruzada, ajuste dos modelos, diagnósticos, comparação dos métodos e priorização exploratória de candidatos.
+Este repositório contém um tutorial bilíngue em `workflowr` para predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos. O tutorial conduz o leitor desde a inspeção e o controle de qualidade dos dados-fonte até a construção das matrizes genômicas, validação cruzada, ajuste dos modelos, diagnósticos, comparação dos métodos e priorização exploratória de candidatos.
 
 O conjunto analítico contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é incluída como o único efeito fixo categórico; bloco é removido durante o pré-processamento e não é utilizado nos modelos de predição.
 
@@ -85,30 +106,51 @@ Os módulos devem ser lidos em sequência, pois cada etapa cria os objetos utili
 
 A validação cruzada em cinco folds é estratificada por família. Com 150 indivíduos, cada fold contém 30 indivíduos de validação e 120 de treinamento, e cada indivíduo participa uma única vez da avaliação OOF. Esse desenho avalia a predição dentro da população de melhoramento representada; não constitui uma avaliação leave-family-out de famílias inteiramente novas.
 
-As matrizes derivadas dos genótipos são construídas a partir do painel alinhado de candidatos genotipados, enquanto os fenótipos de validação são mascarados em cada ajuste. Consequentemente, os valores genômicos OOF são predições cross-fitted, e não valores genéticos finais provenientes de um reajuste com todos os dados. Os rankings de candidatos são, portanto, apresentados como priorizações proporcionais exploratórias e são construídos somente para características com correlação OOF agregada positiva, selecionando os 20% superiores dos candidatos em cada característica elegível. Uma correlação OOF positiva, isoladamente, não é tratada como utilidade preditiva demonstrada quando sua avaliação de significância correspondente permanece fraca.
+As matrizes derivadas dos genótipos são construídas a partir do painel alinhado de candidatos genotipados, enquanto os fenótipos de validação são mascarados em cada ajuste. Consequentemente, os valores genômicos OOF são predições cross-fitted, e não valores genéticos finais provenientes de um reajuste com todos os dados. Os rankings de candidatos são priorizações proporcionais exploratórias construídas somente para características com correlação OOF agregada positiva, selecionando os 20% superiores dos candidatos em cada característica elegível. Uma correlação OOF positiva, isoladamente, não é tratada como utilidade preditiva demonstrada quando sua avaliação de significância correspondente permanece fraca.
 
 ### Estrutura do repositório
 
 - `analysis/`: páginas-fonte bilíngues do `workflowr` para o site e os Módulos 01--05;
 - `data/`: planilhas-fonte canônicas mantidas localmente e excluídas do Git, além do contrato versionado em `data/README.md`;
-- `docs/`: site tutorial renderizado;
-- `output/`: objetos analíticos, diagnósticos, tabelas e figuras produzidos pelo fluxo; os artefatos gerados são ignorados por padrão, enquanto tabelas selecionadas de `output/results/m04/` são versionadas;
-- `renv.lock` e `renv/`: metadados do ambiente R reprodutível.
+- `docs/`: site tutorial renderizado e versionado no Git;
+- `output/`: objetos analíticos, diagnósticos, tabelas e figuras produzidos localmente; os artefatos gerados são ignorados por padrão, enquanto um subconjunto público definido das tabelas finais do M04 é versionado;
+- `renv.lock` e `renv/`: metadados do ambiente R reprodutível;
+- `.github/workflows/`: CI leve de integridade do repositório, executado sem exigir os workbooks locais nem refazer os 350 ajustes.
 
-### Reprodução do fluxo
+### Modos de reprodutibilidade
 
-Restaure o ambiente R registrado antes de executar o tutorial:
+Este repositório oferece duas formas distintas de reprodutibilidade, que não devem ser tratadas como equivalentes.
+
+#### 1. Ler ou inspecionar a análise validada
+
+O site renderizado em `docs/` é versionado no Git e publicado pelo GitHub Pages. Um clone novo é suficiente para inspecionar o tutorial validado, o código, as tabelas e as figuras renderizadas que foram commitadas.
+
+As tabelas públicas do M04 intencionalmente versionadas em `output/results/m04/` fornecem um subconjunto legível por máquina dos resultados científicos finais.
+
+#### 2. Reconstruir o fluxo analítico
+
+Um clone novo **não consegue, sozinho, refazer toda a análise a partir dos dados brutos**. Os seguintes arquivos de entrada ou intermediários gerados são deliberadamente excluídos do Git:
+
+- as duas planilhas Excel canônicas em `data/`;
+- objetos `.rds` e a maior parte dos CSV gerados em M01/M02/M03/M04;
+- cadeias nativas do BGLR (`*.dat`/`*.bin`), incluindo as cadeias `mu` do fold 1 utilizadas no trace ilustrativo do M05.
+
+Para reconstruir a análise, obtenha primeiro as duas planilhas canônicas com o responsável/provedor dos dados do projeto, coloque-as em `data/` com os nomes portáveis documentados em [`data/README.md`](data/README.md) e valide seus hashes SHA-256. O repositório não disponibiliza atualmente uma URL pública para download dessas planilhas.
+
+Depois, restaure o ambiente R registrado:
 
 ```r
 renv::restore()
 renv::status()
 ```
 
-Em seguida, consulte [`data/README.md`](data/README.md) para o contrato dos dados-fonte e siga os Módulos 01--05 na ordem. A renderização rotineira do site reproduz as páginas documentadas, mas não inicia automaticamente os chunks computacionalmente intensivos de ajuste do Módulo 03; uma reprodução completa dos ajustes exige a execução intencional dessas etapas conforme documentado no próprio módulo.
+Execute os Módulos 01 e 02 em sequência para recriar os objetos de pré-processamento e matrizes. O Módulo 03 contém o código completo dos 350 ajustes característica × fold × método, mas seus chunks computacionalmente intensivos permanecem intencionalmente com `eval=FALSE`; uma reconstrução completa exige, portanto, executar deliberadamente esses blocos antes de consolidar as saídas persistidas. Os Módulos 04 e 05 consomem então os resultados regenerados.
+
+A renderização rotineira com `workflowr` não deve ser interpretada como substituta dessa reconstrução computacional completa: as páginas posteriores dependem de objetos persistidos ou cadeias que são deliberadamente excluídos do Git.
 
 ### Dados e referências
 
-As planilhas-fonte canônicas são mantidas localmente em `data/` com nomes portáveis e são excluídas do Git. Seus nomes originais, hashes SHA-256 e invariantes de alinhamento estão documentados em [`data/README.md`](data/README.md).
+As planilhas-fonte canônicas são mantidas localmente em `data/` com nomes portáveis e são excluídas do Git. Seus nomes originais, hashes SHA-256, instruções de posicionamento e invariantes de alinhamento estão documentados em [`data/README.md`](data/README.md).
 
 A principal referência metodológica para a estrutura comparativa das análises é:
 

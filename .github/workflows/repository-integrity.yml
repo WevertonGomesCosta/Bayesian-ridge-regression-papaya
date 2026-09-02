@@ -1,0 +1,158 @@
+name: Repository integrity
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  static-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed-file whitespace
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}"
+            base="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
+            git diff --check "$base"..HEAD
+          else
+            git diff --check HEAD^ HEAD
+          fi
+
+      - name: Validate repository contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          expected_rmd = {
+              'analysis/index.Rmd',
+              'analysis/about.Rmd',
+              'analysis/license.Rmd',
+              'analysis/01_preprocessing_en.Rmd',
+              'analysis/01_preprocessing_pt.Rmd',
+              'analysis/02_matrices_en.Rmd',
+              'analysis/02_matrices_pt.Rmd',
+              'analysis/03_models_en.Rmd',
+              'analysis/03_models_pt.Rmd',
+              'analysis/04_results_en.Rmd',
+              'analysis/04_results_pt.Rmd',
+              'analysis/05_results_en.Rmd',
+              'analysis/05_results_pt.Rmd',
+          }
+
+          actual_rmd = {
+              str(p).replace('\\', '/')
+              for p in Path('analysis').glob('*.Rmd')
+          }
+          assert actual_rmd == expected_rmd, (
+              'Unexpected workflowr source set',
+              sorted(actual_rmd ^ expected_rmd),
+          )
+
+          for path_str in sorted(expected_rmd):
+              text = Path(path_str).read_text(encoding='utf-8')
+              labels = []
+              for line in text.splitlines():
+                  match = re.match(r'^```\{r(?:\s+([^,}\s]+))?', line)
+                  if match and match.group(1):
+                      labels.append(match.group(1))
+              duplicates = sorted({x for x in labels if labels.count(x) > 1})
+              assert not duplicates, f'duplicate chunk labels in {path_str}: {duplicates}'
+
+          module_files = sorted(Path('analysis').glob('0[1-5]_*.Rmd'))
+          for path in module_files:
+              text = path.read_text(encoding='utf-8')
+              assert 'stopifnot(' not in text, f'tutorial guard found in {path}'
+              assert 'Rscript --vanilla' not in text, f'--vanilla found in {path}'
+
+          description = Path('DESCRIPTION').read_text(encoding='utf-8')
+          cff = Path('CITATION.cff').read_text(encoding='utf-8')
+          desc_version = re.search(r'^Version:\s*(\S+)', description, flags=re.M).group(1)
+          cff_version = re.search(r'^version:\s*(\S+)', cff, flags=re.M).group(1)
+          assert desc_version == cff_version == '1.0.4'
+
+          data_contract = Path('data/README.md').read_text(encoding='utf-8')
+          required_hashes = {
+              'ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1',
+              '41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec',
+          }
+          for value in required_hashes:
+              assert value in data_contract, f'missing canonical data hash: {value}'
+
+          tracked = subprocess.check_output(
+              ['git', 'ls-files'], text=True, encoding='utf-8'
+          ).splitlines()
+
+          forbidden = [
+              p for p in tracked
+              if p.lower().endswith(('.xlsx', '.dat', '.bin'))
+          ]
+          assert not forbidden, f'forbidden tracked local/generated files: {forbidden}'
+
+          assert not any('selected-mu-density' in p for p in tracked)
+          assert not any(p.endswith('.tmp') for p in tracked)
+          assert not any('integral_audit' in p.lower() for p in tracked)
+
+          public_m04 = {
+              'output/results/m04/convergence_by_trait_method.csv',
+              'output/results/m04/model_comparison.csv',
+              'output/results/m04/model_selection.csv',
+              'output/results/m04/model_selection_support.csv',
+              'output/results/m04/multitrait_candidates.csv',
+              'output/results/m04/oof_direction_summary.csv',
+              'output/results/m04/recurrence_distribution.csv',
+              'output/results/m04/rrblup_heritability_summary.csv',
+              'output/results/m04/selected_individuals_by_trait.csv',
+              'output/results/m04/selected_oof_correlations.csv',
+              'output/results/m04/selection_cutoff_summary.csv',
+          }
+          tracked_m04 = {p for p in tracked if p.startswith('output/results/m04/')}
+          assert tracked_m04 == public_m04, (
+              'Unexpected public M04 result set',
+              sorted(tracked_m04 ^ public_m04),
+          )
+
+          expected_html = {
+              'docs/index.html',
+              'docs/about.html',
+              'docs/license.html',
+              'docs/01_preprocessing_en.html',
+              'docs/01_preprocessing_pt.html',
+              'docs/02_matrices_en.html',
+              'docs/02_matrices_pt.html',
+              'docs/03_models_en.html',
+              'docs/03_models_pt.html',
+              'docs/04_results_en.html',
+              'docs/04_results_pt.html',
+              'docs/05_results_en.html',
+              'docs/05_results_pt.html',
+          }
+          missing_html = sorted(p for p in expected_html if not Path(p).is_file())
+          assert not missing_html, f'missing published workflowr pages: {missing_html}'
+
+          m05_en = Path('analysis/05_results_en.Rmd').read_text(encoding='utf-8')
+          m05_pt = Path('analysis/05_results_pt.Rmd').read_text(encoding='utf-8')
+          for text in (m05_en, m05_pt):
+              assert 'ggsave(' not in text
+              assert 'filter(N_traits >= 3L)' in text
+              assert 'bglr_mu.dat' in text
+
+          readme = Path('README.md').read_text(encoding='utf-8')
+          assert 'A fresh clone **cannot by itself rerun the complete analysis from raw inputs**' in readme
+          assert 'Um clone novo **não consegue, sozinho, refazer toda a análise a partir dos dados brutos**' in readme
+
+          print('[OK] repository integrity contract passed')
+          PY
