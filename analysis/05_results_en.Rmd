@@ -44,12 +44,14 @@ The packages used here have distinct roles:
 
 - `dplyr`: organizing, joining, and transforming result tables;
 - `ggplot2`: building comparison and diagnostic figures;
+- `ggthemes`: applying the GDocs theme and scales to categorical figures;
 - `knitr`: formatting the tables presented on the page;
 - `here`: building project-relative paths.
 
 ```{r packages, warning=FALSE, message=FALSE}
 library(dplyr)  # Organize and transform result tables.
 library(ggplot2) # Build the synthesis figures.
+library(ggthemes) # Apply the GDocs graphical standard.
 library(knitr)  # Format tables in R Markdown.
 library(here)   # Build project-relative paths.
 ```
@@ -79,19 +81,17 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 
 ### 2.2 Input objects and graphical style
 
-This module consumes the persisted outputs from Modules 03 and 04. The labels and graphical settings defined below affect only how the results are displayed.
+This module consumes the persisted outputs from Modules 03 and 04. All scientific decisions, rankings, and summaries presented here come from the consolidated Module 04 object. The Module 03 object and native `bglr_mu.dat` chains are used only in Section 5 to build the illustrative `mu` trace; this graphical dependency does not redefine any decision. The labels and graphical settings defined below affect only how the results are displayed.
 
 ```{r inputs-and-style}
-# Define output paths and load the objects required by this module.
-MODELS_FILE <- here("output", "models", "models_object.rds")
-M04_FILE <- here("output", "results", "m04", "module04_results.rds")
-RESULTS_DIR <- here("output", "results", "m05")
-FIGURE_DIR <- file.path(RESULTS_DIR, "figures")
+# Load directly the persisted objects required for the synthesis.
+models_object <- readRDS(
+  here("output", "models", "models_object.rds")
+)
 
-dir.create(FIGURE_DIR, recursive = TRUE, showWarnings = FALSE)
-
-models_object <- readRDS(MODELS_FILE)
-m04 <- readRDS(M04_FILE)
+m04 <- readRDS(
+  here("output", "results", "m04", "module04_results.rds")
+)
 
 traits <- m04$traits
 methods <- m04$methods
@@ -199,20 +199,10 @@ n_selected_per_trait <- selection_sizes$N_selected[[1]]
 n_trait_candidate_occurrences <-
   nrow(selected_individuals_by_trait)
 n_recurrent_candidates <- nrow(multitrait_candidates)
+n_main_multitrait_candidates <- sum(multitrait_candidates$N_traits >= 3L)
 
-# Define the fixed palette used to distinguish methods in figures.
-method_colors <- c(
-  RRBLUP = "#3366CC",
-  BayesA = "#DC3912",
-  BayesB = "#FF9900",
-  BayesB2 = "#109618",
-  BayesC = "#990099",
-  BL = "#0099C6",
-  GBLUP = "#DD4477"
-)
-
-# Use base font size 12 for readability; this choice does not alter any analytical result.
-project_theme <- theme_bw(base_size = 12) +
+# Apply the GDocs graphical standard; this choice affects presentation only.
+project_theme <- theme_gdocs() +
   theme(
     legend.position = "bottom",
     strip.text = element_text(face = "bold"),
@@ -244,8 +234,7 @@ predictive_plot <- model_comparison |>
   geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
   geom_col(width = 0.75) +
   facet_wrap(~ Trait, scales = "fixed", ncol = 2) +
-  scale_fill_manual(
-    values = method_colors,
+  scale_fill_gdocs(
     breaks = methods,
     labels = method_labels
   ) +
@@ -260,14 +249,6 @@ predictive_plot <- model_comparison |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 predictive_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "predictive_correlation_by_method_en.png"),
-  predictive_plot,
-  width = 13,
-  height = 10,
-  dpi = 300
-)
 ```
 
 The comparison shows that predictive magnitude depends strongly on the trait. The largest OOF correlation observed in the comparison occurs for `r highest_oof_trait`, whereas several traits remain in much lower ranges. Within several panels, methods are relatively close for the same trait; method choice therefore remains trait-specific and follows the hierarchical rule consolidated in Module 04 rather than defining one global method.
@@ -478,8 +459,7 @@ mu_trace_plot <- ggplot(
     linewidth = 0.8
   ) +
   facet_wrap(~ Facet, scales = "free_y", ncol = 2) +
-  scale_color_manual(
-    values = method_colors,
+  scale_color_gdocs(
     breaks = methods,
     labels = method_labels
   ) +
@@ -492,14 +472,6 @@ mu_trace_plot <- ggplot(
   project_theme
 
 mu_trace_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_model_mu_trace_en.png"),
-  mu_trace_plot,
-  width = 13,
-  height = 14,
-  dpi = 300
-)
 ```
 
 The trace is only an illustration of the fold-1 `mu` chain. It does not alter selection or convergence classification, which remain based on ESS and Geweke diagnostics over all five folds.
@@ -535,14 +507,6 @@ fold_stability_plot <- ggplot(
   project_theme
 
 fold_stability_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_method_fold_stability_en.png"),
-  fold_stability_plot,
-  width = 12,
-  height = 10,
-  dpi = 300
-)
 ```
 
 Fold stability should be interpreted together with pooled OOF correlation. Larger ranges or sign changes are descriptively more relevant for traits whose pooled signal is already weak, but they do not redefine method selection. With only five folds and overlapping training sets, this variation remains a descriptive stability measure.
@@ -565,8 +529,7 @@ runtime_plot <- runtime_summary |>
     ),
     width = 0.2
   ) +
-  scale_fill_manual(
-    values = method_colors,
+  scale_fill_gdocs(
     breaks = methods,
     labels = method_labels
   ) +
@@ -581,14 +544,6 @@ runtime_plot <- runtime_summary |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 runtime_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "runtime_by_method_en.png"),
-  runtime_plot,
-  width = 11,
-  height = 7,
-  dpi = 300
-)
 ```
 
 The runtime ordering documents only the computational cost observed in this execution. Fitting time does not enter the method-selection rule and should not replace predictive, DIC, or MCMC-diagnostic criteria.
@@ -659,12 +614,10 @@ correlation_plot <- ggplot(
     aes(label = sprintf("%.2f", Correlation_label)),
     size = 3
   ) +
-  scale_fill_gradient2(
-    low = "#DC3912",
-    mid = "white",
-    high = "#3366CC",
-    midpoint = 0,
-    # Keep the color scale fixed to the theoretical correlation range [-1, 1].
+  scale_fill_distiller(
+    type = "div",
+    palette = "RdBu",
+    direction = 1,
     limits = c(-1, 1)
   ) +
   labs(
@@ -678,14 +631,6 @@ correlation_plot <- ggplot(
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 correlation_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_oof_correlations_en.png"),
-  correlation_plot,
-  width = 10,
-  height = 9,
-  dpi = 300
-)
 ```
 
 The heatmap should be read as association among cross-fitted OOF scores: positive values indicate a tendency for two traits to rank individuals in the same direction, whereas negative values indicate opposing directions. These associations are not genetic correlations from a multivariate model and do not create an additional selection criterion.
@@ -789,7 +734,27 @@ This step does not create a new score and does not rerank individuals by combini
 
 ### 11.1 Scientific contract and presentation filter
 
-The recurrence classes shown here are the same ones defined in Module 04. The complete object retains candidates present in at least two traits; to keep the main table compact, this module displays only intermediate or high recurrence, that is, candidates present in three or more traits. The `N_traits >= 3` cutoff is a presentation choice only and does not redefine the stored candidate set.
+The recurrence classes shown here are the same ones defined in Module 04. The complete object retains candidates present in at least two traits; to keep the main table compact, this module displays only intermediate or high recurrence, that is, candidates present in three or more traits. The `N_traits >= 3` cutoff is a presentation choice only and does not redefine the stored candidate set. The scope table below makes the distinction between the scientific contract and the visual subset used on this page explicit.
+
+```{r recurrence-scope-table}
+recurrence_scope_display <- data.frame(
+  Scope = c(
+    "Scientific object consolidated in Module 04",
+    "Subset shown in the main Module 05 table"
+  ),
+  Minimum_traits = c(2L, 3L),
+  Candidates = c(
+    n_recurrent_candidates,
+    n_main_multitrait_candidates
+  )
+)
+
+format_table(
+  recurrence_scope_display,
+  caption = "Scientific recurrence scope and presentation subset",
+  col.names = c("Scope", "Minimum number of traits", "Candidates")
+)
+```
 
 ### 11.2 Recurrence distribution
 
@@ -892,13 +857,14 @@ format_table(
 
 Recurrence summarizes, across traits with positive OOF correlation, in how many lists each individual appears among the most favorable `r sprintf("%.0f%%", 100 * selection_proportion)`. `Selection_frequency` uses the number of positive-OOF traits as its denominator, not necessarily all `r n_traits` original traits. Recurrence supported by weak positive OOF signals remains exploratory. `N_traits`, frequency, and ranks are not combined into a multi-trait index; therefore, greater recurrence does not demonstrate joint superiority across multiple traits.
 
-In the complete Module 04 object, `r n_recurrent_candidates` individuals recur in at least two traits. The main table on this page shows only the subset recurring in three or more traits; this presentation reduction does not modify the stored scientific set or create a multi-trait index.
+In the complete Module 04 object, `r n_recurrent_candidates` individuals recur in at least two traits. The main table on this page displays `r n_main_multitrait_candidates` individuals recurring in three or more traits; this presentation reduction does not modify the stored scientific set or create a multi-trait index.
 
 ## 12. Summary
 
 The final reading should preserve the hierarchy established throughout the analysis: OOF performance drives predictive comparison; DIC, across-fold stability, and MCMC diagnostics provide complementary context; rankings are produced only when OOF direction is positive; and recurrence summarizes overlap among rankings without constructing a multi-trait index. All conclusions remain conditional on the represented breeding population, the available SSR panel, and the transductive validation design. For operational selection, OOF rankings should be treated as exploratory evidence rather than substitutes for final breeding values from a prediction stage designed for decision making.
 
-<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="04_results_en.html">← Module 04 — Comparison and selection</a>
-<a href="index.html">Home →</a>
+<a href="05_results_pt.html" style="text-align:center;">Português</a>
+<a href="index.html" style="text-align:right;">Home →</a>
 </div>

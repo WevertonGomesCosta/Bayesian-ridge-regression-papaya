@@ -44,12 +44,14 @@ Os pacotes utilizados têm funções distintas nesta etapa:
 
 - `dplyr`: organização, junção e transformação das tabelas de resultados;
 - `ggplot2`: construção das figuras de comparação e diagnóstico;
+- `ggthemes`: aplicação do tema e das escalas GDocs nas figuras categóricas;
 - `knitr`: formatação das tabelas apresentadas na página;
 - `here`: construção de caminhos relativos ao projeto.
 
 ```{r packages, warning=FALSE, message=FALSE}
 library(dplyr)  # Organiza e transforma as tabelas de resultados.
 library(ggplot2) # Constrói as figuras da síntese.
+library(ggthemes) # Aplica o padrão gráfico GDocs.
 library(knitr)  # Formata as tabelas em R Markdown.
 library(here)   # Constrói caminhos relativos ao projeto.
 ```
@@ -79,19 +81,17 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 
 ### 2.2 Objetos de entrada e padrão gráfico
 
-Este módulo consome as saídas persistidas dos Módulos 03 e 04. Os rótulos e as configurações gráficas definidos abaixo afetam somente a forma de exibir os resultados.
+Este módulo consome as saídas persistidas dos Módulos 03 e 04. Todas as decisões, rankings e resumos científicos apresentados vêm do objeto consolidado do Módulo 04. O objeto do Módulo 03 e as cadeias nativas `bglr_mu.dat` são usados somente na Seção 5 para construir o trace ilustrativo de `mu`; essa dependência gráfica não redefine nenhuma decisão. Os rótulos e as configurações gráficas definidos abaixo afetam somente a forma de exibir os resultados.
 
 ```{r inputs-and-style}
-# Define os caminhos de saída e carrega os objetos necessários para este módulo.
-MODELS_FILE <- here("output", "models", "models_object.rds")
-M04_FILE <- here("output", "results", "m04", "module04_results.rds")
-RESULTS_DIR <- here("output", "results", "m05")
-FIGURE_DIR <- file.path(RESULTS_DIR, "figures")
+# Carrega diretamente os objetos persistidos necessários para a síntese.
+models_object <- readRDS(
+  here("output", "models", "models_object.rds")
+)
 
-dir.create(FIGURE_DIR, recursive = TRUE, showWarnings = FALSE)
-
-models_object <- readRDS(MODELS_FILE)
-m04 <- readRDS(M04_FILE)
+m04 <- readRDS(
+  here("output", "results", "m04", "module04_results.rds")
+)
 
 traits <- m04$traits
 methods <- m04$methods
@@ -199,20 +199,10 @@ n_selected_per_trait <- selection_sizes$N_selected[[1]]
 n_trait_candidate_occurrences <-
   nrow(selected_individuals_by_trait)
 n_recurrent_candidates <- nrow(multitrait_candidates)
+n_main_multitrait_candidates <- sum(multitrait_candidates$N_traits >= 3L)
 
-# Define a paleta fixa usada para distinguir os métodos nas figuras.
-method_colors <- c(
-  RRBLUP = "#3366CC",
-  BayesA = "#DC3912",
-  BayesB = "#FF9900",
-  BayesB2 = "#109618",
-  BayesC = "#990099",
-  BL = "#0099C6",
-  GBLUP = "#DD4477"
-)
-
-# Usa fonte-base 12 para legibilidade; essa escolha não altera qualquer resultado analítico.
-project_theme <- theme_bw(base_size = 12) +
+# Aplica o padrão gráfico GDocs; essa escolha afeta somente a apresentação.
+project_theme <- theme_gdocs() +
   theme(
     legend.position = "bottom",
     strip.text = element_text(face = "bold"),
@@ -244,8 +234,7 @@ predictive_plot <- model_comparison |>
   geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
   geom_col(width = 0.75) +
   facet_wrap(~ Trait, scales = "fixed", ncol = 2) +
-  scale_fill_manual(
-    values = method_colors,
+  scale_fill_gdocs(
     breaks = methods,
     labels = method_labels
   ) +
@@ -260,14 +249,6 @@ predictive_plot <- model_comparison |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 predictive_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "predictive_correlation_by_method_pt.png"),
-  predictive_plot,
-  width = 13,
-  height = 10,
-  dpi = 300
-)
 ```
 
 A comparação evidencia que a magnitude preditiva depende fortemente da característica. A maior correlação OOF observada na comparação ocorre em `r highest_oof_trait`, enquanto várias características permanecem em faixas bem menores. Em diversos painéis, os métodos apresentam resultados próximos dentro da mesma característica; por isso, a decisão permanece específica por característica e segue a regra hierárquica consolidada no Módulo 04, em vez de definir um único método global.
@@ -478,8 +459,7 @@ mu_trace_plot <- ggplot(
     linewidth = 0.8
   ) +
   facet_wrap(~ Facet, scales = "free_y", ncol = 2) +
-  scale_color_manual(
-    values = method_colors,
+  scale_color_gdocs(
     breaks = methods,
     labels = method_labels
   ) +
@@ -492,14 +472,6 @@ mu_trace_plot <- ggplot(
   project_theme
 
 mu_trace_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_model_mu_trace_pt.png"),
-  mu_trace_plot,
-  width = 13,
-  height = 14,
-  dpi = 300
-)
 ```
 
 O trace é apenas uma ilustração da cadeia `mu` do fold 1. Ele não altera a seleção nem a classificação de convergência, que permanecem baseadas nos diagnósticos ESS e Geweke dos cinco folds.
@@ -535,14 +507,6 @@ fold_stability_plot <- ggplot(
   project_theme
 
 fold_stability_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_method_fold_stability_pt.png"),
-  fold_stability_plot,
-  width = 12,
-  height = 10,
-  dpi = 300
-)
 ```
 
 A estabilidade por fold deve ser interpretada em conjunto com a correlação OOF agrupada. Amplitudes maiores ou mudanças de sinal têm maior relevância descritiva nas características cujo sinal agrupado já é fraco, mas não redefinem a seleção do método. Com apenas cinco folds e conjuntos de treinamento sobrepostos, essa variação permanece uma medida descritiva de estabilidade.
@@ -565,8 +529,7 @@ runtime_plot <- runtime_summary |>
     ),
     width = 0.2
   ) +
-  scale_fill_manual(
-    values = method_colors,
+  scale_fill_gdocs(
     breaks = methods,
     labels = method_labels
   ) +
@@ -581,14 +544,6 @@ runtime_plot <- runtime_summary |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 runtime_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "runtime_by_method_pt.png"),
-  runtime_plot,
-  width = 11,
-  height = 7,
-  dpi = 300
-)
 ```
 
 A ordenação dos tempos documenta apenas o custo computacional observado nesta execução. Tempo de ajuste não participa da regra de seleção dos métodos e não deve ser usado para substituir os critérios preditivos, de DIC ou de diagnóstico MCMC.
@@ -659,12 +614,10 @@ correlation_plot <- ggplot(
     aes(label = sprintf("%.2f", Correlation_label)),
     size = 3
   ) +
-  scale_fill_gradient2(
-    low = "#DC3912",
-    mid = "white",
-    high = "#3366CC",
-    midpoint = 0,
-    # Mantém a escala de cores fixa no intervalo teórico de correlação [-1, 1].
+  scale_fill_distiller(
+    type = "div",
+    palette = "RdBu",
+    direction = 1,
     limits = c(-1, 1)
   ) +
   labs(
@@ -678,14 +631,6 @@ correlation_plot <- ggplot(
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 correlation_plot
-
-ggsave(
-  file.path(FIGURE_DIR, "selected_oof_correlations_pt.png"),
-  correlation_plot,
-  width = 10,
-  height = 9,
-  dpi = 300
-)
 ```
 
 O mapa de calor deve ser lido como associação entre escores OOF cross-fitted: valores positivos indicam tendência de ordenação na mesma direção entre duas características e valores negativos indicam direções opostas. Essas associações não constituem correlações genéticas de um modelo multivariado e não criam um critério adicional de seleção.
@@ -789,7 +734,27 @@ Essa etapa não cria um novo escore e não reordena os indivíduos combinando ca
 
 ### 11.1 Contrato científico e filtro de apresentação
 
-As classes de recorrência apresentadas aqui são as mesmas definidas no Módulo 04. O objeto completo preserva candidatos presentes em pelo menos duas características; para manter a tabela principal compacta, este módulo exibe apenas recorrência intermediária ou alta, isto é, candidatos presentes em três ou mais características. O corte `N_traits >= 3` é exclusivamente de apresentação e não redefine o conjunto de candidatos armazenado.
+As classes de recorrência apresentadas aqui são as mesmas definidas no Módulo 04. O objeto completo preserva candidatos presentes em pelo menos duas características; para manter a tabela principal compacta, este módulo exibe apenas recorrência intermediária ou alta, isto é, candidatos presentes em três ou mais características. O corte `N_traits >= 3` é exclusivamente de apresentação e não redefine o conjunto de candidatos armazenado. A tabela de escopo abaixo torna explícita a diferença entre o contrato científico e o recorte visual usado nesta página.
+
+```{r recurrence-scope-table}
+recurrence_scope_display <- data.frame(
+  Escopo = c(
+    "Objeto científico consolidado no Módulo 04",
+    "Subconjunto exibido na tabela principal do Módulo 05"
+  ),
+  N_traits_minimo = c(2L, 3L),
+  Candidatos = c(
+    n_recurrent_candidates,
+    n_main_multitrait_candidates
+  )
+)
+
+tabela_html(
+  recurrence_scope_display,
+  caption = "Escopo científico e subconjunto de apresentação da recorrência",
+  col.names = c("Escopo", "Número mínimo de características", "Candidatos")
+)
+```
 
 ### 11.2 Distribuição da recorrência
 
@@ -892,13 +857,14 @@ tabela_html(
 
 Recorrência resume, entre as características com correlação OOF positiva, em quantas listas cada indivíduo aparece entre os `r sprintf("%.0f%%", 100 * selection_proportion)` mais favoráveis. `Selection_frequency` usa como denominador o número de características com OOF positivo, não necessariamente as `r n_traits` características originais. Recorrência sustentada por sinais OOF positivos fracos permanece exploratória. `N_traits`, frequência e rankings não são combinados em um índice multicaracterística; portanto, maior recorrência não demonstra superioridade conjunta em múltiplas características.
 
-No objeto completo do Módulo 04, `r n_recurrent_candidates` indivíduos são recorrentes em pelo menos duas características. A tabela principal desta página mostra apenas o subconjunto com recorrência em três ou mais características; essa redução de apresentação não modifica o conjunto científico armazenado nem cria um índice multicaracterística.
+No objeto completo do Módulo 04, `r n_recurrent_candidates` indivíduos são recorrentes em pelo menos duas características. A tabela principal desta página mostra `r n_main_multitrait_candidates` indivíduos com recorrência em três ou mais características; essa redução de apresentação não modifica o conjunto científico armazenado nem cria um índice multicaracterística.
 
 ## 12. Síntese
 
 A leitura final deve manter a hierarquia estabelecida ao longo da análise: desempenho OOF orienta a comparação preditiva; DIC, estabilidade entre folds e diagnósticos MCMC fornecem contexto complementar; rankings são produzidos apenas quando a direção OOF é positiva; e recorrência resume sobreposição entre rankings sem criar um índice multicaracterística. Todas as conclusões permanecem condicionadas à população de melhoramento representada, ao painel SSR disponível e ao desenho transdutivo da validação. Para uso operacional em seleção, os rankings OOF devem ser entendidos como evidência exploratória e não como substitutos de valores genéticos finais obtidos em uma etapa de predição destinada à decisão.
 
-<div style="display:flex; justify-content:space-between; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="04_results_pt.html">← Módulo 04 — Comparação e seleção</a>
-<a href="index.html">Início →</a>
+<a href="05_results_en.html" style="text-align:center;">English</a>
+<a href="index.html" style="text-align:right;">Início →</a>
 </div>
