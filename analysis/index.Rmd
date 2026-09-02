@@ -31,78 +31,90 @@ knitr::opts_chunk$set(
 
 ### Start here
 
-This website is a step-by-step tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers. It is designed so that a reader can follow the analytical reasoning together with the R code, rather than treating the repository as a collection of disconnected scripts.
+This website is a step-by-step tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers. It is organized so that the statistical reasoning, methodological choices, R code, diagnostics, and interpretation can be followed as a single analytical sequence.
 
-The tutorial is intended for graduate students, researchers, and practitioners working with quantitative genetics, plant breeding, genomic prediction, or related data-analysis problems. Basic familiarity with R and statistical reasoning is recommended. Previous experience with BGLR or Bayesian genomic-prediction models is not required, because the model specifications, validation design, parameters, and diagnostics are introduced as they are used.
+The tutorial is intended for graduate students, researchers, and practitioners working with quantitative genetics, plant breeding, genomic prediction, or related data-analysis problems. Basic familiarity with R and statistical reasoning is recommended; previous experience with BGLR or Bayesian genomic-prediction models is not required.
 
-The analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is the only categorical fixed effect used in the prediction models.
+### Dataset at a glance
 
-Seven methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
+The analytical workflow uses:
+
+- 150 individuals;
+- 35 original SSR loci, of which 34 are retained after quality control;
+- 72 allele-dosage columns derived from the retained multi-allelic SSR loci;
+- 10 production and fruit-quality traits;
+- family as the only categorical fixed effect;
+- five deterministic family-stratified cross-validation folds, each with 30 validation and 120 training individuals;
+- seven genomic prediction methods: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
 
 ### Recommended reading path
 
-The five modules should be read in order because each module prepares the objects used by the next one. The text preceding each code block explains what will be done, methodological parameters are described together with their role and interpretation, and longer chunks contain short internal comments to make the sequence easier to follow.
+The five modules should be read in order because each module prepares the objects used by the next one.
 
-1. [Data preprocessing and diagnostics](01_preprocessing_en.html) — data reading, alignment, SSR quality control, and phenotype diagnostics.
+1. [Data preprocessing and diagnostics](01_preprocessing_en.html) — source-data reading, alignment, SSR quality control, and phenotype diagnostics.
 2. [Matrix construction and diagnostics](02_matrices_en.html) — allele-dosage coding, construction of `X`, `M`, and `G`, and definition of the family-stratified folds.
-3. [Model fitting and MCMC diagnostics](03_models_en.html) — specification of the seven methods, cross-validation fitting procedure, and posterior diagnostics.
-4. [Result derivation and model selection](04_results_en.html) — OOF predictive metrics, DIC-based support, trait-specific method selection, genomic values, and exploratory rankings.
+3. [Model fitting and MCMC diagnostics](03_models_en.html) — specification of the seven methods, cross-validation fitting procedure, and MCMC diagnostics.
+4. [Result derivation and model selection](04_results_en.html) — OOF predictive metrics, DIC-based support, trait-specific method selection, cross-fitted genomic values, and exploratory rankings.
 5. [Results presentation](05_results_en.html) — integrated presentation of the main tables, figures, diagnostics, and candidate summaries.
 
-The complete model-fitting code is shown in Module 03. Because those fits are computationally intensive, the fitting chunks are not executed automatically during routine website rendering; readers who want a full refit should execute those documented steps intentionally.
+The complete model-fitting code is shown in Module 03. Because the 350 trait × fold × method fits are computationally intensive, the fitting chunks are not executed automatically during routine website rendering; a full refit requires those documented blocks to be executed deliberately.
 
 ### Validation scope
 
-The cross-validation uses five folds stratified by family. With 150 individuals, each fold contains 30 validation individuals and 120 training individuals, and each candidate is evaluated once out of fold.
+The cross-validation evaluates prediction within the represented breeding population. Genotype-derived matrices are constructed from the aligned panel of 150 genotyped candidates, while the phenotypes of validation individuals are masked during each fit. Each individual contributes one OOF prediction.
 
-The genotype-derived matrices are constructed from the aligned genotyped candidate panel. During validation, only the phenotype vector is masked for the validation individuals, while their original observations are retained separately for OOF assessment. Therefore, the reported predictive performance describes prediction within the represented breeding population and should not be interpreted as leave-family-out performance for entirely new families.
+The resulting OOF genomic values are cross-fitted predictions rather than final breeding values from a model refitted with all phenotypes. Candidate rankings are exploratory proportional prioritizations constructed only for traits with positive pooled OOF correlation, selecting the top 20% of candidates within each eligible trait. A positive OOF correlation alone is not treated as demonstrated predictive utility when its corresponding significance assessment remains weak.
 
-The OOF genomic values are cross-fitted predictions rather than final breeding values obtained from a full-data refit. Candidate rankings are exploratory proportional prioritizations constructed only for traits with positive pooled OOF correlation, selecting the top 20% of candidates within each eligible trait. A positive OOF correlation alone is not treated as demonstrated predictive utility when its corresponding significance assessment remains weak.
+For the complete scientific scope and interpretation boundaries, including what the OOF quantities should and should not be interpreted as, see [About / Sobre](about.html).
 
-### Reproducibility
+### Reproducibility and project information
 
-The rendered site committed in `docs/` is the versioned record for reading and inspecting the validated tutorial. A complete computational reconstruction is a different task: the canonical Excel workbooks, generated `.rds` objects, most generated CSV files, and native BGLR chain files are intentionally excluded from Git. Consequently, a fresh clone does not contain all inputs required to rerun Modules 01--05 from raw data or to rebuild the illustrative M05 trace.
+The rendered site committed in `docs/` is the versioned record for reading and inspecting the validated tutorial. Full computational reconstruction additionally requires the canonical local workbooks and deliberate regeneration of analytical objects and native BGLR chain files that are excluded from Git.
 
-For a full reconstruction, obtain and verify the canonical workbooks described in the [data contract](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/main/data/README.md), restore the `renv` environment, execute Modules 01 and 02, deliberately run the computationally intensive fitting blocks documented in Module 03, and then regenerate the downstream outputs consumed by Modules 04 and 05. The repository [README](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya#readme) distinguishes these reproduction modes explicitly.
-
-For project scope and interpretation, see [About](about.html). For reuse conditions, see [License](license.html).
+The repository [README](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya#readme) contains the complete reconstruction sequence. Source-data provenance, canonical filenames, SHA-256 hashes, and alignment invariants are documented in the [data contract](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/main/data/README.md). Reuse conditions are described in [License / Licença](license.html).
 
 ## Português
 
 ### Comece aqui
 
-Este site é um tutorial passo a passo de predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos. Ele foi organizado para que o leitor acompanhe o raciocínio analítico juntamente com o código R, em vez de tratar o repositório como uma coleção de scripts desconectados.
+Este site é um tutorial passo a passo de predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos. Ele foi organizado para que o raciocínio estatístico, as escolhas metodológicas, o código R, os diagnósticos e a interpretação sejam acompanhados como uma única sequência analítica.
 
-O tutorial é destinado a estudantes de pós-graduação, pesquisadores e profissionais que trabalham com genética quantitativa, melhoramento de plantas, predição genômica ou problemas relacionados de análise de dados. Recomenda-se familiaridade básica com R e raciocínio estatístico. Experiência prévia com BGLR ou modelos Bayesianos de predição genômica não é necessária, pois as especificações dos modelos, o desenho de validação, os parâmetros e os diagnósticos são apresentados à medida que são utilizados.
+O tutorial é destinado a estudantes de pós-graduação, pesquisadores e profissionais que trabalham com genética quantitativa, melhoramento de plantas, predição genômica ou problemas relacionados de análise de dados. Recomenda-se familiaridade básica com R e raciocínio estatístico; experiência prévia com BGLR ou modelos Bayesianos de predição genômica não é necessária.
 
-O conjunto analítico contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é o único efeito fixo categórico utilizado nos modelos de predição.
+### Conjunto de dados em resumo
 
-Sete métodos são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
+O fluxo analítico utiliza:
+
+- 150 indivíduos;
+- 35 locos SSR originais, dos quais 34 são mantidos após o controle de qualidade;
+- 72 colunas de dosagem alélica derivadas dos locos SSR multialélicos mantidos;
+- 10 características de produção e qualidade dos frutos;
+- família como o único efeito fixo categórico;
+- cinco folds determinísticos de validação cruzada estratificados por família, cada um com 30 indivíduos de validação e 120 de treinamento;
+- sete métodos de predição genômica: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
 
 ### Ordem recomendada de leitura
 
-Os cinco módulos devem ser lidos em sequência, pois cada módulo prepara os objetos utilizados pelo seguinte. O texto anterior a cada bloco de código explica o que será realizado, os parâmetros metodológicos são descritos juntamente com sua função e interpretação e chunks maiores contêm comentários internos curtos para facilitar o acompanhamento da sequência.
+Os cinco módulos devem ser lidos em sequência, pois cada módulo prepara os objetos utilizados pelo seguinte.
 
-1. [Pré-processamento e diagnóstico dos dados](01_preprocessing_pt.html) — leitura, alinhamento, controle de qualidade dos SSR e diagnósticos fenotípicos.
+1. [Pré-processamento e diagnóstico dos dados](01_preprocessing_pt.html) — leitura dos dados-fonte, alinhamento, controle de qualidade dos SSR e diagnósticos fenotípicos.
 2. [Construção e diagnóstico das matrizes](02_matrices_pt.html) — codificação das dosagens alélicas, construção de `X`, `M` e `G` e definição dos folds estratificados por família.
-3. [Ajuste dos modelos e diagnósticos MCMC](03_models_pt.html) — especificação dos sete métodos, procedimento de ajuste em validação cruzada e diagnósticos posteriores.
-4. [Derivação dos resultados e seleção dos modelos](04_results_pt.html) — métricas preditivas OOF, suporte baseado em DIC, seleção do método por característica, valores genômicos e rankings exploratórios.
+3. [Ajuste dos modelos e diagnósticos MCMC](03_models_pt.html) — especificação dos sete métodos, procedimento de ajuste em validação cruzada e diagnósticos MCMC.
+4. [Derivação dos resultados e seleção dos modelos](04_results_pt.html) — métricas preditivas OOF, suporte baseado em DIC, seleção do método por característica, valores genômicos cross-fitted e rankings exploratórios.
 5. [Apresentação dos resultados](05_results_pt.html) — apresentação integrada das principais tabelas, figuras, diagnósticos e resumos de candidatos.
 
-O código completo de ajuste dos modelos é apresentado no Módulo 03. Como esses ajustes são computacionalmente intensivos, os chunks de ajuste não são executados automaticamente durante a renderização rotineira do site; leitores que desejem um reajuste completo devem executar intencionalmente as etapas documentadas nesse módulo.
+O código completo de ajuste dos modelos é apresentado no Módulo 03. Como os 350 ajustes característica × fold × método são computacionalmente intensivos, os chunks de ajuste não são executados automaticamente durante a renderização rotineira do site; um reajuste completo exige que esses blocos documentados sejam executados deliberadamente.
 
 ### Escopo da validação
 
-A validação cruzada utiliza cinco folds estratificados por família. Com 150 indivíduos, cada fold contém 30 indivíduos de validação e 120 de treinamento, e cada candidato é avaliado uma única vez fora do fold.
+A validação cruzada avalia a predição dentro da população de melhoramento representada. As matrizes derivadas dos genótipos são construídas a partir do painel alinhado de 150 candidatos genotipados, enquanto os fenótipos dos indivíduos de validação são mascarados durante cada ajuste. Cada indivíduo contribui com uma predição OOF.
 
-As matrizes derivadas dos genótipos são construídas a partir do painel alinhado de candidatos genotipados. Durante a validação, apenas o vetor fenotípico é mascarado para os indivíduos de validação, enquanto suas observações originais são mantidas separadamente para avaliação OOF. Portanto, o desempenho preditivo apresentado descreve a predição dentro da população de melhoramento representada e não deve ser interpretado como desempenho leave-family-out para famílias inteiramente novas.
+Os valores genômicos OOF resultantes são predições cross-fitted, e não valores genéticos finais provenientes de um modelo reajustado com todos os fenótipos. Os rankings de candidatos são priorizações proporcionais exploratórias construídas somente para características com correlação OOF agregada positiva, selecionando os 20% superiores dos candidatos em cada característica elegível. Uma correlação OOF positiva, isoladamente, não é tratada como utilidade preditiva demonstrada quando sua avaliação de significância correspondente permanece fraca.
 
-Os valores genômicos OOF são predições cross-fitted, e não valores genéticos finais obtidos por um reajuste com todos os dados. Os rankings são priorizações proporcionais exploratórias construídas somente para características com correlação OOF agregada positiva, selecionando os 20% superiores dos candidatos em cada característica elegível. Uma correlação OOF positiva, isoladamente, não é tratada como utilidade preditiva demonstrada quando sua avaliação de significância correspondente permanece fraca.
+Para o escopo científico completo e os limites de interpretação, incluindo o que as quantidades OOF devem e não devem representar, consulte [About / Sobre](about.html).
 
-### Reprodutibilidade
+### Reprodutibilidade e informações do projeto
 
-O site renderizado e commitado em `docs/` é o registro versionado para leitura e inspeção do tutorial validado. Uma reconstrução computacional completa é uma tarefa diferente: as planilhas Excel canônicas, os objetos `.rds` gerados, a maior parte dos CSV gerados e as cadeias nativas do BGLR são intencionalmente excluídos do Git. Consequentemente, um clone novo não contém todos os insumos necessários para refazer os Módulos 01--05 a partir dos dados brutos nem para reconstruir o trace ilustrativo do M05.
+O site renderizado e commitado em `docs/` é o registro versionado para leitura e inspeção do tutorial validado. A reconstrução computacional completa exige adicionalmente as planilhas canônicas locais e a regeneração deliberada dos objetos analíticos e das cadeias nativas do BGLR que são excluídos do Git.
 
-Para uma reconstrução completa, obtenha e valide as planilhas canônicas descritas no [contrato dos dados](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/main/data/README.md), restaure o ambiente `renv`, execute os Módulos 01 e 02, rode deliberadamente os blocos computacionalmente intensivos documentados no Módulo 03 e então regenere as saídas posteriores consumidas pelos Módulos 04 e 05. O [README](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya#readme) do repositório distingue explicitamente esses modos de reprodução.
-
-Para o escopo e a interpretação do projeto, consulte [Sobre](about.html). Para as condições de reutilização, consulte [Licença](license.html).
+O [README](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya#readme) do repositório contém a sequência completa de reconstrução. A proveniência dos dados-fonte, os nomes canônicos, os hashes SHA-256 e os invariantes de alinhamento estão documentados no [contrato dos dados](https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/main/data/README.md). As condições de reutilização estão descritas em [License / Licença](license.html).

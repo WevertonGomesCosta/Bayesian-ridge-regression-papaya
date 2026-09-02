@@ -6,18 +6,18 @@
 
 ### Purpose and availability
 
-The project uses two canonical source workbooks. Their filenames were normalized to make paths portable across operating systems. The workbooks are required locally for a full reconstruction of the analysis but are intentionally excluded from Git; this versioned file preserves their provenance, expected placement, and validation fingerprints.
+The project uses two canonical source workbooks. Their filenames were normalized to make paths portable across operating systems. The workbooks are required locally for a full reconstruction of the analysis but are intentionally excluded from Git; this versioned file preserves their provenance, expected placement, and SHA-256 validation hashes.
 
-The repository does **not** currently provide a public download URL for these workbooks. To reproduce the analysis from raw inputs, obtain the original files from the project data provider/author, verify that they correspond to the fingerprints below, and place them in the repository `data/` directory using the canonical project filenames.
+The repository does **not** currently provide a public download URL for these workbooks. To reproduce the analysis from raw inputs, obtain the original files from the project data provider/author, verify that they correspond to the hashes below, and place them in the repository `data/` directory using the canonical project filenames.
 
 ### Canonical files
 
 | Project file | Provenance | Current SHA-256 |
 |---|---|---|
 | `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; portable filename | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; clean canonical phenotype workbook | `fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; canonical phenotype workbook | `fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201` |
 
-The SHA-256 values identify the exact canonical workbook bytes used by the validated workflow. Files with different fingerprints should not be silently substituted.
+The SHA-256 values identify the exact canonical workbook bytes used by the validated workflow. Files with different hashes should not be silently substituted.
 
 Expected local layout:
 
@@ -60,7 +60,7 @@ The canonical phenotype table is the `Médias_IND_artigo` sheet. It contains 150
 |---|---|---|
 | `MMCOM` | Mean mass of commercial fruit | kg |
 | `PRODCOM` | Production of commercial fruit | kg |
-| `PRODEF` | Total production of defective fruit | kg |
+| `PRODEF` | Production of defective fruit | kg |
 | `CF` | Fruit length | cm |
 | `DF` | Fruit diameter | cm |
 | `DCI` | Internal-cavity diameter | cm |
@@ -69,7 +69,7 @@ The canonical phenotype table is the `Médias_IND_artigo` sheet. It contains 150
 | `FFP` | Internal pulp firmness | N |
 | `SS` | Soluble solids | °Brix |
 
-The source metadata reports evaluation from June 2024 through December 2025. Fruit-quality variables were obtained from five fruits per selected plant. The consolidated columns reproduce the canonical phenotype table used by the current workflow; `PRODEF` is the sum of bananoid, carpelloid, and pentandric defective-fruit production.
+The source metadata reports evaluation from June 2024 through December 2025. Fruit-quality variables were obtained from five fruits per selected plant. In the canonical phenotype table, `PRODEF` is the sum of bananoid, carpelloid, and pentandric defective-fruit production.
 
 ### Alignment invariants
 
@@ -80,7 +80,7 @@ The source metadata reports evaluation from June 2024 through December 2025. Fru
 
 ### What Git does and does not preserve
 
-Git preserves this contract, the analytical source code, the rendered site, and a selected public subset of M04 result tables. The raw workbooks themselves are ignored by `.gitignore`. Generated `.rds`, most generated CSV files, and native BGLR chain files are also excluded. Therefore, a fresh clone can inspect the validated analysis but cannot reconstruct all downstream objects without first restoring the canonical workbooks and deliberately rerunning the required stages.
+Git preserves this contract, the analytical source code, the rendered site, and a defined versioned subset of M04 result tables. The source workbooks themselves are ignored by `.gitignore`. Generated `.rds` objects, most generated CSV files, and native BGLR chain files are also excluded. Therefore, a fresh clone can inspect the validated analysis but cannot reconstruct all downstream objects without first restoring the canonical workbooks and deliberately rerunning the required stages.
 
 ---
 
@@ -88,18 +88,18 @@ Git preserves this contract, the analytical source code, the rendered site, and 
 
 ### Objetivo e disponibilidade
 
-O projeto utiliza duas planilhas-fonte canônicas. Seus nomes foram normalizados para tornar os caminhos portáveis entre sistemas operacionais. As planilhas são necessárias localmente para uma reconstrução completa da análise, mas são intencionalmente excluídas do Git; este arquivo versionado preserva sua proveniência, localização esperada e fingerprints de validação.
+O projeto utiliza duas planilhas-fonte canônicas. Seus nomes foram normalizados para tornar os caminhos portáveis entre sistemas operacionais. As planilhas são necessárias localmente para uma reconstrução completa da análise, mas são intencionalmente excluídas do Git; este arquivo versionado preserva sua proveniência, localização esperada e hashes SHA-256 de validação.
 
-O repositório **não disponibiliza atualmente uma URL pública de download** dessas planilhas. Para reproduzir a análise a partir dos dados brutos, obtenha os arquivos originais com o responsável/provedor dos dados do projeto, confirme que correspondem aos fingerprints abaixo e coloque-os no diretório `data/` usando os nomes canônicos do projeto.
+O repositório **não disponibiliza atualmente uma URL pública de download** dessas planilhas. Para reproduzir a análise a partir dos dados brutos, obtenha os arquivos originais com o responsável/provedor dos dados do projeto, confirme que correspondem aos hashes abaixo e coloque-os no diretório `data/` usando os nomes canônicos do projeto.
 
 ### Arquivos canônicos
 
 | Arquivo no projeto | Proveniência | SHA-256 atual |
 |---|---|---|
 | `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; nome portável | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; planilha fenotípica canônica limpa | `fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; planilha fenotípica canônica | `fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201` |
 
-Os valores SHA-256 identificam exatamente os bytes das planilhas canônicas utilizadas pelo fluxo validado. Arquivos com fingerprints diferentes não devem ser substituídos silenciosamente.
+Os valores SHA-256 identificam exatamente os bytes das planilhas canônicas utilizadas pelo fluxo validado. Arquivos com hashes diferentes não devem ser substituídos silenciosamente.
 
 Estrutura local esperada:
 
@@ -142,7 +142,7 @@ A tabela fenotípica canônica é a planilha `Médias_IND_artigo`. Ela contém 1
 |---|---|---|
 | `MMCOM` | Massa média de fruto comercial | kg |
 | `PRODCOM` | Produção de fruto comercial | kg |
-| `PRODEF` | Produção total de fruto defeituoso | kg |
+| `PRODEF` | Produção de frutos defeituosos | kg |
 | `CF` | Comprimento do fruto | cm |
 | `DF` | Diâmetro do fruto | cm |
 | `DCI` | Diâmetro da cavidade interna | cm |
@@ -151,7 +151,7 @@ A tabela fenotípica canônica é a planilha `Médias_IND_artigo`. Ela contém 1
 | `FFP` | Firmeza interna da polpa | N |
 | `SS` | Sólidos solúveis | °Brix |
 
-Os metadados da fonte informam avaliação entre junho de 2024 e dezembro de 2025. As variáveis de qualidade dos frutos foram obtidas a partir de cinco frutos por planta selecionada. As colunas consolidadas reproduzem a tabela fenotípica canônica utilizada pelo fluxo atual; `PRODEF` é a soma da produção de frutos defeituosos bananoides, carpelóides e pentândricos.
+Os metadados da fonte informam avaliação entre junho de 2024 e dezembro de 2025. As variáveis de qualidade dos frutos foram obtidas a partir de cinco frutos por planta selecionada. Na tabela fenotípica canônica, `PRODEF` é a soma da produção de frutos defeituosos bananoides, carpelóides e pentândricos.
 
 ### Invariantes de alinhamento
 
@@ -162,4 +162,4 @@ Os metadados da fonte informam avaliação entre junho de 2024 e dezembro de 202
 
 ### O que o Git preserva e o que não preserva
 
-O Git preserva este contrato, o código-fonte analítico, o site renderizado e um subconjunto público selecionado das tabelas de resultados do M04. As planilhas brutas são ignoradas pelo `.gitignore`. Objetos `.rds` gerados, a maior parte dos CSV gerados e as cadeias nativas do BGLR também são excluídos. Portanto, um clone novo permite inspecionar a análise validada, mas não reconstruir todos os objetos posteriores sem primeiro restaurar as planilhas canônicas e executar deliberadamente as etapas necessárias.
+O Git preserva este contrato, o código-fonte analítico, o site renderizado e um subconjunto definido e versionado das tabelas de resultados do M04. As planilhas-fonte são ignoradas pelo `.gitignore`. Objetos `.rds` gerados, a maior parte dos CSV gerados e as cadeias nativas do BGLR também são excluídos. Portanto, um clone novo permite inspecionar a análise validada, mas não reconstruir todos os objetos posteriores sem primeiro restaurar as planilhas canônicas e executar deliberadamente as etapas necessárias.
