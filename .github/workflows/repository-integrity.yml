@@ -82,15 +82,41 @@ jobs:
           cff = Path('CITATION.cff').read_text(encoding='utf-8')
           desc_version = re.search(r'^Version:\s*(\S+)', description, flags=re.M).group(1)
           cff_version = re.search(r'^version:\s*(\S+)', cff, flags=re.M).group(1)
-          assert desc_version == cff_version == '1.0.4'
+          assert desc_version == cff_version == '1.0.5'
 
           data_contract = Path('data/README.md').read_text(encoding='utf-8')
           required_hashes = {
               'ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1',
-              '41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec',
+              'fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201',
           }
           for value in required_hashes:
               assert value in data_contract, f'missing canonical data hash: {value}'
+
+          source_contract_files = [
+              Path('README.md'),
+              Path('analysis/index.Rmd'),
+              Path('analysis/01_preprocessing_en.Rmd'),
+              Path('analysis/01_preprocessing_pt.Rmd'),
+              Path('data/README.md'),
+          ]
+
+          forbidden_source_patterns = [
+              re.compile(r'(?<![A-Za-z0-9_-])BL(?![A-Za-z0-9_-])'),
+              re.compile(r'experimental\\s+block', re.I),
+              re.compile(r'block\\s+column', re.I),
+              re.compile(r'block\\s+is\\s+removed', re.I),
+              re.compile(r'bloco\\s+experimental', re.I),
+              re.compile(r'coluna\\s+de\\s+bloco', re.I),
+              re.compile(r'bloco\\s+é\\s+removid[oa]', re.I),
+          ]
+
+          for path in source_contract_files:
+              text = path.read_text(encoding='utf-8')
+              for pattern in forbidden_source_patterns:
+                  assert not pattern.search(text), (
+                      f'legacy phenotype-layout reference found in {path}: '
+                      f'{pattern.pattern}'
+                  )
 
           tracked = subprocess.check_output(
               ['git', 'ls-files'], text=True, encoding='utf-8'

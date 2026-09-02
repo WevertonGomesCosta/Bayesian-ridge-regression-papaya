@@ -15,7 +15,7 @@ The repository does **not** currently provide a public download URL for these wo
 | Project file | Provenance | Current SHA-256 |
 |---|---|---|
 | `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; portable filename | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; corrected canonical phenotype workbook | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; clean canonical phenotype workbook | `fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201` |
 
 The SHA-256 values identify the exact canonical workbook bytes used by the validated workflow. Files with different fingerprints should not be silently substituted.
 
@@ -54,7 +54,7 @@ Four loci are triallelic (`P3K3256CC`, `P3K149C0`, `P3K4426C0`, and `P3K6568CC`)
 
 ### Phenotypes
 
-The canonical phenotype table is the `Médias_IND_artigo` sheet. It contains 150 individuals and ten complete traits:
+The canonical phenotype table is the `Médias_IND_artigo` sheet. It contains 150 individuals, family membership, and ten complete traits. Its columns are `IND`, `FAM`, and the ten traits listed below:
 
 | Code | Description | Unit |
 |---|---|---|
@@ -76,7 +76,6 @@ The source metadata reports evaluation from June 2024 through December 2025. Fru
 - Genotype and phenotype tables each contain 150 unique identifiers.
 - Their identifier sets and row order are identical after the M01 alignment.
 - No phenotype is missing for the ten canonical traits.
-- Block (`BL`) is present in the canonical source phenotype worksheet and is retained in `pheno_raw` during source inspection, then excluded when M01 defines the analytical columns; it is not propagated to metadata, `X`, cross-validation folds, or prediction models.
 - Family (`FAM`) is retained and is the only categorical fixed effect used in the prediction models.
 
 ### What Git does and does not preserve
@@ -98,7 +97,7 @@ O repositório **não disponibiliza atualmente uma URL pública de download** de
 | Arquivo no projeto | Proveniência | SHA-256 atual |
 |---|---|---|
 | `papaya_ssr_genotypes.xlsx` | `Matriz numérica_SSR_populações.xlsx`; nome portável | `ffd891bc4b7599eaa38760f5e828e05a945198d8a68783f1493a8df575fe68a1` |
-| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; planilha fenotípica canônica corrigida | `41c65e0a1f6992bebe633dce829e87575190cec8c12274d319001f73174e4bec` |
+| `papaya_phenotypes_2024_2025.xlsx` | `Produção_mamão_24 e 25.xlsx`; planilha fenotípica canônica limpa | `fc2dd672aca6e52376eb57955788e718e9291b112facca9861d8692649cb0201` |
 
 Os valores SHA-256 identificam exatamente os bytes das planilhas canônicas utilizadas pelo fluxo validado. Arquivos com fingerprints diferentes não devem ser substituídos silenciosamente.
 
@@ -137,7 +136,7 @@ Quatro locos são trialélicos (`P3K3256CC`, `P3K149C0`, `P3K4426C0` e `P3K6568C
 
 ### Fenótipos
 
-A tabela fenotípica canônica é a planilha `Médias_IND_artigo`. Ela contém 150 indivíduos e dez características completas:
+A tabela fenotípica canônica é a planilha `Médias_IND_artigo`. Ela contém 150 indivíduos, a identificação de família e dez características completas. Suas colunas são `IND`, `FAM` e as dez características listadas abaixo:
 
 | Código | Descrição | Unidade |
 |---|---|---|
@@ -159,7 +158,6 @@ Os metadados da fonte informam avaliação entre junho de 2024 e dezembro de 202
 - As tabelas genotípica e fenotípica contêm 150 identificadores únicos cada.
 - Seus conjuntos de identificadores e a ordem das linhas são idênticos após o alinhamento do M01.
 - Não há fenótipos ausentes para as dez características canônicas.
-- Bloco (`BL`) está presente na planilha fenotípica canônica e é mantido em `pheno_raw` durante a inspeção da fonte, mas é excluído quando o M01 define as colunas analíticas; ele não é propagado para metadados, `X`, folds de validação cruzada ou modelos de predição.
 - Família (`FAM`) é mantida e constitui o único efeito fixo categórico utilizado nos modelos de predição.
 
 ### O que o Git preserva e o que não preserva

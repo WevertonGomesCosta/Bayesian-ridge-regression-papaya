@@ -12,7 +12,7 @@
 
 This repository contains a bilingual `workflowr` tutorial for genomic prediction and selection in papaya using multi-allelic SSR markers. The tutorial guides the reader from source-data inspection and quality control to genomic matrices, cross-validation, model fitting, diagnostics, model comparison, and exploratory candidate prioritization.
 
-The analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is included as the only categorical fixed effect; block is removed during preprocessing and is not used in the prediction models.
+The analytical dataset contains 150 individuals, 34 retained SSR loci expanded into 72 allele-dosage columns, and 10 production and fruit-quality traits. Family is included as the only categorical fixed effect in the prediction models.
 
 Seven genomic prediction methods are compared: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP.
 
@@ -88,7 +88,7 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR
 
 Este repositório contém um tutorial bilíngue em `workflowr` para predição e seleção genômica em mamoeiro utilizando marcadores SSR multialélicos. O tutorial conduz o leitor desde a inspeção e o controle de qualidade dos dados-fonte até a construção das matrizes genômicas, validação cruzada, ajuste dos modelos, diagnósticos, comparação dos métodos e priorização exploratória de candidatos.
 
-O conjunto analítico contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é incluída como o único efeito fixo categórico; bloco é removido durante o pré-processamento e não é utilizado nos modelos de predição.
+O conjunto analítico contém 150 indivíduos, 34 locos SSR mantidos e expandidos em 72 colunas de dosagem alélica e 10 características de produção e qualidade dos frutos. Família é incluída como o único efeito fixo categórico nos modelos de predição.
 
 Sete métodos de predição genômica são comparados: RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC, Lasso Bayesiano e GBLUP.
 
