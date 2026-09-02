@@ -36,7 +36,7 @@ identifiers are organized, SSR missing-value codes are converted to `NA`,
 phenotypes are aligned with genotypes, and SSR loci are subjected to quality
 control.
 
-The block column (`BL`) is removed because it is not part of the statistical model adopted in this analysis. Family (`FAM`) is preserved because it will be used both in the fixed-effect matrix and to stratify the cross-validation folds in Module 02. No individual is removed in this module.
+Family (`FAM`) is preserved because it will be used both in the fixed-effect matrix and to stratify the cross-validation folds in Module 02. No individual is removed in this module.
 
 Preprocessing produces three central objects for the following stages: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics verify the consistency of these objects before genomic-matrix construction.
 
@@ -85,7 +85,7 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-## 3. Reading the original spreadsheets
+## 3. Reading the source spreadsheets
 
 ### 3.1 Genotype data
 
@@ -120,9 +120,7 @@ The preview shows the raw genotype layout: the first column is a sequential inde
 
 ### 3.2 Phenotype data
 
-Phenotype data are stored in the `Médias_IND_artigo` sheet, which already contains column names. This source includes individual identifiers, family membership, and the evaluated traits.
-
-The `BL` column, corresponding to experimental block, is retained at this first stage so that `pheno_raw` faithfully represents the original spreadsheet. Because `BL` is not part of the statistical model used here, it will be left out when the analytical set of columns is defined in Section 5.
+Phenotype data are stored in the `Médias_IND_artigo` sheet, which already contains column names. This source includes individual identifiers, family membership, and the ten evaluated traits.
 
 ```{r read-phenotypes}
 pheno_raw <- read_excel(
@@ -132,18 +130,18 @@ pheno_raw <- read_excel(
 )
 ```
 
-The phenotype table is inspected while it is still in its original form:
+The phenotype table is inspected immediately after import:
 
 ```{r phenotype-preview}
 head(pheno_raw) |>
-  format_table(caption = "Preview of the original phenotype data")
+  format_table(caption = "Preview of the phenotype data")
 ```
 
-The preview shows the phenotype spreadsheet before analytical variables are selected, including `IND`, `FAM`, `BL`, and the ten evaluated traits.
+The preview shows the phenotype spreadsheet with `IND`, `FAM`, and the ten evaluated traits used throughout the analysis.
 
 ### 3.3 Initial check of the data sources
 
-Before organization and alignment, the dimensions of the three imported structures are compared. This is a structural check: `Genes` contains genotype codes, `Genealex` preserves GenAlEx metadata, and `pheno_raw` preserves the original phenotype spreadsheet.
+Before organization and alignment, the dimensions of the three imported structures are compared. This is a structural check: `Genes` contains genotype codes, `Genealex` preserves GenAlEx metadata, and `pheno_raw` preserves the imported phenotype table.
 
 ```{r data-dimensions}
 data.frame(
@@ -305,10 +303,10 @@ The dictionary shows that production and mass are expressed in kg, fruit dimensi
 
 ### 5.2 Analytical columns and correspondence between individuals
 
-Before any rows are reordered, the columns that form the analytical table are defined. `BL` is excluded because it is not part of the statistical model. Phenotype identifiers are then checked and the sets of plants represented by both sources are compared.
+Before any rows are reordered, the columns required for the analysis are defined. Phenotype identifiers are then checked and the sets of plants represented by both sources are compared.
 
 ```{r individual-correspondence}
-# Define the analytical columns; BL is excluded because it is not part of the model.
+# Define the columns required for the analysis.
 required_columns <- c("IND", "FAM", TRAITS)
 
 # Standardize phenotype identifiers before comparing them with genotype identifiers.

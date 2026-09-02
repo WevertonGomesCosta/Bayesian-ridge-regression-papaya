@@ -36,7 +36,7 @@ de dados são lidas, os identificadores são organizados, os códigos de ausênc
 dos SSR são convertidos em `NA`, os fenótipos são alinhados aos genótipos e os
 locos SSR são submetidos ao controle de qualidade.
 
-A coluna de bloco (`BL`) é removida porque não participa do modelo estatístico adotado nesta análise. A família (`FAM`) é preservada porque será utilizada tanto na matriz de efeitos fixos quanto na estratificação dos folds de validação cruzada no Módulo 02. Nenhum indivíduo é removido neste módulo.
+A família (`FAM`) é preservada porque será utilizada tanto na matriz de efeitos fixos quanto na estratificação dos folds de validação cruzada no Módulo 02. Nenhum indivíduo é removido neste módulo.
 
 O pré-processamento produz três objetos centrais para as etapas seguintes: a matriz fenotípica alinhada, a matriz SSR após o controle de qualidade dos locos e os metadados com indivíduo e família. Os diagnósticos verificam a consistência desses objetos antes da construção das matrizes genômicas.
 
@@ -85,7 +85,7 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-## 3. Leitura das planilhas originais
+## 3. Leitura das planilhas-fonte
 
 ### 3.1 Dados genotípicos
 
@@ -120,9 +120,7 @@ A prévia mostra o formato bruto dos genótipos: a primeira coluna é um índice
 
 ### 3.2 Dados fenotípicos
 
-Os dados fenotípicos estão na aba `Médias_IND_artigo`, que já possui nomes de colunas. Essa fonte contém os identificadores dos indivíduos, a família e as características avaliadas.
-
-A coluna `BL`, correspondente ao bloco experimental, é mantida neste primeiro momento para que `pheno_raw` represente fielmente a planilha original. Como `BL` não participa do modelo estatístico adotado, ela será deixada de fora quando o conjunto de colunas analíticas for definido na Seção 5.
+Os dados fenotípicos estão na aba `Médias_IND_artigo`, que já possui nomes de colunas. Essa fonte contém os identificadores dos indivíduos, a família e as dez características avaliadas.
 
 ```{r leitura-fenotipos}
 pheno_raw <- read_excel(
@@ -132,18 +130,18 @@ pheno_raw <- read_excel(
 )
 ```
 
-A tabela fenotípica é inspecionada ainda em sua forma original:
+A tabela fenotípica é inspecionada imediatamente após a importação:
 
 ```{r previa-fenotipos}
 head(pheno_raw) |>
-  tabela_html(caption = "Prévia dos dados fenotípicos originais")
+  tabela_html(caption = "Prévia dos dados fenotípicos")
 ```
 
-A prévia mostra a estrutura da planilha fenotípica antes da seleção das variáveis analíticas, incluindo `IND`, `FAM`, `BL` e as dez características avaliadas.
+A prévia mostra a estrutura da planilha fenotípica com `IND`, `FAM` e as dez características avaliadas ao longo da análise.
 
 ### 3.3 Verificação inicial das fontes
 
-Antes de organizar e alinhar os dados, as dimensões das três estruturas importadas são comparadas. Essa verificação é estrutural: `Genes` contém os códigos genotípicos, `Genealex` preserva os metadados do formato GenAlEx e `pheno_raw` preserva a planilha fenotípica original.
+Antes de organizar e alinhar os dados, as dimensões das três estruturas importadas são comparadas. Essa verificação é estrutural: `Genes` contém os códigos genotípicos, `Genealex` preserva os metadados do formato GenAlEx e `pheno_raw` preserva a tabela fenotípica importada.
 
 ```{r dimensoes-dados}
 data.frame(
@@ -305,10 +303,10 @@ O dicionário evidencia que produção e massa são expressas em kg, dimensões 
 
 ### 5.2 Colunas analíticas e correspondência entre indivíduos
 
-Antes de reordenar qualquer linha, definimos as colunas que formarão a tabela analítica. `BL` fica de fora porque não participa do modelo estatístico adotado. Em seguida, verificamos os identificadores fenotípicos e comparamos o conjunto de plantas das duas fontes.
+Antes de reordenar qualquer linha, definimos as colunas necessárias para a análise. Em seguida, verificamos os identificadores fenotípicos e comparamos o conjunto de plantas das duas fontes.
 
 ```{r correspondencia-individuos}
-# Define as colunas analíticas; BL fica de fora porque não participa do modelo.
+# Define as colunas necessárias para a análise.
 required_columns <- c("IND", "FAM", TRAITS)
 
 # Padroniza os identificadores fenotípicos antes da comparação com os genótipos.
