@@ -162,8 +162,8 @@ Os metadados para citação do projeto estão em [`CITATION.cff`](CITATION.cff).
 
 ## Contact / Contato
 
-**Weverton Gomes da Costa**  
-Postdoctoral Researcher / Pesquisador Pós-Doutoral  
-Department of Statistics / Departamento de Estatística  
-Federal University of Viçosa / Universidade Federal de Viçosa  
+**Weverton Gomes da Costa**<br>
+Postdoctoral Researcher / Pesquisador Pós-Doutoral<br>
+Department of Statistics / Departamento de Estatística<br>
+Federal University of Viçosa / Universidade Federal de Viçosa<br>
 [weverton.costa@ufv.br](mailto:weverton.costa@ufv.br)
