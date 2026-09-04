@@ -49,8 +49,6 @@ jobs:
               'analysis/03_models_pt.Rmd',
               'analysis/04_results_en.Rmd',
               'analysis/04_results_pt.Rmd',
-              'analysis/05_results_en.Rmd',
-              'analysis/05_results_pt.Rmd',
           }
 
           actual_rmd = {
@@ -72,7 +70,7 @@ jobs:
               duplicates = sorted({x for x in labels if labels.count(x) > 1})
               assert not duplicates, f'duplicate chunk labels in {path_str}: {duplicates}'
 
-          module_files = sorted(Path('analysis').glob('0[1-5]_*.Rmd'))
+          module_files = sorted(Path('analysis').glob('0[1-4]_*.Rmd'))
           for path in module_files:
               text = path.read_text(encoding='utf-8')
               assert 'stopifnot(' not in text, f'tutorial guard found in {path}'
@@ -163,18 +161,17 @@ jobs:
               'docs/03_models_pt.html',
               'docs/04_results_en.html',
               'docs/04_results_pt.html',
-              'docs/05_results_en.html',
-              'docs/05_results_pt.html',
           }
           missing_html = sorted(p for p in expected_html if not Path(p).is_file())
           assert not missing_html, f'missing published workflowr pages: {missing_html}'
 
-          m05_en = Path('analysis/05_results_en.Rmd').read_text(encoding='utf-8')
-          m05_pt = Path('analysis/05_results_pt.Rmd').read_text(encoding='utf-8')
-          for text in (m05_en, m05_pt):
+          m04_en = Path('analysis/04_results_en.Rmd').read_text(encoding='utf-8')
+          m04_pt = Path('analysis/04_results_pt.Rmd').read_text(encoding='utf-8')
+          for text in (m04_en, m04_pt):
               assert 'ggsave(' not in text
               assert 'filter(N_traits >= 3L)' in text
-              assert 'bglr_mu.dat' in text
+              assert 'bglr_mu.dat' not in text
+              assert '05_results_' not in text
 
           readme = Path('README.md').read_text(encoding='utf-8')
           assert 'A fresh clone **cannot by itself rerun the complete analysis from raw inputs**' in readme

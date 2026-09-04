@@ -1,5 +1,5 @@
 ---
-title: "Result derivation and model selection"
+title: "Model comparison, genomic selection, and results"
 author:
   - Costa, W. G.^[Weverton Gomes da Costa, Postdoctoral Researcher, Department of Statistics - Federal University of Viçosa, weverton.costa@ufv.br]
 date: "`r Sys.Date()`"
@@ -33,19 +33,27 @@ knitr::opts_chunk$set(
 ## 1. Objective
 
 Using the predictions, metrics, and diagnostics obtained in Module 03, this
-module compares the seven methods within each trait and derives the results
-used for genomic selection.
+final analytical module moves continuously from **evidence to decision and
+interpretation**.
 
-The change from the previous module is therefore from **fitting to decision**: Module 03 produced evidence for each trait, fold, and method; here that evidence is aggregated and organized to determine which method represents each trait and which exploratory rankings can be derived from that choice.
+Instead of deriving all quantities first and presenting them later on a
+separate page, each result is shown and interpreted immediately after it is
+calculated. The analytical sequence is:
 
-The analysis calculates OOF predictive performance, DIC and relative support
-measures, the selected method for each trait, fold stability, computational
-time, heritability and accuracy in the RR-BLUP/BRR analogue, OOF genomic
-values, oriented rankings, proportional selection, recurrence across traits,
-and correlations among genomic values.
+**OOF predictive performance → DIC support → trait-specific method selection
+→ diagnostics of the selected methods → OOF genomic values → exploratory
+rankings → recurrence across traits → final interpretation.**
+
+The module derives pooled OOF predictive performance, DIC-derived relative
+support, the selected method for each trait, fold stability, computational
+time, the RR-BLUP/BRR marker-based heritability analogue, OOF genomic values,
+oriented rankings, proportional selection, recurrence across traits, and
+associations among cross-fitted genomic scores.
 
 The breeding direction is defined before ranking: increase MMCOM, PRODCOM, CF,
-DF, EP, FFC, FFP, and SS; decrease PRODEF and DCI.
+DF, EP, FFC, FFP, and SS; decrease PRODEF and DCI. Rankings remain exploratory
+and use cross-fitted OOF genomic values rather than final breeding values from
+a full-data refit.
 
 ## 2. Packages and model-fitting results
 
@@ -111,6 +119,36 @@ convergence <- models_object$convergence_diagnostics
 
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
+```
+
+### 2.3 Presentation labels and graphical standard
+
+The calculations retain the method codes stored in the analytical objects.
+Readable labels and the graphical theme below affect presentation only; they
+do not modify any scientific quantity.
+
+```{r presentation-style}
+method_labels <- c(
+  RRBLUP = "RR-BLUP/BRR",
+  BayesA = "BayesA",
+  BayesB = "BayesB",
+  BayesB2 = "BayesB2",
+  BayesC = "BayesC",
+  BL = "Bayesian Lasso",
+  GBLUP = "GBLUP"
+)
+
+selection_objective_labels <- c(
+  increase = "Increase",
+  decrease = "Decrease"
+)
+
+project_theme <- theme_gdocs() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold")
+  )
 ```
 
 ## 3. OOF predictive performance
@@ -242,6 +280,79 @@ model_comparison |>
 `model_comparison` combines OOF performance and DIC-derived relative support for every trait and method. DIC quantities are comparable only within the same trait and do not replace predictive evidence.
 
 In the joint comparison, methods with similar DIC can have different OOF performance, and the method with the largest `Wprob` need not have the largest predictive correlation. Bayesian fit and predictive ability therefore remain complementary rather than interchangeable criteria.
+
+### 4.4 Visual comparison of OOF predictive performance
+
+The pooled OOF correlation is the primary visual reference for predictive
+comparison. The horizontal line at zero separates positive from nonpositive
+association. Bars are point estimates, not uncertainty intervals.
+
+```{r predictive-correlation-figure, fig.width=13, fig.height=10, fig.alt="Faceted bar chart comparing pooled out-of-fold predictive correlations of the seven genomic prediction methods across the ten traits, with a horizontal reference at zero."}
+# Order methods and build the OOF-correlation figure by trait.
+predictive_plot <- model_comparison |>
+  mutate(Method = factor(Method, levels = methods)) |>
+  ggplot(aes(x = Method, y = r, fill = Method)) +
+  geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
+  geom_col(width = 0.75) +
+  facet_wrap(~ Trait, scales = "fixed", ncol = 2) +
+  scale_fill_gdocs(
+    breaks = methods,
+    labels = method_labels
+  ) +
+  scale_x_discrete(labels = method_labels) +
+  labs(
+    x = NULL,
+    y = "OOF correlation",
+    fill = "Method",
+    title = "Predictive ability of the seven methods"
+  ) +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+predictive_plot
+```
+
+
+Predictive magnitude and method ordering vary among traits. The workflow
+therefore does not define one globally superior method; selection remains
+trait-specific and continues with complementary DIC and diagnostic evidence.
+
+### 4.5 Joint predictive and DIC comparison
+
+The table below places the complementary evidence sources side by side.
+DIC-derived quantities are compared only within the same trait, while OOF
+correlation retains its predictive interpretation. The nominal p-value is
+shown for context and is not a ranking-eligibility criterion.
+
+```{r model-comparison-table}
+# DISPLAY-ONLY START
+model_comparison_display <- model_comparison |>
+  mutate(Method_label = unname(method_labels[Method])) |>
+  transmute(
+    Trait,
+    Method,
+    Method_label,
+    DIC = sprintf("%.2f", Mean_DIC),
+    Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Wprob = sprintf("%.3f", Wprob),
+    ER = sprintf("%.3f", ER),
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    )
+  ) |>
+  arrange(match(Trait, traits), match(Method, methods))
+
+format_table(
+  model_comparison_display |>
+    select(Trait, Method_label, DIC, Delta_DIC, Wprob, ER, r, p_value),
+  caption = "Comparison of the seven methods by trait",
+  col.names = c("Trait", "Method", "DIC", "Delta DIC", "Wprob", "ER", "r", "p-value")
+)
+# DISPLAY-ONLY END
+```
 
 ## 5. Selecting a method for each trait
 
@@ -719,7 +830,7 @@ format_table(
 
 ## 6. Stability across folds for the selected methods
 
-Fold-level metrics for the selected methods are derived here for the Module 05 synthesis. Sign changes and dispersion across folds are descriptive diagnostics; with only five overlapping folds, they do not constitute a formal heterogeneity test.
+Fold-level metrics for the selected methods are derived here and visualized immediately below. Sign changes and dispersion across folds are descriptive diagnostics; with only five overlapping folds, they do not constitute a formal heterogeneity test.
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
@@ -732,9 +843,49 @@ selected_fold_diagnostics <- metrics |>
 ```
 
 
+### 6.1 Visual stability across folds
+
+Each panel shows the five validation correlations for the selected method.
+Sign changes or large ranges indicate descriptive instability. Because
+training sets overlap and only five folds are available, the figure is not a
+formal heterogeneity test or confidence interval.
+
+```{r selected-fold-figure, fig.width=12, fig.height=10, fig.alt="Faceted plot showing the five fold-level validation correlations for the selected method of each trait, used as a descriptive view of across-fold stability."}
+# Add labels to fold-level results and build the stability figure for the selected method.
+fold_stability_display <- selected_fold_diagnostics |>
+  mutate(
+    Method_label = unname(method_labels[Method]),
+    Facet = paste0(Trait, " — ", Method_label)
+  )
+
+# Build the plot of predictive correlation observed in each fold for the selected method.
+fold_stability_plot <- ggplot(
+  fold_stability_display,
+  aes(x = Fold, y = Correlation, group = Trait)
+) +
+  geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
+  geom_line(linewidth = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ Facet, ncol = 2) +
+  scale_x_continuous(breaks = 1:5) +
+  coord_cartesian(ylim = c(-1, 1)) +
+  labs(
+    x = "Fold",
+    y = "Validation correlation",
+    title = "Predictive correlation across folds for selected methods"
+  ) +
+  project_theme
+
+fold_stability_plot
+```
+
+
+Fold stability should be interpreted together with pooled OOF correlation. It
+provides context for the selected method but does not redefine the selection.
+
 ## 7. Computational time
 
-Runtime is summarized only for operational documentation and presentation in Module 05. It is not used for model selection and should not be interpreted as a universal benchmark.
+Runtime is summarized only for operational documentation. It is not used for model selection and should not be interpreted as a universal benchmark.
 
 ```{r runtime}
 # Summarize the computational cost of the evaluated methods.
@@ -751,6 +902,42 @@ runtime_summary <- metrics |>
     .groups = "drop"
   ) |>
   arrange(match(Method, methods))
+```
+
+### 7.1 Observed computational cost
+
+The bars show mean recorded time and the error bars one standard deviation
+across fits. This is operational information for the execution environment,
+not a universal benchmark and not a method-selection criterion.
+
+```{r runtime-figure, fig.width=11, fig.height=7, fig.alt="Bar chart comparing mean computational time across the seven genomic prediction methods, with error bars representing one standard deviation across fits."}
+# Summarize the computational cost of the evaluated methods.
+runtime_plot <- runtime_summary |>
+  mutate(Method = factor(Method, levels = methods)) |>
+  ggplot(aes(x = Method, y = Mean_seconds, fill = Method)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = pmax(0, Mean_seconds - SD_seconds),
+      ymax = Mean_seconds + SD_seconds
+    ),
+    width = 0.2
+  ) +
+  scale_fill_gdocs(
+    breaks = methods,
+    labels = method_labels
+  ) +
+  scale_x_discrete(labels = method_labels) +
+  labs(
+    x = NULL,
+    y = "Mean time (seconds)",
+    fill = "Method",
+    title = "Computational time by method"
+  ) +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+runtime_plot
 ```
 
 ## 8. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR
@@ -807,6 +994,32 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
 ```
 
 `rrblup_heritability_summary` retains, by trait, the model-derived RR-BLUP/BRR heritability analogue and the ratio `Correlation / sqrt(H2)`. This ratio is not a conventional correlation and may lie outside [0, 1].
+
+### 8.3 Trait-level summary
+
+The table presents the quantities just derived. `RRBLUP_H2` is a
+marker-model-based analogue rather than an independent classical estimate of
+narrow-sense heritability, and the adjusted-accuracy ratio is not constrained
+to `[0, 1]`.
+
+```{r rrblup-heritability-table}
+# DISPLAY-ONLY START
+rrblup_table <- rrblup_heritability_summary |>
+  transmute(
+    Trait,
+    RRBLUP_H2 = sprintf("%.3f", Mean_H2),
+    SD_RRBLUP_H2 = sprintf("%.3f", SD_H2),
+    RRBLUP_predictive_accuracy = sprintf("%.3f", Mean_predictive_accuracy),
+    SD_RRBLUP_predictive_accuracy = sprintf("%.3f", SD_predictive_accuracy)
+  )
+
+format_table(
+  rrblup_table,
+  caption = "Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR",
+  col.names = c("Trait", "RR-BLUP H2", "SD RR-BLUP H2", "RR-BLUP predictive accuracy", "SD RR-BLUP predictive accuracy")
+)
+# DISPLAY-ONLY END
+```
 
 ## 9. OOF genomic values and selection direction
 
@@ -1002,7 +1215,92 @@ format_table(
 # DISPLAY-ONLY END
 ```
 
-The complete `selected_individuals_by_trait` object retains every candidate in the prioritized 20% for each eligible trait; named candidate presentation is deferred to Module 05.
+The complete `selected_individuals_by_trait` object retains every candidate in the prioritized 20% for each eligible trait; a compact candidate preview is shown below.
+
+### 10.4 Ranking summary
+
+The table below combines selection direction, OOF evidence, and the size of
+the exploratory prioritized set. The nominal p-value is descriptive and does
+not remove a positive-OOF trait from the ranking stage.
+
+```{r proportional-selection-table}
+# DISPLAY-ONLY START
+selection_sizes_display <- selection_sizes |>
+  left_join(
+    selection_objectives |>
+      select(Trait, Selection_objective),
+    by = "Trait"
+  ) |>
+  left_join(
+    model_selection |>
+      select(Trait, r, p_value, OOF_nominal_signal),
+    by = "Trait"
+  ) |>
+  mutate(
+    Objective = unname(
+      selection_objective_labels[Selection_objective]
+    )
+  ) |>
+  transmute(
+    Trait,
+    Objective,
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    ),
+    OOF_nominal_signal,
+    Selection_proportion = sprintf("%.0f%%", 100 * Selection_proportion),
+    N_available = as.integer(N_available),
+    N_selected = as.integer(N_selected)
+  )
+
+format_table(
+  selection_sizes_display,
+  caption = "Exploratory candidate-ranking summary by positive-OOF trait",
+  col.names = c("Trait", "Objective", "r", "p-value", "OOF nominal signal", "Selection proportion", "Available candidates", "Selected candidates")
+)
+# DISPLAY-ONLY END
+```
+
+
+### 10.5 Candidate preview
+
+For readability, only the first five candidates from each eligible ranking are
+shown here. The complete ranking remains in `selected_individuals_by_trait`.
+
+```{r proportional-selection-preview}
+# DISPLAY-ONLY START
+proportional_selection_preview_display <- selected_individuals_by_trait |>
+  group_by(Trait) |>
+  slice_head(n = 5) |>
+  ungroup() |>
+  transmute(
+    Trait,
+    Rank = as.integer(Rank),
+    IND,
+    FAM,
+    Method,
+    Selection_objective,
+    Genomic_value = sprintf("%.3f", Genomic_value),
+    Selection_score = sprintf("%.3f", Selection_score),
+    OOF_r = sprintf("%.3f", OOF_r),
+    OOF_nominal_p_value = if_else(
+      OOF_nominal_p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", OOF_nominal_p_value)
+    ),
+    OOF_nominal_signal
+  )
+
+format_table(
+  proportional_selection_preview_display,
+  caption = "Top five candidates in each positive-OOF trait ranking",
+  col.names = c("Trait", "Rank", "IND", "FAM", "Method", "Selection objective", "Genomic value", "Selection score", "OOF r", "OOF nominal p-value", "OOF nominal signal")
+)
+# DISPLAY-ONLY END
+```
 
 ## 11. Recurrence across traits
 
@@ -1086,7 +1384,110 @@ multitrait_candidates <- multitrait_recurrence |>
   arrange(desc(N_traits), FAM, IND)
 ```
 
-`multitrait_recurrence`, `recurrence_distribution`, and `multitrait_candidates` are derived here and presented in Module 05. The complete scientific object retains candidates recurring in at least two traits; recurrence is not a multi-trait selection index.
+`multitrait_recurrence`, `recurrence_distribution`, and `multitrait_candidates` are derived here and presented immediately below. The complete scientific object retains candidates recurring in at least two traits; recurrence is not a multi-trait selection index.
+
+### 11.3 Recurrence distribution
+
+The distribution describes the complete population according to how many
+positive-OOF rankings contain each individual. Recurrence classes are
+descriptive labels rather than significance thresholds.
+
+```{r recurrence-distribution-table}
+# DISPLAY-ONLY START
+recurrence_class_labels <- c(
+  high_4plus = "High (>=4)",
+  intermediate_3 = "Intermediate (3)",
+  broad_2 = "Broad (2)",
+  specific_1 = "Specific (1)",
+  none_0 = "None (0)"
+)
+
+recurrence_distribution_display <- recurrence_distribution |>
+  mutate(
+    Class = unname(
+      recurrence_class_labels[Recurrence_class]
+    )
+  ) |>
+  transmute(
+    N_traits = as.integer(N_traits),
+    Class,
+    N_individuals = as.integer(N_individuals),
+    Proportion_of_population = sprintf("%.3f", Proportion_of_population)
+  )
+
+format_table(
+  recurrence_distribution_display,
+  caption = "Distribution of individuals by recurrence class",
+  col.names = c("Number of traits", "Class", "Individuals", "Population proportion")
+)
+# DISPLAY-ONLY END
+```
+
+
+### 11.4 Recurrent candidates
+
+The scientific object retains candidates present in at least two rankings.
+For readability, the main table below shows only candidates recurring in three
+or more traits. This `N_traits >= 3` filter is presentation-only and does not
+change the stored candidate set.
+
+```{r recurrent-candidates-table}
+# DISPLAY-ONLY START
+
+# Apply only the presentation filter used on this page.
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>
+  mutate(
+    Class = unname(
+      recurrence_class_labels[Recurrence_class]
+    )
+  )
+
+# Main table: recurrence and overall ranking summary.
+main_multitrait_summary <- main_multitrait_candidates |>
+  select(
+    IND,
+    FAM,
+    N_traits,
+    Selection_frequency,
+    Class,
+    Traits,
+    Best_rank,
+    Mean_rank_present
+  ) |>
+  mutate(
+    N_traits = as.integer(N_traits),
+    Selection_frequency = sprintf("%.3f", Selection_frequency),
+    Best_rank = as.integer(Best_rank),
+    Mean_rank_present = sprintf("%.2f", Mean_rank_present)
+  )
+
+format_table(
+  main_multitrait_summary,
+  caption = "Summary of candidates with high or intermediate recurrence",
+  col.names = c("IND", "FAM", "Number of traits", "Selection frequency", "Class", "Traits", "Best rank", "Mean rank when present")
+)
+
+# Complementary table: candidate positions in trait-specific rankings.
+main_multitrait_rank_profile <- main_multitrait_candidates |>
+  select(
+    IND,
+    ends_with("_rank")
+  ) |>
+  select(-Best_rank)
+
+format_table(
+  main_multitrait_rank_profile,
+  caption = "Trait-specific rank profiles of recurrent candidates",
+  col.names = c("IND", "MMCOM rank", "PRODCOM rank", "PRODEF rank", "CF rank", "DF rank", "DCI rank", "FFC rank", "FFP rank", "SS rank")
+)
+
+# DISPLAY-ONLY END
+```
+
+
+Recurrence counts overlap among trait-specific lists. It does not create a
+multi-trait selection index or demonstrate joint superiority across traits.
 
 ## 12. Correlations among OOF genomic values
 
@@ -1103,11 +1504,72 @@ selected_oof_correlations <- cor(
 )
 ```
 
-`selected_oof_correlations` is derived here for visualization in Module 05. It should be interpreted only as association among OOF scores, not as joint genetic correlation.
+`selected_oof_correlations` is derived here and visualized immediately below. It should be interpreted only as association among OOF scores, not as joint genetic correlation.
+
+### 12.1 Exploratory heatmap
+
+The heatmap visualizes the matrix just derived. Colors use the original
+unrounded values. These are associations among cross-fitted scores and must
+not be interpreted as genetic correlations from a multivariate model.
+
+```{r oof-correlation-figure, fig.width=10, fig.height=9, fig.alt="Heatmap of pairwise correlations among cross-fitted OOF genomic-value scores for the traits, representing exploratory associations rather than multivariate genetic correlations."}
+# Reshape the OOF correlation matrix and build the cross-trait heatmap.
+correlation_long <- as.data.frame(
+  as.table(selected_oof_correlations)
+)
+names(correlation_long) <- c(
+  "Trait_1",
+  "Trait_2",
+  "Correlation"
+)
+
+# Set only the label of |r| < 0.005 to zero; the original correlation still drives analysis and color.
+correlation_long <- correlation_long |>
+  mutate(
+    Correlation_label = replace(
+      Correlation,
+      abs(Correlation) < 0.005,
+      0
+    )
+  )
+
+# Build the heatmap of correlations among OOF genomic values.
+correlation_plot <- ggplot(
+  correlation_long,
+  aes(x = Trait_1, y = Trait_2, fill = Correlation)
+) +
+  geom_tile() +
+  geom_text(
+    aes(label = sprintf("%.2f", Correlation_label)),
+    size = 3
+  ) +
+  scale_fill_distiller(
+    type = "div",
+    palette = "RdBu",
+    direction = 1,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "r",
+    title = "Correlation among OOF genomic values"
+  ) +
+  coord_equal() +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+correlation_plot
+```
+
+
+Positive values indicate that two score sets tend to order candidates in the
+same direction, while negative values indicate opposing directions. The matrix
+does not create an additional selection criterion.
 
 ## 13. Saving the results
 
-The derived tables and `module04_results.rds` object are persisted for direct use in Module 05. No genomic model is refitted at this stage. The output directory is created only now, after all derivations have been completed.
+The derived tables and `module04_results.rds` object are persisted as the final analytical outputs of the tutorial. No genomic model is refitted at this stage. The output directory is created only now, after all derivations have been completed.
 
 ```{r save-results}
 RESULTS_DIR <- here("output", "results", "m04")
@@ -1174,14 +1636,36 @@ saveRDS(
 )
 ```
 
-## 14. Next step
+## 14. Final interpretation
 
-By the end of this module, the derivation stage is complete: method comparison, trait-specific decisions, associated diagnostics, exploratory rankings, recurrence, and correlations among OOF scores have already been defined in the persisted objects.
+The complete workflow should be read as one continuous chain.
 
-Module 05 changes from **derivation to presentation and interpretation**. It uses only these derivations to build summary tables and figures, without reapplying the selection rule, rebuilding rankings, or refitting models. OOF genomic values remain cross-fitted validation scores; this workflow does not transform them into final breeding values from a refit using all 150 phenotypes.
+Module 03 supplies out-of-fold predictions, fold-level metrics, genomic
+components, and MCMC diagnostics. This module first compares predictive
+performance, then adds DIC-derived support and the monitored convergence
+information to select a method for each trait. The selected method supplies
+the cross-fitted genomic values used in the exploratory rankings. Recurrence
+then summarizes overlap among those trait-specific lists without constructing
+a multi-trait index.
+
+OOF performance remains the primary predictive evidence. DIC, MCMC
+diagnostics, fold stability, the RR-BLUP/BRR heritability analogue, and
+computational time provide complementary context rather than interchangeable
+criteria.
+
+Rankings are generated only for traits with positive OOF direction and remain
+exploratory, particularly when the nominal correlation signal is weak. The OOF
+genomic values are validation-consistent cross-fitted scores, not final
+breeding values from a model refitted to all 150 phenotypes.
+
+Correlations among OOF genomic values describe associations among cross-fitted
+scores. They are not multivariate genetic correlations.
+
+All conclusions remain conditional on the represented breeding population,
+the available SSR panel, and the transductive validation design.
 
 <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="03_models_en.html">← Module 03 — Model fitting</a>
 <a href="04_results_pt.html" style="text-align:center;">Português</a>
-<a href="05_results_en.html" style="text-align:right;">Module 05 — Results synthesis →</a>
+<a href="index.html" style="text-align:right;">Home →</a>
 </div>
