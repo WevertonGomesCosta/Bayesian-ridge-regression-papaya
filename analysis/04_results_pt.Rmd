@@ -1,5 +1,5 @@
 ---
-title: "Derivação dos resultados e seleção dos modelos"
+title: "Comparação dos modelos, seleção genômica e resultados"
 author:
   - Costa, W. G.^[Weverton Gomes da Costa, Pós-Doutorando, Departamento de Estatística - Universidade Federal de Viçosa, weverton.costa@ufv.br]
 date: "`r Sys.Date()`"
@@ -33,19 +33,29 @@ knitr::opts_chunk$set(
 ## 1. Objetivo
 
 A partir das predições, métricas e diagnósticos obtidos no Módulo 03, este
-módulo compara os sete métodos dentro de cada característica e deriva os
-resultados utilizados na seleção genômica.
+módulo analítico final avança continuamente de **evidência para decisão e
+interpretação**.
 
-A mudança em relação ao módulo anterior é, portanto, de **ajuste para decisão**: o Módulo 03 produziu evidência por característica, fold e método; aqui essa evidência é agregada e organizada para responder qual método deve representar cada característica e quais rankings exploratórios podem ser derivados dessa escolha.
+Em vez de derivar todas as quantidades primeiro e apresentá-las depois em uma
+página separada, cada resultado é mostrado e interpretado imediatamente após
+seu cálculo. A sequência analítica é:
 
-São calculados o desempenho preditivo OOF, DIC e medidas relativas de suporte,
-a decisão do método por característica, a estabilidade entre folds, o tempo
-computacional, a herdabilidade e a acurácia no análogo RR-BLUP/BRR, os valores
-genômicos OOF, os rankings orientados, a seleção proporcional, a recorrência
-entre características e as correlações entre valores genômicos.
+**desempenho preditivo OOF → suporte por DIC → seleção do método por
+característica → diagnósticos dos métodos selecionados → valores genômicos OOF
+→ rankings exploratórios → recorrência entre características → interpretação
+final.**
+
+O módulo deriva o desempenho preditivo OOF agrupado, o suporte relativo
+derivado do DIC, o método selecionado por característica, a estabilidade entre
+folds, o tempo computacional, o análogo de herdabilidade baseado em marcadores
+no RR-BLUP/BRR, os valores genômicos OOF, os rankings orientados, a seleção
+proporcional, a recorrência entre características e as associações entre
+escores genômicos cross-fitted.
 
 A direção de melhoramento é definida antes do ranking: aumentar MMCOM, PRODCOM,
-CF, DF, EP, FFC, FFP e SS; diminuir PRODEF e DCI.
+CF, DF, EP, FFC, FFP e SS; diminuir PRODEF e DCI. Os rankings permanecem
+exploratórios e usam valores genômicos OOF cross-fitted, e não valores
+genéticos finais provenientes de um reajuste com todos os dados.
 
 ## 2. Pacotes e resultados do ajuste dos modelos
 
@@ -111,6 +121,36 @@ convergence <- models_object$convergence_diagnostics
 
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
+```
+
+### 2.3 Rótulos de apresentação e padrão gráfico
+
+Os cálculos mantêm os códigos dos métodos armazenados nos objetos analíticos.
+Os rótulos legíveis e o tema gráfico definidos abaixo afetam somente a
+apresentação e não modificam nenhuma quantidade científica.
+
+```{r presentation-style}
+method_labels <- c(
+  RRBLUP = "RR-BLUP/BRR",
+  BayesA = "BayesA",
+  BayesB = "BayesB",
+  BayesB2 = "BayesB2",
+  BayesC = "BayesC",
+  BL = "Lasso Bayesiano",
+  GBLUP = "GBLUP"
+)
+
+selection_objective_labels <- c(
+  increase = "Aumentar",
+  decrease = "Diminuir"
+)
+
+project_theme <- theme_gdocs() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold")
+  )
 ```
 
 ## 3. Desempenho preditivo OOF
@@ -242,6 +282,82 @@ model_comparison |>
 `model_comparison` reúne, para cada característica e método, desempenho OOF e suporte relativo derivado do DIC. As medidas de DIC são comparáveis apenas dentro da mesma característica e não substituem a evidência preditiva.
 
 Na comparação conjunta, métodos com DIC próximos podem apresentar desempenhos OOF diferentes e o método de maior `Wprob` não precisa ser o de maior correlação preditiva. Por isso, ajuste Bayesiano e capacidade preditiva permanecem critérios complementares, não intercambiáveis.
+
+### 4.4 Comparação visual do desempenho preditivo OOF
+
+A correlação OOF agrupada é a principal referência visual para a comparação
+preditiva. A linha horizontal em zero separa associação positiva de não
+positiva. As barras representam estimativas pontuais e não intervalos de
+incerteza.
+
+```{r predictive-correlation-figure, fig.width=13, fig.height=10, fig.alt="Gráfico de barras em painéis comparando as correlações preditivas OOF agrupadas dos sete métodos de predição genômica nas dez características, com referência horizontal em zero."}
+# Ordena os métodos e constrói o gráfico de correlação OOF por característica.
+predictive_plot <- model_comparison |>
+  mutate(Method = factor(Method, levels = methods)) |>
+  ggplot(aes(x = Method, y = r, fill = Method)) +
+  geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
+  geom_col(width = 0.75) +
+  facet_wrap(~ Trait, scales = "fixed", ncol = 2) +
+  scale_fill_gdocs(
+    breaks = methods,
+    labels = method_labels
+  ) +
+  scale_x_discrete(labels = method_labels) +
+  labs(
+    x = NULL,
+    y = "Correlação OOF",
+    fill = "Método",
+    title = "Capacidade preditiva dos sete métodos"
+  ) +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+predictive_plot
+```
+
+
+A magnitude preditiva e a ordenação dos métodos variam entre características.
+Por isso, o fluxo não define um único método globalmente superior; a seleção
+permanece específica por característica e continua com as evidências
+complementares de DIC e diagnóstico.
+
+### 4.5 Comparação conjunta do desempenho preditivo e do DIC
+
+A tabela abaixo coloca lado a lado as fontes complementares de evidência. As
+quantidades derivadas do DIC são comparadas somente dentro da mesma
+característica, enquanto a correlação OOF mantém sua interpretação preditiva.
+O p-valor nominal é apresentado apenas como contexto e não define a
+elegibilidade dos rankings.
+
+```{r model-comparison-table}
+# DISPLAY-ONLY START
+model_comparison_display <- model_comparison |>
+  mutate(Method_label = unname(method_labels[Method])) |>
+  transmute(
+    Trait,
+    Method,
+    Method_label,
+    DIC = sprintf("%.2f", Mean_DIC),
+    Delta_DIC = sprintf("%.2f", Delta_DIC),
+    Wprob = sprintf("%.3f", Wprob),
+    ER = sprintf("%.3f", ER),
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    )
+  ) |>
+  arrange(match(Trait, traits), match(Method, methods))
+
+tabela_html(
+  model_comparison_display |>
+    select(Trait, Method_label, DIC, Delta_DIC, Wprob, ER, r, p_value),
+  caption = "Comparação dos sete métodos por característica",
+  col.names = c("Característica", "Método", "DIC", "Delta DIC", "Wprob", "ER", "r", "p-valor")
+)
+# DISPLAY-ONLY END
+```
 
 ## 5. Seleção do método por característica
 
@@ -719,7 +835,7 @@ tabela_html(
 
 ## 6. Estabilidade entre folds dos métodos selecionados
 
-As métricas por fold dos métodos selecionados são derivadas aqui para a síntese do Módulo 05. Mudanças de sinal e dispersão entre folds são diagnósticos descritivos; com apenas cinco folds sobrepostos, não constituem teste formal de heterogeneidade.
+As métricas por fold dos métodos selecionados são derivadas aqui e visualizadas imediatamente abaixo. Mudanças de sinal e dispersão entre folds são diagnósticos descritivos; com apenas cinco folds sobrepostos, não constituem teste formal de heterogeneidade.
 
 ```{r selected-fold-diagnostics}
 selected_fold_diagnostics <- metrics |>
@@ -732,9 +848,51 @@ selected_fold_diagnostics <- metrics |>
 ```
 
 
+### 6.1 Estabilidade visual entre folds
+
+Cada painel apresenta as cinco correlações de validação do método selecionado.
+Mudanças de sinal ou amplitudes elevadas indicam instabilidade descritiva.
+Como os conjuntos de treinamento se sobrepõem e existem apenas cinco folds, a
+figura não constitui teste formal de heterogeneidade nem intervalo de
+confiança.
+
+```{r selected-fold-figure, fig.width=12, fig.height=10, fig.alt="Gráfico em painéis mostrando as cinco correlações de validação por fold do método selecionado para cada característica, como diagnóstico descritivo de estabilidade entre folds."}
+# Acrescenta rótulos aos resultados por fold e constrói a figura de estabilidade do método selecionado.
+fold_stability_display <- selected_fold_diagnostics |>
+  mutate(
+    Method_label = unname(method_labels[Method]),
+    Facet = paste0(Trait, " — ", Method_label)
+  )
+
+# Constrói o gráfico da correlação preditiva observada em cada fold para o método selecionado.
+fold_stability_plot <- ggplot(
+  fold_stability_display,
+  aes(x = Fold, y = Correlation, group = Trait)
+) +
+  geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
+  geom_line(linewidth = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ Facet, ncol = 2) +
+  scale_x_continuous(breaks = 1:5) +
+  coord_cartesian(ylim = c(-1, 1)) +
+  labs(
+    x = "Fold",
+    y = "Correlação de validação",
+    title = "Correlação preditiva por fold dos métodos selecionados"
+  ) +
+  project_theme
+
+fold_stability_plot
+```
+
+
+A estabilidade entre folds deve ser interpretada em conjunto com a correlação
+OOF agrupada. Ela contextualiza o método selecionado, mas não redefine a
+seleção.
+
 ## 7. Tempo computacional
 
-O tempo computacional é resumido apenas para documentação operacional e apresentação no Módulo 05. Ele não participa da seleção dos métodos e não deve ser interpretado como benchmark universal.
+O tempo computacional é resumido apenas para documentação operacional. Ele não participa da seleção dos métodos e não deve ser interpretado como benchmark universal.
 
 ```{r runtime}
 # Resume o custo computacional dos métodos avaliados.
@@ -751,6 +909,42 @@ runtime_summary <- metrics |>
     .groups = "drop"
   ) |>
   arrange(match(Method, methods))
+```
+
+### 7.1 Custo computacional observado
+
+As barras mostram o tempo médio registrado e as barras de erro representam um
+desvio-padrão entre ajustes. Essa informação é operacional para o ambiente de
+execução, não um benchmark universal e não um critério de seleção dos métodos.
+
+```{r runtime-figure, fig.width=11, fig.height=7, fig.alt="Gráfico de barras comparando o tempo computacional médio dos sete métodos de predição genômica, com hastes representando um desvio-padrão entre os ajustes."}
+# Resume o custo computacional dos métodos avaliados.
+runtime_plot <- runtime_summary |>
+  mutate(Method = factor(Method, levels = methods)) |>
+  ggplot(aes(x = Method, y = Mean_seconds, fill = Method)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(
+    aes(
+      ymin = pmax(0, Mean_seconds - SD_seconds),
+      ymax = Mean_seconds + SD_seconds
+    ),
+    width = 0.2
+  ) +
+  scale_fill_gdocs(
+    breaks = methods,
+    labels = method_labels
+  ) +
+  scale_x_discrete(labels = method_labels) +
+  labs(
+    x = NULL,
+    y = "Tempo médio (segundos)",
+    fill = "Método",
+    title = "Tempo computacional por método"
+  ) +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+runtime_plot
 ```
 
 ## 8. Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR
@@ -807,6 +1001,32 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
 ```
 
 `rrblup_heritability_summary` preserva, por característica, o análogo de herdabilidade derivado dos componentes do RR-BLUP/BRR e a razão `Correlation / sqrt(H2)`. Essa razão não é uma correlação convencional e pode ficar fora de [0, 1].
+
+### 8.3 Resumo por característica
+
+A tabela apresenta as quantidades recém-derivadas. `RRBLUP_H2` é um análogo
+baseado no modelo de marcadores, e não uma estimativa clássica independente de
+herdabilidade no sentido restrito; a razão de acurácia ajustada também não é
+restrita a `[0, 1]`.
+
+```{r rrblup-heritability-table}
+# DISPLAY-ONLY START
+rrblup_table <- rrblup_heritability_summary |>
+  transmute(
+    Trait,
+    RRBLUP_H2 = sprintf("%.3f", Mean_H2),
+    SD_RRBLUP_H2 = sprintf("%.3f", SD_H2),
+    RRBLUP_predictive_accuracy = sprintf("%.3f", Mean_predictive_accuracy),
+    SD_RRBLUP_predictive_accuracy = sprintf("%.3f", SD_predictive_accuracy)
+  )
+
+tabela_html(
+  rrblup_table,
+  caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR",
+  col.names = c("Característica", "RR-BLUP H2", "DP RR-BLUP H2", "Acurácia preditiva RR-BLUP", "DP da acurácia preditiva RR-BLUP")
+)
+# DISPLAY-ONLY END
+```
 
 ## 9. Valores genômicos OOF e direção de seleção
 
@@ -1003,7 +1223,93 @@ tabela_html(
 # DISPLAY-ONLY END
 ```
 
-O objeto completo `selected_individuals_by_trait` mantém todos os candidatos pertencentes aos 20% priorizados em cada característica elegível; a apresentação nominal dos candidatos fica para o Módulo 05.
+O objeto completo `selected_individuals_by_trait` mantém todos os candidatos pertencentes aos 20% priorizados em cada característica elegível; uma prévia compacta dos candidatos é apresentada abaixo.
+
+### 10.4 Resumo dos rankings
+
+A tabela abaixo reúne direção de seleção, evidência OOF e tamanho do conjunto
+exploratório priorizado. O p-valor nominal é descritivo e não remove uma
+característica com OOF positivo da etapa de ranking.
+
+```{r proportional-selection-table}
+# DISPLAY-ONLY START
+selection_sizes_display <- selection_sizes |>
+  left_join(
+    selection_objectives |>
+      select(Trait, Selection_objective),
+    by = "Trait"
+  ) |>
+  left_join(
+    model_selection |>
+      select(Trait, r, p_value, OOF_nominal_signal),
+    by = "Trait"
+  ) |>
+  mutate(
+    Objetivo = unname(
+      selection_objective_labels[Selection_objective]
+    )
+  ) |>
+  transmute(
+    Trait,
+    Objetivo,
+    r = sprintf("%.3f", r),
+    p_value = if_else(
+      p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", p_value)
+    ),
+    OOF_nominal_signal,
+    Selection_proportion = sprintf("%.0f%%", 100 * Selection_proportion),
+    N_available = as.integer(N_available),
+    N_selected = as.integer(N_selected)
+  )
+
+tabela_html(
+  selection_sizes_display,
+  caption = "Resumo exploratório do ranking de candidatos por característica com OOF positivo",
+  col.names = c("Característica", "Objetivo", "r", "p-valor", "Sinal nominal OOF", "Proporção selecionada", "Candidatos disponíveis", "Candidatos selecionados")
+)
+# DISPLAY-ONLY END
+```
+
+
+### 10.5 Prévia dos candidatos
+
+Para facilitar a leitura, são apresentados apenas os cinco primeiros
+candidatos de cada ranking elegível. O ranking completo permanece em
+`selected_individuals_by_trait`.
+
+```{r proportional-selection-preview}
+# DISPLAY-ONLY START
+proportional_selection_preview_display <- selected_individuals_by_trait |>
+  group_by(Trait) |>
+  slice_head(n = 5) |>
+  ungroup() |>
+  transmute(
+    Trait,
+    Rank = as.integer(Rank),
+    IND,
+    FAM,
+    Method,
+    Selection_objective,
+    Genomic_value = sprintf("%.3f", Genomic_value),
+    Selection_score = sprintf("%.3f", Selection_score),
+    OOF_r = sprintf("%.3f", OOF_r),
+    OOF_nominal_p_value = if_else(
+      OOF_nominal_p_value < 0.001,
+      "<0.001",
+      sprintf("%.3f", OOF_nominal_p_value)
+    ),
+    OOF_nominal_signal
+  )
+
+tabela_html(
+  proportional_selection_preview_display,
+  caption = "Cinco primeiros candidatos do ranking em cada característica com OOF positivo",
+  col.names = c("Característica", "Rank", "IND", "FAM", "Método", "Objetivo de seleção", "Valor genômico", "Escore de seleção", "r OOF", "p-valor nominal OOF", "Sinal nominal OOF")
+)
+# DISPLAY-ONLY END
+```
 
 ## 11. Recorrência entre características
 
@@ -1087,7 +1393,111 @@ multitrait_candidates <- multitrait_recurrence |>
   arrange(desc(N_traits), FAM, IND)
 ```
 
-`multitrait_recurrence`, `recurrence_distribution` e `multitrait_candidates` são derivados aqui e apresentados no Módulo 05. O objeto científico completo mantém candidatos recorrentes em pelo menos duas características; recorrência não constitui índice multicaracterística.
+`multitrait_recurrence`, `recurrence_distribution` e `multitrait_candidates` são derivados aqui e apresentados imediatamente abaixo. O objeto científico completo mantém candidatos recorrentes em pelo menos duas características; recorrência não constitui índice multicaracterística.
+
+### 11.3 Distribuição da recorrência
+
+A distribuição descreve toda a população segundo o número de rankings com OOF
+positivo em que cada indivíduo aparece. As classes de recorrência são rótulos
+descritivos e não limiares de significância.
+
+```{r recurrence-distribution-table}
+# DISPLAY-ONLY START
+recurrence_class_labels <- c(
+  high_4plus = "Alta (>=4)",
+  intermediate_3 = "Intermediária (3)",
+  broad_2 = "Ampla (2)",
+  specific_1 = "Específica (1)",
+  none_0 = "Nenhuma (0)"
+)
+
+recurrence_distribution_display <- recurrence_distribution |>
+  mutate(
+    Classe = unname(
+      recurrence_class_labels[Recurrence_class]
+    )
+  ) |>
+  transmute(
+    N_traits = as.integer(N_traits),
+    Classe,
+    N_individuals = as.integer(N_individuals),
+    Proportion_of_population = sprintf("%.3f", Proportion_of_population)
+  )
+
+tabela_html(
+  recurrence_distribution_display,
+  caption = "Distribuição dos indivíduos por classe de recorrência",
+  col.names = c("Número de características", "Classe", "Indivíduos", "Proporção da população")
+)
+# DISPLAY-ONLY END
+```
+
+
+### 11.4 Candidatos recorrentes
+
+O objeto científico mantém candidatos presentes em pelo menos dois rankings.
+Para facilitar a leitura, a tabela principal abaixo mostra apenas candidatos
+recorrentes em três ou mais características. Esse filtro `N_traits >= 3` é
+exclusivamente de apresentação e não altera o conjunto armazenado.
+
+```{r recurrent-candidates-table}
+# DISPLAY-ONLY START
+
+# Aplica apenas o filtro de apresentação usado nesta página.
+main_multitrait_candidates <- multitrait_candidates |>
+  filter(N_traits >= 3L) |>
+  mutate(
+    Classe = unname(
+      recurrence_class_labels[Recurrence_class]
+    )
+  )
+
+# Tabela principal: síntese da recorrência e da posição nos rankings.
+main_multitrait_summary <- main_multitrait_candidates |>
+  select(
+    IND,
+    FAM,
+    N_traits,
+    Selection_frequency,
+    Classe,
+    Traits,
+    Best_rank,
+    Mean_rank_present
+  ) |>
+  mutate(
+    N_traits = as.integer(N_traits),
+    Selection_frequency = sprintf("%.3f", Selection_frequency),
+    Best_rank = as.integer(Best_rank),
+    Mean_rank_present = sprintf("%.2f", Mean_rank_present)
+  )
+
+tabela_html(
+  main_multitrait_summary,
+  caption = "Síntese dos candidatos com recorrência alta ou intermediária",
+  col.names = c("IND", "FAM", "Número de características", "Frequência de seleção", "Classe", "Características", "Melhor rank", "Rank médio quando presente")
+)
+
+# Tabela complementar: posição de cada candidato nos rankings por característica.
+main_multitrait_rank_profile <- main_multitrait_candidates |>
+  select(
+    IND,
+    ends_with("_rank")
+  ) |>
+  select(-Best_rank)
+
+tabela_html(
+  main_multitrait_rank_profile,
+  caption = "Perfil de ranks por característica dos candidatos recorrentes",
+  col.names = c("IND", "MMCOM rank", "PRODCOM rank", "PRODEF rank", "CF rank", "DF rank", "DCI rank", "FFC rank", "FFP rank", "SS rank")
+)
+
+# DISPLAY-ONLY END
+```
+
+
+A recorrência contabiliza sobreposição entre listas específicas por
+característica. Ela não cria um índice de seleção multicaracterístico nem
+demonstra superioridade conjunta entre características.
 
 ## 12. Correlações entre valores genômicos OOF
 
@@ -1104,11 +1514,73 @@ selected_oof_correlations <- cor(
 )
 ```
 
-`selected_oof_correlations` é derivada aqui para a visualização do Módulo 05. Ela deve ser interpretada somente como associação entre escores OOF, e não como correlação genética conjunta.
+`selected_oof_correlations` é derivada aqui e visualizada imediatamente abaixo. Ela deve ser interpretada somente como associação entre escores OOF, e não como correlação genética conjunta.
+
+### 12.1 Mapa de calor exploratório
+
+O mapa de calor visualiza a matriz recém-derivada. As cores utilizam os valores
+originais sem arredondamento. Essas são associações entre escores cross-fitted
+e não devem ser interpretadas como correlações genéticas de um modelo
+multivariado.
+
+```{r oof-correlation-figure, fig.width=10, fig.height=9, fig.alt="Mapa de calor das correlações entre escores de valores genômicos OOF cross-fitted das características, representando associações exploratórias e não correlações genéticas de um modelo multivariado."}
+# Reorganiza a matriz de correlações OOF e constrói o mapa de calor entre características.
+correlation_long <- as.data.frame(
+  as.table(selected_oof_correlations)
+)
+names(correlation_long) <- c(
+  "Trait_1",
+  "Trait_2",
+  "Correlation"
+)
+
+# Zera somente o rótulo de |r| < 0,005; a correlação original continua sendo usada na análise e na cor.
+correlation_long <- correlation_long |>
+  mutate(
+    Correlation_label = replace(
+      Correlation,
+      abs(Correlation) < 0.005,
+      0
+    )
+  )
+
+# Constrói o mapa de calor das correlações entre valores genômicos OOF.
+correlation_plot <- ggplot(
+  correlation_long,
+  aes(x = Trait_1, y = Trait_2, fill = Correlation)
+) +
+  geom_tile() +
+  geom_text(
+    aes(label = sprintf("%.2f", Correlation_label)),
+    size = 3
+  ) +
+  scale_fill_distiller(
+    type = "div",
+    palette = "RdBu",
+    direction = 1,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "r",
+    title = "Correlação entre valores genômicos OOF"
+  ) +
+  coord_equal() +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+correlation_plot
+```
+
+
+Valores positivos indicam tendência de dois conjuntos de escores ordenarem os
+candidatos na mesma direção, enquanto valores negativos indicam direções
+opostas. A matriz não cria um critério adicional de seleção.
 
 ## 13. Gravação dos resultados
 
-As tabelas derivadas e o objeto `module04_results.rds` são persistidos para uso direto no Módulo 05. Nenhum modelo genômico é reajustado nesta etapa. O diretório de saída é criado somente agora, depois de concluídas todas as derivações.
+As tabelas derivadas e o objeto `module04_results.rds` são persistidos como as saídas analíticas finais do tutorial. Nenhum modelo genômico é reajustado nesta etapa. O diretório de saída é criado somente agora, depois de concluídas todas as derivações.
 
 ```{r save-results}
 RESULTS_DIR <- here("output", "results", "m04")
@@ -1172,14 +1644,37 @@ saveRDS(
 )
 ```
 
-## 14. Próxima etapa
+## 14. Interpretação final
 
-Ao final deste módulo, a etapa de derivação está concluída: comparação dos métodos, decisão por característica, diagnósticos associados, rankings exploratórios, recorrência e correlações entre escores OOF já estão definidos nos objetos persistidos.
+O fluxo completo deve ser lido como uma única cadeia contínua.
 
-O Módulo 05 muda de **derivação para apresentação e interpretação**. Ele utiliza exclusivamente essas derivações para construir as tabelas e figuras de síntese, sem reaplicar a regra de seleção, refazer rankings ou reajustar modelos. Os valores genômicos OOF continuam sendo escores cross-fitted de validação; este fluxo não os transforma em valores genéticos finais de um refit com todos os 150 fenótipos.
+O Módulo 03 fornece predições out-of-fold, métricas por fold, componentes
+genômicos e diagnósticos MCMC. Este módulo começa comparando o desempenho
+preditivo e, em seguida, adiciona o suporte derivado do DIC e as informações de
+convergência monitoradas para selecionar um método por característica. O método
+selecionado fornece os valores genômicos cross-fitted usados nos rankings
+exploratórios. A recorrência resume então a sobreposição entre essas listas
+específicas por característica sem construir um índice multicaracterístico.
+
+O desempenho OOF permanece como evidência preditiva principal. DIC,
+diagnósticos MCMC, estabilidade entre folds, o análogo de herdabilidade do
+RR-BLUP/BRR e o tempo computacional fornecem contexto complementar, e não
+critérios intercambiáveis.
+
+Os rankings são produzidos apenas para características com direção OOF
+positiva e permanecem exploratórios, principalmente quando o sinal nominal da
+correlação é fraco. Os valores genômicos OOF são escores cross-fitted
+consistentes com a validação, e não valores genéticos finais provenientes de
+um modelo reajustado com todos os 150 fenótipos.
+
+As correlações entre valores genômicos OOF descrevem associações entre escores
+cross-fitted. Elas não são correlações genéticas multivariadas.
+
+Todas as conclusões permanecem condicionadas à população de melhoramento
+representada, ao painel SSR disponível e ao desenho de validação transdutivo.
 
 <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="03_models_pt.html">← Módulo 03 — Ajuste dos modelos</a>
 <a href="04_results_en.html" style="text-align:center;">English</a>
-<a href="05_results_pt.html" style="text-align:right;">Módulo 05 — Síntese dos resultados →</a>
+<a href="index.html" style="text-align:right;">Início →</a>
 </div>

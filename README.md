@@ -23,8 +23,7 @@ The modules are intended to be read in sequence because each stage creates the o
 1. **Data preprocessing and diagnostics** — reads and aligns genotype and phenotype data, handles SSR missing values, applies locus quality control, and summarizes phenotype diagnostics.
 2. **Matrix construction and diagnostics** — converts multi-allelic SSR genotypes to allele dosages, constructs `X`, `M`, and `G`, and defines five family-stratified cross-validation folds.
 3. **Model fitting and MCMC diagnostics** — specifies the seven genomic prediction methods in BGLR and documents the cross-validation fitting procedure and MCMC diagnostics. The complete fitting code is visible, but computationally intensive fitting chunks are not executed automatically during routine website rendering.
-4. **Result derivation and model selection** — derives pooled OOF predictive metrics, DIC-based support measures, trait-specific method selection, cross-fitted genomic values, and exploratory candidate rankings.
-5. **Results presentation** — consolidates the main comparative tables, diagnostics, rankings, recurrence summaries, and figures produced by the preceding modules.
+4. **Model comparison, genomic selection, and results** — derives and immediately interprets pooled OOF metrics, DIC-based support, trait-specific method selection, diagnostics, cross-fitted genomic values, exploratory rankings, recurrence, and the final result synthesis.
 
 ### Validation scope
 
@@ -38,7 +37,7 @@ The full scientific scope and interpretation boundaries are documented on the tu
 
 ### Repository structure
 
-- `analysis/`: bilingual `workflowr` source pages for the site and Modules 01--05;
+- `analysis/`: bilingual `workflowr` source pages for the site and Modules 01--04;
 - `data/`: local canonical source workbooks, excluded from Git, plus the versioned data contract in `data/README.md`;
 - `docs/`: rendered tutorial website tracked by Git;
 - `output/`: locally generated analytical objects, diagnostics, tables, and figures; generated artifacts are ignored by default, while a defined subset of M04 result tables is versioned;
@@ -65,7 +64,7 @@ To reconstruct the analysis:
 4. restore the recorded R environment with `renv::restore()` and inspect it with `renv::status()`;
 5. execute Modules 01 and 02;
 6. deliberately execute the computationally intensive fitting blocks documented in Module 03;
-7. regenerate the downstream outputs consumed by Modules 04 and 05.
+7. execute Module 04 to derive, present, interpret, and persist the final analytical results.
 
 Routine `workflowr` rendering is not a substitute for full computational reconstruction because downstream pages depend on persisted objects and chain files that are deliberately excluded from Git.
 
@@ -100,8 +99,7 @@ Os módulos devem ser lidos em sequência, pois cada etapa cria os objetos utili
 1. **Pré-processamento e diagnóstico dos dados** — lê e alinha os dados genotípicos e fenotípicos, trata valores ausentes dos SSR, aplica o controle de qualidade dos locos e resume os diagnósticos fenotípicos.
 2. **Construção e diagnóstico das matrizes** — converte genótipos SSR multialélicos em dosagens alélicas, constrói `X`, `M` e `G` e define cinco folds de validação cruzada estratificados por família.
 3. **Ajuste dos modelos e diagnósticos MCMC** — especifica os sete métodos de predição genômica no BGLR e documenta o procedimento de ajuste em validação cruzada e os diagnósticos MCMC. O código completo de ajuste permanece visível, mas os chunks computacionalmente intensivos não são executados automaticamente durante a renderização rotineira do site.
-4. **Derivação dos resultados e seleção dos modelos** — deriva métricas preditivas OOF agregadas, medidas de suporte baseadas em DIC, seleção do método por característica, valores genômicos cross-fitted e rankings exploratórios de candidatos.
-5. **Apresentação dos resultados** — consolida as principais tabelas comparativas, diagnósticos, rankings, resumos de recorrência e figuras produzidos pelos módulos anteriores.
+4. **Comparação dos modelos, seleção genômica e resultados** — deriva e interpreta imediatamente métricas OOF agrupadas, suporte baseado em DIC, seleção do método por característica, diagnósticos, valores genômicos cross-fitted, rankings exploratórios, recorrência e a síntese final dos resultados.
 
 ### Escopo da validação
 
@@ -115,7 +113,7 @@ O escopo científico completo e os limites de interpretação são documentados 
 
 ### Estrutura do repositório
 
-- `analysis/`: páginas-fonte bilíngues do `workflowr` para o site e os Módulos 01--05;
+- `analysis/`: páginas-fonte bilíngues do `workflowr` para o site e os Módulos 01--04;
 - `data/`: planilhas-fonte canônicas mantidas localmente e excluídas do Git, além do contrato versionado em `data/README.md`;
 - `docs/`: site tutorial renderizado e versionado no Git;
 - `output/`: objetos analíticos, diagnósticos, tabelas e figuras produzidos localmente; os artefatos gerados são ignorados por padrão, enquanto um subconjunto definido das tabelas de resultados do M04 é versionado;
@@ -142,7 +140,7 @@ Para reconstruir a análise:
 4. restaure o ambiente R registrado com `renv::restore()` e inspecione-o com `renv::status()`;
 5. execute os Módulos 01 e 02;
 6. execute deliberadamente os blocos computacionalmente intensivos documentados no Módulo 03;
-7. regenere as saídas posteriores consumidas pelos Módulos 04 e 05.
+7. execute o Módulo 04 para derivar, apresentar, interpretar e persistir os resultados analíticos finais.
 
 A renderização rotineira com `workflowr` não substitui a reconstrução computacional completa, pois as páginas posteriores dependem de objetos persistidos e cadeias que são deliberadamente excluídos do Git.
 
