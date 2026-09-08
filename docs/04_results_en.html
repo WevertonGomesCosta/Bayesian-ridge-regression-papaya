@@ -372,7 +372,7 @@ div.tocify {
 <li class="dropdown">
   <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
     English
-
+     
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu">
@@ -393,7 +393,7 @@ div.tocify {
 <li class="dropdown">
   <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
     Português
-
+     
     <span class="caret"></span>
   </a>
   <ul class="dropdown-menu" role="menu">
@@ -422,7 +422,7 @@ div.tocify {
         <li>
   <a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya">
     <span class="fa fa-github"></span>
-
+     
     Source code
   </a>
 </li>
@@ -456,61 +456,41 @@ id="fnref1"><sup>1</sup></a></h4>
 
 <div id="objective" class="section level2">
 <h2>1. Objective</h2>
-<p>Using the OOF predictions, performance metrics, and diagnostics
-obtained in Module 03, this final module organizes model comparison and
-genomic selection in a more direct sequence: <strong>compare → choose
-the method → define trait eligibility → interpret GEBVs → select
-individuals</strong>.</p>
-<p>Method choice is trait-specific and prioritizes predictive
-performance: highest pooled OOF correlation, followed by lowest RMSE and
-lowest MAE; DIC is retained as complementary evidence and a final
-tie-breaker. MCMC diagnostics are summarized as a global check of chain
-adequacy, but they are not converted into an exclusion or review
-rule.</p>
-<p>Individuals are selected only for traits that meet a pre-defined
-minimum level of predictive evidence. In this version, a trait is
-eligible when the selected method has OOF correlation greater than 0.30
-and NRMSE lower than 1, that is, RMSE lower than one phenotypic standard
-deviation. The selected proportion remains 20% of the individuals for
-each eligible trait.</p>
-<p>To improve interpretation on the original trait scale, the centered
-OOF genomic component is preserved and is also presented after adding
-the phenotypic trait mean. This transformation shifts the scale but does
-not change the ranking of individuals within a trait.</p>
+<p>This module brings together the results produced in Module 03 and
+organizes them into a sequence focused on interpretation and genomic
+selection:</p>
+<p><strong>compare methods → choose a method for each trait → interpret
+genomic values → examine relationships among traits → define eligibility
+→ select individuals → evaluate recurrence.</strong></p>
+<p>Method choice is performed separately for each trait and prioritizes
+OOF predictive performance. DIC remains complementary information. MCMC
+diagnostics summarize overall chain behavior but do not act as a
+selection filter.</p>
+<p>After method choice, OOF GEBVs are obtained for all traits and are
+also examined jointly through their correlations. Eligibility criteria
+for genomic selection are applied only after this step.</p>
 </div>
-<div id="packages-and-model-fitting-results" class="section level2">
-<h2>2. Packages and model-fitting results</h2>
-<div id="packages-used" class="section level3">
-<h3>2.1 Packages used</h3>
-<p>The packages used here have distinct roles:</p>
-<ul>
-<li><code>dplyr</code>: grouping, joining, ordering, and summarizing
-result tables;</li>
-<li><code>tidyr</code>: reshaping tables between long and wide
-formats;</li>
-<li><code>ggplot2</code>: building performance and
-observed-versus-predicted figures;</li>
-<li><code>ggthemes</code>: applying the GDocs theme and color
-scale;</li>
-<li><code>knitr</code>: formatting tables in R Markdown documents;</li>
-<li><code>here</code>: building project-relative file paths.</li>
-</ul>
+<div id="preparing-the-analysis" class="section level2">
+<h2>2. Preparing the analysis</h2>
+<div id="packages-and-helper-functions" class="section level3">
+<h3>2.1 Packages and helper functions</h3>
+<p>The packages below are used for table manipulation, figures,
+formatting, and project-relative paths.</p>
 <pre class="r"><code>library(dplyr) # Group, join, and summarize tables.
 library(tidyr)   # Reshape data between long and wide formats.
 library(ggplot2) # Build diagnostic figures.
 library(ggthemes) # Apply the GDocs theme and color scale.
 library(knitr)   # Format tables in R Markdown documents.
 library(here)  # Build project-relative paths.</code></pre>
+<p>The helper function below standardizes table presentation throughout
+the tutorial.</p>
 </div>
-<div id="input-objects" class="section level3">
-<h3>2.2 Input objects</h3>
-<p>The module uses two consolidated objects:
-<code>matrices_object.rds</code>, which supplies phenotypes, metadata,
-and definitions from Module 02, and <code>models_object.rds</code>,
-which supplies fold-level metrics, OOF predictions, and MCMC diagnostics
-from Module 03. During derivation, no output directory is created;
-revised results are persisted only in the final section and do not
-overwrite previous M04 outputs.</p>
+<div id="input-objects-and-configuration" class="section level3">
+<h3>2.2 Input objects and configuration</h3>
+<p>The module uses <code>matrices_object.rds</code>, containing
+phenotypes and metadata, and <code>models_object.rds</code>, containing
+fold-level metrics, OOF predictions, and MCMC diagnostics. Results are
+written only at the end of the analysis.</p>
 <pre class="r"><code>matrices_object &lt;- readRDS(
   here(&quot;output&quot;, &quot;matrices&quot;, &quot;matrices_object.rds&quot;)
 )
@@ -525,13 +505,8 @@ convergence &lt;- models_object$convergence_diagnostics
 
 traits &lt;- colnames(matrices_object$phenotypes)
 methods &lt;- models_object$settings$methods</code></pre>
-</div>
-<div id="presentation-labels-and-graphical-standard"
-class="section level3">
-<h3>2.3 Presentation labels and graphical standard</h3>
-<p>The calculations retain the method codes stored in the analytical
-objects. Readable labels and the graphical theme below affect
-presentation only; they do not modify any scientific quantity.</p>
+<p>Internal method codes are retained in analytical objects. The labels
+and theme below affect presentation only.</p>
 <pre class="r"><code>method_labels &lt;- c(
   RRBLUP = &quot;RR-BLUP/BRR&quot;,
   BayesA = &quot;BayesA&quot;,
@@ -557,24 +532,14 @@ project_theme &lt;- theme_gdocs() +
   )</code></pre>
 </div>
 </div>
-<div id="oof-predictive-performance" class="section level2">
-<h2>3. OOF predictive performance</h2>
-<div id="scope-of-oof-evaluation" class="section level3">
-<h3>3.1 Scope of OOF evaluation</h3>
-<p>The OOF estimates inherit the family-stratified design of Modules 02
-and 03. They quantify prediction within the represented breeding
-population and do not estimate generalization to entirely new
-families.</p>
-<p>The main metrics are recalculated using the 150 out-of-fold
-predictions for each trait × method combination. Each individual
-contributes one OOF prediction for every method.</p>
-</div>
-<div id="pooled-oof-performance" class="section level3">
-<h3>3.2 Pooled OOF performance</h3>
-<p>For each trait × method combination, correlation, RMSE, MAE, bias,
-and slope are calculated from the 150 OOF predictions. The two-sided
-Pearson-correlation p-value is retained only as a nominal descriptive
-measure because training sets overlap across folds.</p>
+<div id="method-comparison-and-choice" class="section level2">
+<h2>3. Method comparison and choice</h2>
+<div id="oof-predictive-performance" class="section level3">
+<h3>3.1 OOF predictive performance</h3>
+<p>OOF estimates inherit the validation design defined in previous
+modules. Each individual contributes one OOF prediction per method and
+trait. Pooled metrics describe predictive performance in the population
+represented by the dataset.</p>
 <pre class="r"><code># Combine OOF predictions and compute aggregate predictive metrics by trait and method.
 pooled_metrics &lt;- predictions |&gt;
   group_by(Trait, Method) |&gt;
@@ -607,24 +572,15 @@ fold_summary &lt;- metrics |&gt;
     SD_fold_MAE = sd(MAE),
     .groups = &quot;drop&quot;
   )</code></pre>
-<p><code>pooled_metrics</code> combines the 150 OOF predictions and
-provides overall performance for each trait × method combination.
-<code>fold_summary</code> retains summaries inherited from the five
-folds to integrate DIC and auxiliary metrics in the comparison
-table.</p>
-<p>Pearson-correlation p-values remain descriptive context only and do
-not define eligibility for genomic selection.</p>
+<p>Pearson correlation, RMSE, MAE, bias, and slope are calculated from
+the 150 OOF predictions. Correlation p-values are retained only as
+descriptive information.</p>
 </div>
-</div>
-<div id="dic-and-relative-support-for-the-methods"
-class="section level2">
-<h2>4. DIC and relative support for the methods</h2>
-<div id="dic-derived-relative-support" class="section level3">
-<h3>4.1 DIC-derived relative support</h3>
-<p>Following the logic used in the reference study <span
-class="citation">(<a href="#ref-silva2021brrguava">Silva et al.
-2021</a>)</span>, the difference from the smallest mean DIC within each
-trait is converted into relative weights:</p>
+<div id="dic-and-relative-support" class="section level3">
+<h3>3.2 DIC and relative support</h3>
+<p>DIC is summarized within each trait as complementary information.
+Following the logic of the reference study <span class="citation">(<a
+href="#ref-silva2021brrguava">Silva et al. 2021</a>)</span>:</p>
 <p><span class="math display">\[
 \Delta_j=\overline{DIC}_j-\min_k(\overline{DIC}_k),
 \]</span></p>
@@ -633,13 +589,8 @@ Wprob_j=\frac{\exp(-\Delta_j/2)}{\sum_k\exp(-\Delta_k/2)},
 \qquad
 ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 \]</span></p>
-<p><code>Wprob</code> is used here as a DIC-derived relative-support
-weight. It is not interpreted as a calibrated posterior probability of a
-model.</p>
-<p>The implementation uses log-weights before normalization to improve
-numerical stability without changing relative ratios. <code>Wprob</code>
-sums to 1 within each trait, and <code>ER</code> expresses support
-relative to the method with the largest weight.</p>
+<p><code>Wprob</code> represents relative support derived from DIC and
+is not interpreted as a calibrated posterior model probability.</p>
 <pre class="r"><code># Combine fold performance and DIC to build the quantities used for model comparison.
 model_comparison &lt;- pooled_metrics |&gt;
   left_join(fold_summary, by = c(&quot;Trait&quot;, &quot;Method&quot;)) |&gt;
@@ -661,27 +612,12 @@ model_comparison &lt;- pooled_metrics |&gt;
   ) |&gt;
   arrange(match(Trait, traits), Delta_DIC)</code></pre>
 </div>
-<div id="relationship-between-bayesian-fit-and-predictive-performance"
+<div id="integrated-comparison-and-method-choice"
 class="section level3">
-<h3>4.2 Relationship between Bayesian fit and predictive
-performance</h3>
-<p><code>model_comparison</code> combines OOF performance and
-DIC-derived relative support for every trait and method. DIC quantities
-are comparable only within the same trait and do not replace predictive
-evidence.</p>
-<p>In the joint comparison, methods with similar DIC can have different
-OOF performance, and the method with the largest <code>Wprob</code> need
-not have the largest predictive correlation. Bayesian fit and predictive
-ability therefore remain complementary rather than interchangeable
-criteria.</p>
-</div>
-<div id="visual-comparison-of-oof-predictive-performance"
-class="section level3">
-<h3>4.3 Visual comparison of OOF predictive performance</h3>
-<p>The pooled OOF correlation is the primary visual reference for
-predictive comparison. The horizontal line at zero separates positive
-from nonpositive association. Bars are point estimates, not uncertainty
-intervals.</p>
+<h3>3.3 Integrated comparison and method choice</h3>
+<p>OOF predictive performance and DIC address different questions. OOF
+correlation is the main reference for predictive ability, whereas DIC
+provides complementary information on fit and complexity.</p>
 <pre class="r"><code># Order methods and build the OOF-correlation figure by trait.
 predictive_plot &lt;- model_comparison |&gt;
   mutate(Method = factor(Method, levels = methods)) |&gt;
@@ -734,6 +670,17 @@ Date
 <tbody>
 <tr>
 <td>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/f151b7e5a1122c9be3b5d281ab637059fc7ca762/docs/figure/04_results_en.Rmd/predictive-correlation-figure-1.png" target="_blank">f151b7e</a>
+</td>
+<td>
+GitHub
+</td>
+<td>
+2026-09-08
+</td>
+</tr>
+<tr>
+<td>
 <a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/f6be3e4716369b2a055a669bc5d8f2ef8e4fcdc3/docs/figure/04_results_en.Rmd/predictive-correlation-figure-1.png" target="_blank">f6be3e4</a>
 </td>
 <td>
@@ -769,20 +716,9 @@ WevertonGomesCosta
 </table>
 </div>
 </div>
-<p>Predictive magnitude and method ordering vary among traits. The
-workflow therefore does not define one globally superior method;
-selection remains trait-specific and continues with complementary DIC
-and diagnostic evidence.</p>
-</div>
-<div id="joint-predictive-and-dic-comparison" class="section level3">
-<h3>4.4 Joint predictive and DIC comparison</h3>
-<p>The table below places the complementary evidence sources side by
-side. DIC-derived quantities are compared only within the same trait,
-while OOF correlation retains its predictive interpretation. The nominal
-p-value is shown for context and is not a ranking-eligibility
-criterion.</p>
-<pre class="r"><code># DISPLAY-ONLY START
-model_comparison_display &lt;- model_comparison |&gt;
+<p>The joint table allows the two evidence sources to be compared
+without combining them into a single artificial score.</p>
+<pre class="r"><code>model_comparison_display &lt;- model_comparison |&gt;
   mutate(Method_label = unname(method_labels[Method])) |&gt;
   transmute(
     Trait,
@@ -2664,22 +2600,623 @@ GBLUP
 </tbody>
 </table>
 </div>
-<pre class="r"><code># DISPLAY-ONLY END</code></pre>
+<p>The method used in subsequent steps is selected within each trait by
+the highest OOF correlation. Ties are resolved, in order, by lower RMSE,
+lower MAE, and lower mean DIC.</p>
+<pre class="r"><code>trait_scale &lt;- predictions |&gt;
+  distinct(Trait, IND, Observed) |&gt;
+  group_by(Trait) |&gt;
+  summarise(
+    Phenotypic_mean = mean(Observed, na.rm = TRUE),
+    Phenotypic_SD = sd(Observed, na.rm = TRUE),
+    .groups = &quot;drop&quot;
+  )
+
+selected_methods &lt;- model_comparison |&gt;
+  group_by(Trait) |&gt;
+  arrange(desc(r), RMSE, MAE, Mean_DIC, .by_group = TRUE) |&gt;
+  slice(1L) |&gt;
+  ungroup() |&gt;
+  transmute(
+    Trait,
+    Selected_method = Method,
+    r,
+    p_value,
+    RMSE,
+    MAE,
+    Bias,
+    Slope,
+    Mean_DIC,
+    Delta_DIC,
+    Wprob,
+    ER
+  ) |&gt;
+  left_join(trait_scale, by = &quot;Trait&quot;) |&gt;
+  arrange(match(Trait, traits))</code></pre>
+<p>The table below summarizes the method selected for each trait and the
+main metrics used in that choice.</p>
+<pre class="r"><code>selected_methods_display &lt;- selected_methods |&gt;
+  mutate(
+    Method_label = unname(method_labels[Selected_method])
+  ) |&gt;
+  transmute(
+    Trait,
+    Method_label,
+    r = sprintf(&quot;%.3f&quot;, r),
+    RMSE = sprintf(&quot;%.3f&quot;, RMSE),
+    MAE = sprintf(&quot;%.3f&quot;, MAE),
+    DIC = sprintf(&quot;%.2f&quot;, Mean_DIC)
+  )
+
+format_table(
+  selected_methods_display,
+  caption = &quot;Method selected for each trait&quot;,
+  col.names = c(
+    &quot;Trait&quot;,
+    &quot;Method&quot;,
+    &quot;OOF r&quot;,
+    &quot;RMSE&quot;,
+    &quot;MAE&quot;,
+    &quot;Mean DIC&quot;
+  )
+)</code></pre>
+<div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">
+<table class="table table-striped table-hover" style="width:100%; margin-bottom:0;">
+<caption>
+Method selected for each trait
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+Trait
+</th>
+<th style="text-align:left;">
+Method
+</th>
+<th style="text-align:left;">
+OOF r
+</th>
+<th style="text-align:left;">
+RMSE
+</th>
+<th style="text-align:left;">
+MAE
+</th>
+<th style="text-align:left;">
+Mean DIC
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+MMCOM
+</td>
+<td style="text-align:left;">
+GBLUP
+</td>
+<td style="text-align:left;">
+0.535
+</td>
+<td style="text-align:left;">
+0.225
+</td>
+<td style="text-align:left;">
+0.182
+</td>
+<td style="text-align:left;">
+-18.89
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+PRODCOM
+</td>
+<td style="text-align:left;">
+GBLUP
+</td>
+<td style="text-align:left;">
+0.347
+</td>
+<td style="text-align:left;">
+20.283
+</td>
+<td style="text-align:left;">
+16.026
+</td>
+<td style="text-align:left;">
+1068.83
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+PRODEF
+</td>
+<td style="text-align:left;">
+GBLUP
+</td>
+<td style="text-align:left;">
+0.049
+</td>
+<td style="text-align:left;">
+4.832
+</td>
+<td style="text-align:left;">
+3.885
+</td>
+<td style="text-align:left;">
+713.45
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+CF
+</td>
+<td style="text-align:left;">
+BayesB
+</td>
+<td style="text-align:left;">
+0.401
+</td>
+<td style="text-align:left;">
+2.459
+</td>
+<td style="text-align:left;">
+1.960
+</td>
+<td style="text-align:left;">
+556.88
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+DF
+</td>
+<td style="text-align:left;">
+Bayesian Lasso
+</td>
+<td style="text-align:left;">
+0.327
+</td>
+<td style="text-align:left;">
+1.069
+</td>
+<td style="text-align:left;">
+0.838
+</td>
+<td style="text-align:left;">
+348.03
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+DCI
+</td>
+<td style="text-align:left;">
+Bayesian Lasso
+</td>
+<td style="text-align:left;">
+0.224
+</td>
+<td style="text-align:left;">
+0.810
+</td>
+<td style="text-align:left;">
+0.633
+</td>
+<td style="text-align:left;">
+291.89
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+EP
+</td>
+<td style="text-align:left;">
+GBLUP
+</td>
+<td style="text-align:left;">
+-0.038
+</td>
+<td style="text-align:left;">
+0.495
+</td>
+<td style="text-align:left;">
+0.330
+</td>
+<td style="text-align:left;">
+160.84
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+FFC
+</td>
+<td style="text-align:left;">
+Bayesian Lasso
+</td>
+<td style="text-align:left;">
+0.218
+</td>
+<td style="text-align:left;">
+1.148
+</td>
+<td style="text-align:left;">
+0.889
+</td>
+<td style="text-align:left;">
+377.16
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+FFP
+</td>
+<td style="text-align:left;">
+GBLUP
+</td>
+<td style="text-align:left;">
+0.090
+</td>
+<td style="text-align:left;">
+0.580
+</td>
+<td style="text-align:left;">
+0.276
+</td>
+<td style="text-align:left;">
+195.17
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+SS
+</td>
+<td style="text-align:left;">
+Bayesian Lasso
+</td>
+<td style="text-align:left;">
+0.095
+</td>
+<td style="text-align:left;">
+1.232
+</td>
+<td style="text-align:left;">
+0.963
+</td>
+<td style="text-align:left;">
+381.48
+</td>
+</tr>
+</tbody>
+</table>
 </div>
 </div>
-<div id="method-choice-and-eligibility-for-selection"
+<div id="mcmc-diagnostics-and-observed-versus-predicted-values"
+class="section level3">
+<h3>3.4 MCMC diagnostics and observed-versus-predicted values</h3>
+<p>Diagnostics calculated in Module 03 are summarized globally. A fit is
+counted as unflagged when none of its monitored parameters received
+<code>Review_flag</code>.</p>
+<pre class="r"><code>fit_convergence &lt;- convergence |&gt;
+  group_by(Run_id, Trait, Method) |&gt;
+  summarise(
+    Diagnostic_flag = any(Review_flag, na.rm = TRUE),
+    .groups = &quot;drop&quot;
+  )
+
+convergence_overview &lt;- data.frame(
+  Level = c(&quot;Fits&quot;, &quot;Monitored parameters&quot;),
+  Total = c(nrow(fit_convergence), nrow(convergence)),
+  Without_flags = c(
+    sum(!fit_convergence$Diagnostic_flag),
+    sum(!convergence$Review_flag, na.rm = TRUE)
+  )
+) |&gt;
+  mutate(
+    Proportion_without_flags = Without_flags / Total
+  )
+
+format_table(
+  convergence_overview,
+  digits = 4,
+  caption = &quot;Global summary of MCMC diagnostics&quot;,
+  col.names = c(&quot;Level&quot;, &quot;Total&quot;, &quot;Without flags&quot;, &quot;Proportion&quot;)
+)</code></pre>
+<div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">
+<table class="table table-striped table-hover" style="width:100%; margin-bottom:0;">
+<caption>
+Global summary of MCMC diagnostics
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+Level
+</th>
+<th style="text-align:right;">
+Total
+</th>
+<th style="text-align:right;">
+Without flags
+</th>
+<th style="text-align:right;">
+Proportion
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+Fits
+</td>
+<td style="text-align:right;">
+350
+</td>
+<td style="text-align:right;">
+314
+</td>
+<td style="text-align:right;">
+0.8971
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Monitored parameters
+</td>
+<td style="text-align:right;">
+700
+</td>
+<td style="text-align:right;">
+658
+</td>
+<td style="text-align:right;">
+0.9400
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The predominance of fits and parameters without flags indicates that
+most chains showed behavior compatible with convergence according to the
+monitored diagnostics. This summary does not prove convergence of every
+individual marker effect and does not participate in method choice.</p>
+<p>Observed-versus-predicted plots complement the numerical metrics. The
+dashed line represents the 1:1 relationship and the continuous line is
+the regression of observed values on OOF predictions.</p>
+<pre class="r"><code>selected_predictions &lt;- predictions |&gt;
+  inner_join(
+    selected_methods |&gt;
+      select(Trait, Selected_method, r),
+    by = &quot;Trait&quot;
+  ) |&gt;
+  filter(Method == Selected_method) |&gt;
+  mutate(
+    Method_label = unname(method_labels[Method]),
+    Facet = paste0(
+      Trait, &quot; — &quot;, Method_label,
+      &quot;\nr = &quot;, sprintf(&quot;%.3f&quot;, r)
+    )
+  )
+
+observed_predicted_plot &lt;- selected_predictions |&gt;
+  ggplot(aes(x = Predicted, y = Observed)) +
+  geom_abline(intercept = 0, slope = 1, linetype = 2, linewidth = 0.5) +
+  geom_point(alpha = 0.65, size = 1.6) +
+  geom_smooth(method = &quot;lm&quot;, formula = y ~ x, se = FALSE, linewidth = 0.7) +
+  facet_wrap(~ Facet, scales = &quot;free&quot;, ncol = 2) +
+  labs(
+    x = &quot;OOF predicted value&quot;,
+    y = &quot;Observed value&quot;,
+    title = &quot;Relationship between observed and predicted values&quot;
+  ) +
+  project_theme +
+  theme(legend.position = &quot;none&quot;)
+
+observed_predicted_plot</code></pre>
+<p><img src="figure/04_results_en.Rmd/observed-predicted-figure-1.png" alt="Faceted scatterplots of observed values against OOF values predicted by the selected method for each trait, with a 1:1 line and fitted linear regression." width="100%" style="display: block; margin: auto;" /></p>
+<p>
+<button type="button" class="btn btn-default btn-xs btn-workflowr btn-workflowr-fig" data-toggle="collapse" data-target="#fig-observed-predicted-figure-1">
+Past versions of observed-predicted-figure-1.png
+</button>
+</p>
+<div id="fig-observed-predicted-figure-1" class="collapse">
+<div class="table-responsive">
+<table class="table table-condensed table-hover">
+<thead>
+<tr>
+<th>
+Version
+</th>
+<th>
+Author
+</th>
+<th>
+Date
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/f151b7e5a1122c9be3b5d281ab637059fc7ca762/docs/figure/04_results_en.Rmd/observed-predicted-figure-1.png" target="_blank">f151b7e</a>
+</td>
+<td>
+GitHub
+</td>
+<td>
+2026-09-08
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+<div id="oof-genomic-values-and-relationships-among-traits"
 class="section level2">
-<h2>5. Method choice and eligibility for selection</h2>
-<div id="adopted-criteria" class="section level3">
-<h3>5.1 Adopted criteria</h3>
-<p>Method choice and the decision to use a trait for selection are two
-distinct steps. First, the seven methods are ordered within each trait
-by pooled OOF correlation; ties are resolved, in this order, by lower
-RMSE, lower MAE, and lower mean DIC. Thus, no artificial score is
-created by mixing metrics with different meanings.</p>
-<p>After the method is chosen, the trait is considered eligible for
-selection only when it simultaneously satisfies two performance
-criteria:</p>
+<h2>4. OOF genomic values and relationships among traits</h2>
+<div id="oof-gebvs-on-the-trait-scale" class="section level3">
+<h3>4.1 OOF GEBVs on the trait scale</h3>
+<p>For each trait, the genomic component comes from the selected method
+and remains cross-fitted: the individual’s own phenotype was not used in
+the fit that produced its OOF score.</p>
+<p>A version in the original trait units is also presented:</p>
+<p><span class="math display">\[
+GEBV_{scale} = \bar{y} + GEBV_{centered}.
+\]</span></p>
+<p>Adding the phenotypic mean only shifts the scale. It does not change
+the ranking and does not turn the GEBV into a complete phenotypic
+prediction.</p>
+<pre class="r"><code>oof_genomic_values &lt;- predictions |&gt;
+  inner_join(
+    selected_methods |&gt;
+      select(
+        Trait, Selected_method, r, p_value
+      ),
+    by = &quot;Trait&quot;
+  ) |&gt;
+  filter(Method == Selected_method) |&gt;
+  left_join(trait_scale, by = &quot;Trait&quot;) |&gt;
+  transmute(
+    IND,
+    Trait,
+    Fold,
+    Method,
+    Observed,
+    Predicted,
+    OOF_r = r,
+    OOF_p_value = p_value,
+    Phenotypic_mean,
+    GEBV_centered = Genomic_component,
+    GEBV_on_trait_scale = Phenotypic_mean + Genomic_component
+  ) |&gt;
+  arrange(match(Trait, traits), IND)</code></pre>
+</div>
+<div id="correlation-among-oof-gebvs-for-all-ten-traits"
+class="section level3">
+<h3>4.2 Correlation among OOF GEBVs for all ten traits</h3>
+<p>Before any eligibility filter is applied, OOF GEBVs from the selected
+methods are organized for <strong>all ten traits</strong>. The matrix
+below describes associations among these cross-fitted scores.</p>
+<pre class="r"><code>oof_genomic_wide &lt;- oof_genomic_values |&gt;
+  select(IND, Trait, GEBV_centered) |&gt;
+  pivot_wider(names_from = Trait, values_from = GEBV_centered)
+
+oof_genomic_correlations &lt;- cor(
+  as.matrix(oof_genomic_wide[, traits, drop = FALSE])
+)</code></pre>
+<p>These correlations are not estimates of genetic correlation from a
+multivariate model. They describe only the association among OOF GEBVs
+produced separately for each trait.</p>
+<pre class="r"><code># Reshape the OOF correlation matrix and build the cross-trait heatmap.
+correlation_long &lt;- as.data.frame(
+  as.table(oof_genomic_correlations)
+)
+names(correlation_long) &lt;- c(
+  &quot;Trait_1&quot;,
+  &quot;Trait_2&quot;,
+  &quot;Correlation&quot;
+)
+
+# Set only the label of |r| &lt; 0.005 to zero; the original correlation still drives analysis and color.
+correlation_long &lt;- correlation_long |&gt;
+  mutate(
+    Correlation_label = replace(
+      Correlation,
+      abs(Correlation) &lt; 0.005,
+      0
+    )
+  )
+
+# Build the heatmap of correlations among OOF genomic values.
+correlation_plot &lt;- ggplot(
+  correlation_long,
+  aes(x = Trait_1, y = Trait_2, fill = Correlation)
+) +
+  geom_tile() +
+  geom_text(
+    aes(label = sprintf(&quot;%.2f&quot;, Correlation_label)),
+    size = 3
+  ) +
+  scale_fill_distiller(
+    type = &quot;div&quot;,
+    palette = &quot;RdBu&quot;,
+    direction = 1,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = &quot;r&quot;,
+    title = &quot;Correlation among OOF GEBVs of eligible traits&quot;
+  ) +
+  coord_equal() +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+correlation_plot</code></pre>
+<p><img src="figure/04_results_en.Rmd/oof-correlation-figure-1.png" alt="Heatmap of pairwise correlations among cross-fitted OOF genomic-value scores for the traits, representing exploratory associations rather than multivariate genetic correlations." width="100%" style="display: block; margin: auto;" /></p>
+<p>
+<button type="button" class="btn btn-default btn-xs btn-workflowr btn-workflowr-fig" data-toggle="collapse" data-target="#fig-oof-correlation-figure-1">
+Past versions of oof-correlation-figure-1.png
+</button>
+</p>
+<div id="fig-oof-correlation-figure-1" class="collapse">
+<div class="table-responsive">
+<table class="table table-condensed table-hover">
+<thead>
+<tr>
+<th>
+Version
+</th>
+<th>
+Author
+</th>
+<th>
+Date
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/f151b7e5a1122c9be3b5d281ab637059fc7ca762/docs/figure/04_results_en.Rmd/oof-correlation-figure-1.png" target="_blank">f151b7e</a>
+</td>
+<td>
+GitHub
+</td>
+<td>
+2026-09-08
+</td>
+</tr>
+<tr>
+<td>
+<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/f6be3e4716369b2a055a669bc5d8f2ef8e4fcdc3/docs/figure/04_results_en.Rmd/oof-correlation-figure-1.png" target="_blank">f6be3e4</a>
+</td>
+<td>
+WevertonGomesCosta
+</td>
+<td>
+2026-09-04
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Positive values indicate a tendency to order individuals similarly,
+whereas negative values indicate opposite ordering directions. The
+matrix is descriptive and does not create an additional selection
+criterion.</p>
+</div>
+</div>
+<div id="genomic-selection-in-eligible-traits" class="section level2">
+<h2>5. Genomic selection in eligible traits</h2>
+<div id="eligibility-criteria" class="section level3">
+<h3>5.1 Eligibility criteria</h3>
+<p>Selection is performed only when the selected method for a trait
+simultaneously satisfies:</p>
 <p><span class="math display">\[
 r_{OOF} &gt; 0.30
 \]</span></p>
@@ -2688,9 +3225,9 @@ r_{OOF} &gt; 0.30
 NRMSE = \frac{RMSE}{s_y} &lt; 1,
 \]</span></p>
 <p>where <span class="math inline">\(s_y\)</span> is the observed
-phenotypic standard deviation of the trait. The second criterion
-requires model error to be lower than the observed phenotypic dispersion
-and complements the correlation threshold.</p>
+phenotypic standard deviation. The first criterion requires a minimum
+positive predictive association; the second requires prediction error
+below one phenotypic standard deviation.</p>
 <pre class="r"><code>CORRELATION_SELECTION_THRESHOLD &lt;- 0.30
 NRMSE_SELECTION_THRESHOLD &lt;- 1.00
 SELECTION_PROPORTION &lt;- 0.20
@@ -2714,6 +3251,22 @@ selection_objectives &lt;- data.frame(
   stringsAsFactors = FALSE
 )
 
+model_selection &lt;- selected_methods |&gt;
+  left_join(selection_objectives, by = &quot;Trait&quot;) |&gt;
+  mutate(
+    NRMSE = RMSE / Phenotypic_SD,
+    Predictive_skill_vs_SD = 1 - NRMSE,
+    Eligible_by_correlation = r &gt; CORRELATION_SELECTION_THRESHOLD,
+    Eligible_by_error = NRMSE &lt; NRMSE_SELECTION_THRESHOLD,
+    Selection_eligible =
+      Eligible_by_correlation &amp; Eligible_by_error
+  ) |&gt;
+  arrange(match(Trait, traits))
+
+eligible_traits &lt;- model_selection |&gt;
+  filter(Selection_eligible) |&gt;
+  pull(Trait)
+
 selection_parameters &lt;- data.frame(
   Parameter = c(
     &quot;Method choice&quot;,
@@ -2732,13 +3285,13 @@ selection_parameters &lt;- data.frame(
 
 format_table(
   selection_parameters,
-  caption = &quot;Parameters adopted for method choice and genomic selection&quot;,
+  caption = &quot;Criteria used for method choice and genomic selection&quot;,
   col.names = c(&quot;Parameter&quot;, &quot;Rule&quot;)
 )</code></pre>
 <div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">
 <table class="table table-striped table-hover" style="width:100%; margin-bottom:0;">
 <caption>
-Parameters adopted for method choice and genomic selection
+Criteria used for method choice and genomic selection
 </caption>
 <thead>
 <tr>
@@ -2786,60 +3339,10 @@ Selected proportion
 </tbody>
 </table>
 </div>
-</div>
-<div id="selected-method-and-trait-eligibility" class="section level3">
-<h3>5.2 Selected method and trait eligibility</h3>
-<p>The phenotypic mean and standard deviation are calculated once per
-trait from the observed values. Duplicate observations across methods
-are removed before this calculation.</p>
-<pre class="r"><code>trait_scale &lt;- predictions |&gt;
-  distinct(Trait, IND, Observed) |&gt;
-  group_by(Trait) |&gt;
-  summarise(
-    Phenotypic_mean = mean(Observed, na.rm = TRUE),
-    Phenotypic_SD = sd(Observed, na.rm = TRUE),
-    .groups = &quot;drop&quot;
-  )
-
-model_selection &lt;- model_comparison |&gt;
-  group_by(Trait) |&gt;
-  arrange(desc(r), RMSE, MAE, Mean_DIC, .by_group = TRUE) |&gt;
-  slice(1L) |&gt;
-  ungroup() |&gt;
-  transmute(
-    Trait,
-    Selected_method = Method,
-    r,
-    p_value,
-    RMSE,
-    MAE,
-    Bias,
-    Slope,
-    Mean_DIC,
-    Delta_DIC,
-    Wprob,
-    ER
-  ) |&gt;
-  left_join(trait_scale, by = &quot;Trait&quot;) |&gt;
-  left_join(selection_objectives, by = &quot;Trait&quot;) |&gt;
-  mutate(
-    NRMSE = RMSE / Phenotypic_SD,
-    Predictive_skill_vs_SD = 1 - NRMSE,
-    Eligible_by_correlation = r &gt; CORRELATION_SELECTION_THRESHOLD,
-    Eligible_by_error = NRMSE &lt; NRMSE_SELECTION_THRESHOLD,
-    Selection_eligible = Eligible_by_correlation &amp; Eligible_by_error
-  ) |&gt;
-  arrange(match(Trait, traits))
-
-eligible_traits &lt;- model_selection |&gt;
-  filter(Selection_eligible) |&gt;
-  pull(Trait)</code></pre>
-<p>The main table concentrates the metrics needed to interpret method
-choice and eligibility, avoiding parallel tables for the same decision.
-The correlation p-value remains available in the scientific object but
-is not used as a selection filter.</p>
-<pre class="r"><code># DISPLAY-ONLY START
-model_selection_display &lt;- model_selection |&gt;
+<p>The table below combines the selected method, relevant performance
+metrics, and the eligibility decision. The correlation p-value remains
+available in the analytical object but is not used as a filter.</p>
+<pre class="r"><code>model_selection_display &lt;- model_selection |&gt;
   mutate(
     Method_label = unname(method_labels[Selected_method]),
     Objective = unname(selection_objective_labels[Selection_objective]),
@@ -3263,494 +3766,27 @@ No
 </tbody>
 </table>
 </div>
-<pre class="r"><code># DISPLAY-ONLY END</code></pre>
 </div>
-<div id="summary-of-mcmc-diagnostics" class="section level3">
-<h3>5.3 Summary of MCMC diagnostics</h3>
-<p>Diagnostics calculated in Module 03 are summarized here without
-creating a review stage. A chain is counted as not flagged when none of
-the monitored parameters in that fit received <code>Review_flag</code>
-in the source object. The field name is preserved for traceability, but
-its interpretation here is only a diagnostic summary.</p>
-<pre class="r"><code>fit_convergence &lt;- convergence |&gt;
-  group_by(Run_id, Trait, Method) |&gt;
-  summarise(
-    Diagnostic_flag = any(Review_flag, na.rm = TRUE),
-    .groups = &quot;drop&quot;
-  )
-
-convergence_overview &lt;- data.frame(
-  Level = c(&quot;Fits&quot;, &quot;Monitored parameters&quot;),
-  Total = c(nrow(fit_convergence), nrow(convergence)),
-  Without_flags = c(
-    sum(!fit_convergence$Diagnostic_flag),
-    sum(!convergence$Review_flag, na.rm = TRUE)
-  )
-) |&gt;
-  mutate(
-    Proportion_without_flags = Without_flags / Total
-  )
-
-format_table(
-  convergence_overview,
-  digits = 4,
-  caption = &quot;Global summary of MCMC diagnostics&quot;,
-  col.names = c(&quot;Level&quot;, &quot;Total&quot;, &quot;Without flags&quot;, &quot;Proportion&quot;)
-)</code></pre>
-<div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">
-<table class="table table-striped table-hover" style="width:100%; margin-bottom:0;">
-<caption>
-Global summary of MCMC diagnostics
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Level
-</th>
-<th style="text-align:right;">
-Total
-</th>
-<th style="text-align:right;">
-Without flags
-</th>
-<th style="text-align:right;">
-Proportion
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-Fits
-</td>
-<td style="text-align:right;">
-350
-</td>
-<td style="text-align:right;">
-314
-</td>
-<td style="text-align:right;">
-0.8971
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-Monitored parameters
-</td>
-<td style="text-align:right;">
-700
-</td>
-<td style="text-align:right;">
-658
-</td>
-<td style="text-align:right;">
-0.9400
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>The predominance of fits and parameters without flags supports the
-conclusion that most chains showed behavior compatible with convergence
-according to the monitored diagnostics. This summary does not prove
-convergence of every marker effect individually and does not participate
-in method choice.</p>
-</div>
-<div id="relationship-between-observed-and-predicted-values"
-class="section level3">
-<h3>5.4 Relationship between observed and predicted values</h3>
-<p>In addition to numerical metrics, observed versus predicted values
-are shown for the selected method in each trait. The dashed line
-represents the 1:1 relationship; the fitted line is the linear
-regression of observed values on the OOF predictions. Differences
-between the two help visualize calibration in addition to the
-association summarized by <span class="math inline">\(r\)</span>.</p>
-<pre class="r"><code>selected_predictions &lt;- predictions |&gt;
-  inner_join(
-    model_selection |&gt;
-      select(Trait, Selected_method, r, Selection_eligible),
-    by = &quot;Trait&quot;
-  ) |&gt;
-  filter(Method == Selected_method) |&gt;
-  mutate(
-    Method_label = unname(method_labels[Method]),
-    Facet = paste0(
-      Trait, &quot; — &quot;, Method_label,
-      &quot;\nr = &quot;, sprintf(&quot;%.3f&quot;, r)
-    )
-  )
-
-observed_predicted_plot &lt;- selected_predictions |&gt;
-  ggplot(aes(x = Predicted, y = Observed)) +
-  geom_abline(intercept = 0, slope = 1, linetype = 2, linewidth = 0.5) +
-  geom_point(alpha = 0.65, size = 1.6) +
-  geom_smooth(method = &quot;lm&quot;, formula = y ~ x, se = FALSE, linewidth = 0.7) +
-  facet_wrap(~ Facet, scales = &quot;free&quot;, ncol = 2) +
-  labs(
-    x = &quot;OOF predicted value&quot;,
-    y = &quot;Observed value&quot;,
-    title = &quot;Relationship between observed and predicted values&quot;
-  ) +
-  project_theme +
-  theme(legend.position = &quot;none&quot;)
-
-observed_predicted_plot</code></pre>
-<p><img src="figure/04_results_en.Rmd/observed-predicted-figure-1.png" alt="Faceted scatterplots of observed values against OOF values predicted by the selected method for each trait, with a 1:1 line and fitted linear regression." width="100%" style="display: block; margin: auto;" /></p>
-</div>
-</div>
-<div
-id="marker-based-heritability-analogue-and-adjusted-accuracy-in-rr-blupbrr"
-class="section level2">
-<h2>6. Marker-based heritability analogue and adjusted accuracy in
-RR-BLUP/BRR</h2>
-<div id="definition-and-interpretation-limits" class="section level3">
-<h3>6.1 Definition and interpretation limits</h3>
-<p>Following Silva et al. <span class="citation">(<a
-href="#ref-silva2021brrguava">Silva et al. 2021</a>)</span>, a
-marker-based additive-variance analogue is obtained from the common
-marker variance and the <span class="math inline">\(\sum 2pq\)</span>
-denominator. Fold-level adjusted accuracy is defined as <span
-class="math inline">\(r_f/\sqrt{H_f^2}\)</span>. The resulting <span
-class="math inline">\(H^2\)</span> is reported as a model-based
-heritability analogue rather than as an independent classical estimate
-of narrow-sense heritability. The quantity named
-<code>Predictive_accuracy</code> is a derived ratio,
-<code>r_f/sqrt(H_f^2)</code>, rather than an observed correlation
-between true and predicted genetic values. Because it depends on sample
-estimates of <code>r_f</code> and <code>H_f^2</code>, it may be negative
-or exceed 1; it should therefore be interpreted as an adjusted-accuracy
-index under this definition, not as a measure necessarily bounded to [0,
-1].</p>
-</div>
-<div id="fold-level-derivation-and-across-fold-summary"
-class="section level3">
-<h3>6.2 Fold-level derivation and across-fold summary</h3>
-<pre class="r"><code># Compute and organize the RR-BLUP/BRR model-based heritability summary.
-rrblup_variance_components &lt;- convergence |&gt;
-  filter(
-    Method == &quot;RRBLUP&quot;,
-    Parameter %in% c(&quot;Residual_variance&quot;, &quot;Marker_variance&quot;)
-  ) |&gt;
-  select(Run_id, Trait, Fold, Method, Parameter, Posterior_mean) |&gt;
-  pivot_wider(names_from = Parameter, values_from = Posterior_mean)
-
-rrblup_fold_correlations &lt;- metrics |&gt;
-  filter(Method == &quot;RRBLUP&quot;) |&gt;
-  select(Trait, Fold, Correlation)
-
-# Organize the cross-validation and fitting structure.
-rrblup_heritability_by_fold &lt;- rrblup_variance_components |&gt;
-  left_join(rrblup_fold_correlations, by = c(&quot;Trait&quot;, &quot;Fold&quot;)) |&gt;
-  mutate(
-    Marker_variance_denominator = matrices_object$denominator,
-    Additive_variance = Marker_variance * Marker_variance_denominator,
-    H2 = Additive_variance / (Additive_variance + Residual_variance),
-    Predictive_accuracy = Correlation / sqrt(H2)
-  ) |&gt;
-  arrange(match(Trait, traits), Fold)
-
-# Summarize the RR-BLUP/BRR model-based heritability analogue and adjusted accuracy across folds.
-rrblup_heritability_summary &lt;- rrblup_heritability_by_fold |&gt;
-  group_by(Trait) |&gt;
-  summarise(
-    Mean_H2 = mean(H2),
-    SD_H2 = sd(H2),
-    Mean_fold_r = mean(Correlation),
-    SD_fold_r = sd(Correlation),
-    Mean_predictive_accuracy = mean(Predictive_accuracy),
-    SD_predictive_accuracy = sd(Predictive_accuracy),
-    .groups = &quot;drop&quot;
-  ) |&gt;
-  arrange(match(Trait, traits))</code></pre>
-<p><code>rrblup_heritability_summary</code> retains, by trait, the
-model-derived RR-BLUP/BRR heritability analogue and the ratio
-<code>Correlation / sqrt(H2)</code>. This ratio is not a conventional
-correlation and may lie outside [0, 1].</p>
-</div>
-<div id="trait-level-summary" class="section level3">
-<h3>6.3 Trait-level summary</h3>
-<p>The table presents the quantities just derived.
-<code>RRBLUP_H2</code> is a marker-model-based analogue rather than an
-independent classical estimate of narrow-sense heritability, and the
-adjusted-accuracy ratio is not constrained to <code>[0, 1]</code>.</p>
-<pre class="r"><code># DISPLAY-ONLY START
-rrblup_table &lt;- rrblup_heritability_summary |&gt;
-  transmute(
-    Trait,
-    RRBLUP_H2 = sprintf(&quot;%.3f&quot;, Mean_H2),
-    SD_RRBLUP_H2 = sprintf(&quot;%.3f&quot;, SD_H2),
-    RRBLUP_predictive_accuracy = sprintf(&quot;%.3f&quot;, Mean_predictive_accuracy),
-    SD_RRBLUP_predictive_accuracy = sprintf(&quot;%.3f&quot;, SD_predictive_accuracy)
-  )
-
-format_table(
-  rrblup_table,
-  caption = &quot;Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR&quot;,
-  col.names = c(&quot;Trait&quot;, &quot;RR-BLUP H2&quot;, &quot;SD RR-BLUP H2&quot;, &quot;RR-BLUP predictive accuracy&quot;, &quot;SD RR-BLUP predictive accuracy&quot;)
-)</code></pre>
-<div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">
-<table class="table table-striped table-hover" style="width:100%; margin-bottom:0;">
-<caption>
-Marker-based heritability analogue and adjusted predictive accuracy in
-RR-BLUP/BRR
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-Trait
-</th>
-<th style="text-align:left;">
-RR-BLUP H2
-</th>
-<th style="text-align:left;">
-SD RR-BLUP H2
-</th>
-<th style="text-align:left;">
-RR-BLUP predictive accuracy
-</th>
-<th style="text-align:left;">
-SD RR-BLUP predictive accuracy
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-MMCOM
-</td>
-<td style="text-align:left;">
-0.336
-</td>
-<td style="text-align:left;">
-0.027
-</td>
-<td style="text-align:left;">
-0.925
-</td>
-<td style="text-align:left;">
-0.192
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-PRODCOM
-</td>
-<td style="text-align:left;">
-0.266
-</td>
-<td style="text-align:left;">
-0.007
-</td>
-<td style="text-align:left;">
-0.651
-</td>
-<td style="text-align:left;">
-0.135
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-PRODEF
-</td>
-<td style="text-align:left;">
-0.253
-</td>
-<td style="text-align:left;">
-0.034
-</td>
-<td style="text-align:left;">
-0.234
-</td>
-<td style="text-align:left;">
-0.305
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-CF
-</td>
-<td style="text-align:left;">
-0.296
-</td>
-<td style="text-align:left;">
-0.019
-</td>
-<td style="text-align:left;">
-0.750
-</td>
-<td style="text-align:left;">
-0.228
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-DF
-</td>
-<td style="text-align:left;">
-0.293
-</td>
-<td style="text-align:left;">
-0.018
-</td>
-<td style="text-align:left;">
-0.647
-</td>
-<td style="text-align:left;">
-0.294
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-DCI
-</td>
-<td style="text-align:left;">
-0.276
-</td>
-<td style="text-align:left;">
-0.020
-</td>
-<td style="text-align:left;">
-0.455
-</td>
-<td style="text-align:left;">
-0.312
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-EP
-</td>
-<td style="text-align:left;">
-0.223
-</td>
-<td style="text-align:left;">
-0.024
-</td>
-<td style="text-align:left;">
-0.159
-</td>
-<td style="text-align:left;">
-0.573
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-FFC
-</td>
-<td style="text-align:left;">
-0.258
-</td>
-<td style="text-align:left;">
-0.038
-</td>
-<td style="text-align:left;">
-0.470
-</td>
-<td style="text-align:left;">
-0.269
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-FFP
-</td>
-<td style="text-align:left;">
-0.208
-</td>
-<td style="text-align:left;">
-0.017
-</td>
-<td style="text-align:left;">
-0.304
-</td>
-<td style="text-align:left;">
-0.237
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-SS
-</td>
-<td style="text-align:left;">
-0.271
-</td>
-<td style="text-align:left;">
-0.023
-</td>
-<td style="text-align:left;">
-0.202
-</td>
-<td style="text-align:left;">
-0.205
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<pre class="r"><code># DISPLAY-ONLY END</code></pre>
-</div>
-</div>
-<div id="oof-gebvs-and-an-interpretable-phenotypic-scale"
-class="section level2">
-<h2>7. OOF GEBVs and an interpretable phenotypic scale</h2>
-<div id="cross-fitted-genomic-component" class="section level3">
-<h3>7.1 Cross-fitted genomic component</h3>
-<p>The genomic component of each individual continues to be obtained in
-the fold in which that individual’s phenotype was masked. Therefore,
-<code>GEBV_centered</code> is a cross-fitted OOF score and not a final
-genetic value from refitting all 150 phenotypes.</p>
-<p>To facilitate interpretation in the trait unit, the following
-quantity is also calculated:</p>
-<p><span class="math display">\[
-GEBV_{scale} = \bar{y} + GEBV_{centered}.
-\]</span></p>
-<p>Adding the phenotypic mean shifts the scale. It does not change the
-ordering of individuals and should not be confused with the complete
-phenotypic prediction, because other model components may contribute to
-<code>Predicted</code>.</p>
-<pre class="r"><code>selected_oof_genomic_values &lt;- predictions |&gt;
+<div id="ranking-and-selected-individuals" class="section level3">
+<h3>5.2 Ranking and selected individuals</h3>
+<p>For eligible traits, individuals are ordered by the GEBV on the trait
+scale while respecting the breeding objective. For traits to be reduced,
+the sign is reversed only when constructing the ranking score. The
+selected proportion is 20%.</p>
+<pre class="r"><code>selection_genomic_values &lt;- oof_genomic_values |&gt;
   inner_join(
     model_selection |&gt;
       select(
-        Trait, Selected_method, r, p_value, NRMSE,
-        Selection_eligible, Selection_objective
+        Trait,
+        Selection_objective,
+        Selection_eligible,
+        NRMSE
       ),
     by = &quot;Trait&quot;
   ) |&gt;
-  filter(Method == Selected_method) |&gt;
-  left_join(trait_scale, by = &quot;Trait&quot;) |&gt;
-  transmute(
-    IND,
-    Trait,
-    Fold,
-    Method,
-    Observed,
-    Predicted,
-    Selection_objective,
-    Selection_eligible,
-    OOF_r = r,
-    OOF_p_value = p_value,
-    OOF_NRMSE = NRMSE,
-    Phenotypic_mean,
-    GEBV_centered = Genomic_component,
-    GEBV_on_trait_scale = Phenotypic_mean + Genomic_component
-  ) |&gt;
-  arrange(match(Trait, traits), IND)</code></pre>
-</div>
-</div>
-<div id="individual-selection-in-eligible-traits"
-class="section level2">
-<h2>8. Individual selection in eligible traits</h2>
-<div id="ranking-and-selection-intensity" class="section level3">
-<h3>8.1 Ranking and selection intensity</h3>
-<p>Only traits that simultaneously satisfy <span class="math inline">\(r
-&gt; 0.30\)</span> and <code>NRMSE &lt; 1</code> enter this stage.
-Within each eligible trait, individuals are ordered by the GEBV on the
-trait scale while respecting the breeding objective. For traits to be
-reduced, the sign is reversed only for ranking. The adopted selection
-intensity remains 20%, and <code>IND</code> is used only as a
-deterministic tie-breaker for exact ties.</p>
-<pre class="r"><code>genomic_ranking &lt;- selected_oof_genomic_values |&gt;
+  mutate(OOF_NRMSE = NRMSE)
+
+genomic_ranking &lt;- selection_genomic_values |&gt;
   filter(Selection_eligible) |&gt;
   mutate(
     Selection_score = case_when(
@@ -3791,14 +3827,9 @@ selected_individuals_by_trait &lt;- genomic_ranking |&gt;
     N_available, N_selected
   ) |&gt;
   arrange(match(Trait, traits), Rank)</code></pre>
-</div>
-<div id="preview-of-selected-individuals" class="section level3">
-<h3>8.2 Preview of selected individuals</h3>
-<p>The table shows the first five individuals for each eligible trait.
-The <code>selected_individuals_by_trait</code> object retains the
-complete set of the selected 20%.</p>
-<pre class="r"><code># DISPLAY-ONLY START
-selection_preview &lt;- selected_individuals_by_trait |&gt;
+<p>The table presents the top five individuals for each eligible trait;
+the complete object retains all selected individuals.</p>
+<pre class="r"><code>selection_preview &lt;- selected_individuals_by_trait |&gt;
   group_by(Trait) |&gt;
   slice_head(n = 5) |&gt;
   ungroup() |&gt;
@@ -4446,19 +4477,13 @@ Increase
 </tbody>
 </table>
 </div>
-<pre class="r"><code># DISPLAY-ONLY END</code></pre>
 </div>
-</div>
-<div id="recurrence-across-eligible-traits" class="section level2">
-<h2>9. Recurrence across eligible traits</h2>
-<div id="definition" class="section level3">
-<h3>9.1 Definition</h3>
-<p>Recurrence is descriptive and uses only rankings from traits that
-passed both eligibility thresholds. For each individual, it counts how
-many of these traits include the individual among the selected 20%.
-Frequency is calculated relative to the number of eligible traits; no
-multi-trait selection index is constructed and no weights are assigned
-across traits.</p>
+<div id="recurrence-among-eligible-traits" class="section level3">
+<h3>5.3 Recurrence among eligible traits</h3>
+<p>Recurrence counts the number of eligible traits in which each
+individual appears among the selected 20%. Frequency is calculated
+relative to the number of eligible traits and is not a multi-trait
+selection index.</p>
 <pre class="r"><code>recurrence_counts &lt;- selected_individuals_by_trait |&gt;
   group_by(IND, FAM) |&gt;
   summarise(
@@ -4509,11 +4534,9 @@ recurrence_distribution &lt;- multitrait_recurrence |&gt;
 multitrait_candidates &lt;- multitrait_recurrence |&gt;
   filter(N_traits &gt;= 2L) |&gt;
   arrange(desc(N_traits), FAM, IND)</code></pre>
-</div>
-<div id="recurrence-distribution" class="section level3">
-<h3>9.2 Recurrence distribution</h3>
-<pre class="r"><code># DISPLAY-ONLY START
-recurrence_class_labels &lt;- c(
+<p>The distribution summarizes how many individuals were selected in
+zero, one, two, three, or more traits.</p>
+<pre class="r"><code>recurrence_class_labels &lt;- c(
   high_4plus = &quot;High (&gt;=4)&quot;,
   intermediate_3 = &quot;Intermediate (3)&quot;,
   broad_2 = &quot;Broad (2)&quot;,
@@ -4635,16 +4658,9 @@ None (0)
 </tbody>
 </table>
 </div>
-<pre class="r"><code># DISPLAY-ONLY END</code></pre>
-</div>
-<div id="recurrent-individuals" class="section level3">
-<h3>9.3 Recurrent individuals</h3>
-<p>The table includes individuals selected in at least two eligible
-traits. An additional table with one rank column per trait is not
-displayed; individual positions remain available in
-<code>selected_individuals_by_trait</code>.</p>
-<pre class="r"><code># DISPLAY-ONLY START
-recurrent_candidates_display &lt;- multitrait_candidates |&gt;
+<p>Individuals selected in at least two traits are shown in a single
+table.</p>
+<pre class="r"><code>recurrent_candidates_display &lt;- multitrait_candidates |&gt;
   mutate(
     Class = unname(recurrence_class_labels[Recurrence_class])
   ) |&gt;
@@ -5510,180 +5526,328 @@ CF, DF
 </tbody>
 </table>
 </div>
-<pre class="r"><code># DISPLAY-ONLY END</code></pre>
 </div>
 </div>
-<div id="correlations-among-oof-gebvs-of-eligible-traits"
+<div
+id="marker-based-heritability-analogue-and-adjusted-accuracy-in-rr-blupbrr"
 class="section level2">
-<h2>10. Correlations among OOF GEBVs of eligible traits</h2>
-<p>These correlations describe associations among the OOF genomic values
-produced by the selected method for each trait. Because different traits
-may use different methods and the values are cross-fitted, the matrix
-summarizes associations among predictive scores rather than jointly
-estimated genetic covariance. It should therefore not be interpreted as
-a genetic-correlation matrix from a multivariate model.</p>
-<pre class="r"><code>selected_genomic_wide &lt;- selected_oof_genomic_values |&gt;
-  filter(Selection_eligible) |&gt;
-  select(IND, Trait, GEBV_centered) |&gt;
-  pivot_wider(names_from = Trait, values_from = GEBV_centered)
+<h2>6. Marker-based heritability analogue and adjusted accuracy in
+RR-BLUP/BRR</h2>
+<p>Following Silva et al. <span class="citation">(<a
+href="#ref-silva2021brrguava">Silva et al. 2021</a>)</span>, RR-BLUP/BRR
+allows a marker-based heritability analogue to be derived from marker
+variance. Fold-level adjusted accuracy is calculated as
+<code>Correlation / sqrt(H2)</code>.</p>
+<p>This ratio is a derived quantity rather than a direct correlation
+between true and predicted genetic values. It may therefore be negative
+or exceed 1.</p>
+<pre class="r"><code># Compute and organize the RR-BLUP/BRR model-based heritability summary.
+rrblup_variance_components &lt;- convergence |&gt;
+  filter(
+    Method == &quot;RRBLUP&quot;,
+    Parameter %in% c(&quot;Residual_variance&quot;, &quot;Marker_variance&quot;)
+  ) |&gt;
+  select(Run_id, Trait, Fold, Method, Parameter, Posterior_mean) |&gt;
+  pivot_wider(names_from = Parameter, values_from = Posterior_mean)
 
-selected_oof_correlations &lt;- cor(
-  as.matrix(selected_genomic_wide[, eligible_traits, drop = FALSE])
-)</code></pre>
-<p><code>selected_oof_correlations</code> is derived here and visualized
-immediately below. It should be interpreted only as association among
-OOF scores, not as joint genetic correlation.</p>
-<div id="exploratory-heatmap" class="section level3">
-<h3>10.1 Exploratory heatmap</h3>
-<p>The heatmap visualizes the matrix just derived. Colors use the
-original unrounded values. These are associations among cross-fitted
-scores and must not be interpreted as genetic correlations from a
-multivariate model.</p>
-<pre class="r"><code># Reshape the OOF correlation matrix and build the cross-trait heatmap.
-correlation_long &lt;- as.data.frame(
-  as.table(selected_oof_correlations)
-)
-names(correlation_long) &lt;- c(
-  &quot;Trait_1&quot;,
-  &quot;Trait_2&quot;,
-  &quot;Correlation&quot;
-)
+rrblup_fold_correlations &lt;- metrics |&gt;
+  filter(Method == &quot;RRBLUP&quot;) |&gt;
+  select(Trait, Fold, Correlation)
 
-# Set only the label of |r| &lt; 0.005 to zero; the original correlation still drives analysis and color.
-correlation_long &lt;- correlation_long |&gt;
+# Organize the cross-validation and fitting structure.
+rrblup_heritability_by_fold &lt;- rrblup_variance_components |&gt;
+  left_join(rrblup_fold_correlations, by = c(&quot;Trait&quot;, &quot;Fold&quot;)) |&gt;
   mutate(
-    Correlation_label = replace(
-      Correlation,
-      abs(Correlation) &lt; 0.005,
-      0
-    )
+    Marker_variance_denominator = matrices_object$denominator,
+    Additive_variance = Marker_variance * Marker_variance_denominator,
+    H2 = Additive_variance / (Additive_variance + Residual_variance),
+    Predictive_accuracy = Correlation / sqrt(H2)
+  ) |&gt;
+  arrange(match(Trait, traits), Fold)
+
+# Summarize the RR-BLUP/BRR model-based heritability analogue and adjusted accuracy across folds.
+rrblup_heritability_summary &lt;- rrblup_heritability_by_fold |&gt;
+  group_by(Trait) |&gt;
+  summarise(
+    Mean_H2 = mean(H2),
+    SD_H2 = sd(H2),
+    Mean_fold_r = mean(Correlation),
+    SD_fold_r = sd(Correlation),
+    Mean_predictive_accuracy = mean(Predictive_accuracy),
+    SD_predictive_accuracy = sd(Predictive_accuracy),
+    .groups = &quot;drop&quot;
+  ) |&gt;
+  arrange(match(Trait, traits))</code></pre>
+<p>The trait summary presents the marker-based heritability analogue and
+adjusted accuracy across folds.</p>
+<pre class="r"><code>rrblup_table &lt;- rrblup_heritability_summary |&gt;
+  transmute(
+    Trait,
+    RRBLUP_H2 = sprintf(&quot;%.3f&quot;, Mean_H2),
+    SD_RRBLUP_H2 = sprintf(&quot;%.3f&quot;, SD_H2),
+    RRBLUP_predictive_accuracy = sprintf(&quot;%.3f&quot;, Mean_predictive_accuracy),
+    SD_RRBLUP_predictive_accuracy = sprintf(&quot;%.3f&quot;, SD_predictive_accuracy)
   )
 
-# Build the heatmap of correlations among OOF genomic values.
-correlation_plot &lt;- ggplot(
-  correlation_long,
-  aes(x = Trait_1, y = Trait_2, fill = Correlation)
-) +
-  geom_tile() +
-  geom_text(
-    aes(label = sprintf(&quot;%.2f&quot;, Correlation_label)),
-    size = 3
-  ) +
-  scale_fill_distiller(
-    type = &quot;div&quot;,
-    palette = &quot;RdBu&quot;,
-    direction = 1,
-    limits = c(-1, 1)
-  ) +
-  labs(
-    x = NULL,
-    y = NULL,
-    fill = &quot;r&quot;,
-    title = &quot;Correlation among OOF GEBVs of eligible traits&quot;
-  ) +
-  coord_equal() +
-  project_theme +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-correlation_plot</code></pre>
-<p><img src="figure/04_results_en.Rmd/oof-correlation-figure-1.png" alt="Heatmap of pairwise correlations among cross-fitted OOF genomic-value scores for the traits, representing exploratory associations rather than multivariate genetic correlations." width="100%" style="display: block; margin: auto;" /></p>
-<p>
-<button type="button" class="btn btn-default btn-xs btn-workflowr btn-workflowr-fig" data-toggle="collapse" data-target="#fig-oof-correlation-figure-1">
-Past versions of oof-correlation-figure-1.png
-</button>
-</p>
-<div id="fig-oof-correlation-figure-1" class="collapse">
-<div class="table-responsive">
-<table class="table table-condensed table-hover">
+format_table(
+  rrblup_table,
+  caption = &quot;Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR&quot;,
+  col.names = c(&quot;Trait&quot;, &quot;RR-BLUP H2&quot;, &quot;SD RR-BLUP H2&quot;, &quot;RR-BLUP predictive accuracy&quot;, &quot;SD RR-BLUP predictive accuracy&quot;)
+)</code></pre>
+<div style="width:100%; overflow-x:auto; margin-bottom:1.25rem;">
+<table class="table table-striped table-hover" style="width:100%; margin-bottom:0;">
+<caption>
+Marker-based heritability analogue and adjusted predictive accuracy in
+RR-BLUP/BRR
+</caption>
 <thead>
 <tr>
-<th>
-Version
+<th style="text-align:left;">
+Trait
 </th>
-<th>
-Author
+<th style="text-align:left;">
+RR-BLUP H2
 </th>
-<th>
-Date
+<th style="text-align:left;">
+SD RR-BLUP H2
+</th>
+<th style="text-align:left;">
+RR-BLUP predictive accuracy
+</th>
+<th style="text-align:left;">
+SD RR-BLUP predictive accuracy
 </th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>
-<a href="https://github.com/WevertonGomesCosta/Bayesian-ridge-regression-papaya/blob/f6be3e4716369b2a055a669bc5d8f2ef8e4fcdc3/docs/figure/04_results_en.Rmd/oof-correlation-figure-1.png" target="_blank">f6be3e4</a>
+<td style="text-align:left;">
+MMCOM
 </td>
-<td>
-WevertonGomesCosta
+<td style="text-align:left;">
+0.336
 </td>
-<td>
-2026-09-04
+<td style="text-align:left;">
+0.027
+</td>
+<td style="text-align:left;">
+0.925
+</td>
+<td style="text-align:left;">
+0.192
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+PRODCOM
+</td>
+<td style="text-align:left;">
+0.266
+</td>
+<td style="text-align:left;">
+0.007
+</td>
+<td style="text-align:left;">
+0.651
+</td>
+<td style="text-align:left;">
+0.135
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+PRODEF
+</td>
+<td style="text-align:left;">
+0.253
+</td>
+<td style="text-align:left;">
+0.034
+</td>
+<td style="text-align:left;">
+0.234
+</td>
+<td style="text-align:left;">
+0.305
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+CF
+</td>
+<td style="text-align:left;">
+0.296
+</td>
+<td style="text-align:left;">
+0.019
+</td>
+<td style="text-align:left;">
+0.750
+</td>
+<td style="text-align:left;">
+0.228
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+DF
+</td>
+<td style="text-align:left;">
+0.293
+</td>
+<td style="text-align:left;">
+0.018
+</td>
+<td style="text-align:left;">
+0.647
+</td>
+<td style="text-align:left;">
+0.294
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+DCI
+</td>
+<td style="text-align:left;">
+0.276
+</td>
+<td style="text-align:left;">
+0.020
+</td>
+<td style="text-align:left;">
+0.455
+</td>
+<td style="text-align:left;">
+0.312
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+EP
+</td>
+<td style="text-align:left;">
+0.223
+</td>
+<td style="text-align:left;">
+0.024
+</td>
+<td style="text-align:left;">
+0.159
+</td>
+<td style="text-align:left;">
+0.573
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+FFC
+</td>
+<td style="text-align:left;">
+0.258
+</td>
+<td style="text-align:left;">
+0.038
+</td>
+<td style="text-align:left;">
+0.470
+</td>
+<td style="text-align:left;">
+0.269
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+FFP
+</td>
+<td style="text-align:left;">
+0.208
+</td>
+<td style="text-align:left;">
+0.017
+</td>
+<td style="text-align:left;">
+0.304
+</td>
+<td style="text-align:left;">
+0.237
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+SS
+</td>
+<td style="text-align:left;">
+0.271
+</td>
+<td style="text-align:left;">
+0.023
+</td>
+<td style="text-align:left;">
+0.202
+</td>
+<td style="text-align:left;">
+0.205
 </td>
 </tr>
 </tbody>
 </table>
 </div>
 </div>
-<p>Positive values indicate that two score sets tend to order candidates
-in the same direction, while negative values indicate opposing
-directions. The matrix does not create an additional selection
-criterion.</p>
-</div>
-</div>
-<div id="persistence-of-revised-results" class="section level2">
-<h2>11. Persistence of revised results</h2>
-<p>The previous results from version <code>v1.0.5</code> are not
-overwritten. This revision is saved in its own M04 subdirectory,
-allowing the previous structure to be compared or recovered when
-needed.</p>
-<pre class="r"><code>threshold_results_dir &lt;- here(
-  &quot;output&quot;, &quot;results&quot;, &quot;m04&quot;, &quot;threshold_selection&quot;
+<div id="exporting-the-analysis-results" class="section level2">
+<h2>7. Exporting the analysis results</h2>
+<p>At the end of the analysis, the main objects and tables are written
+to a Module 04 results directory. These files allow the results to be
+inspected later without repeating the derivations shown above.</p>
+<pre class="r"><code>results_dir &lt;- here(
+  &quot;output&quot;, &quot;results&quot;, &quot;m04&quot;, &quot;genomic_selection&quot;
 )
-dir.create(threshold_results_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
 write.csv(
   model_selection,
-  file.path(threshold_results_dir, &quot;model_selection.csv&quot;),
+  file.path(results_dir, &quot;model_selection.csv&quot;),
   row.names = FALSE
 )
 write.csv(
-  selected_oof_genomic_values,
-  file.path(threshold_results_dir, &quot;selected_oof_genomic_values.csv&quot;),
+  oof_genomic_values,
+  file.path(results_dir, &quot;oof_genomic_values.csv&quot;),
   row.names = FALSE
 )
 write.csv(
   selected_individuals_by_trait,
-  file.path(threshold_results_dir, &quot;selected_individuals_by_trait.csv&quot;),
+  file.path(results_dir, &quot;selected_individuals_by_trait.csv&quot;),
   row.names = FALSE
 )
 write.csv(
   multitrait_recurrence,
-  file.path(threshold_results_dir, &quot;multitrait_recurrence.csv&quot;),
+  file.path(results_dir, &quot;multitrait_recurrence.csv&quot;),
   row.names = FALSE
 )
 write.csv(
   multitrait_candidates,
-  file.path(threshold_results_dir, &quot;multitrait_candidates.csv&quot;),
+  file.path(results_dir, &quot;multitrait_candidates.csv&quot;),
   row.names = FALSE
 )
 write.csv(
-  selected_oof_correlations,
-  file.path(threshold_results_dir, &quot;selected_oof_correlations.csv&quot;),
+  oof_genomic_correlations,
+  file.path(results_dir, &quot;oof_genomic_correlations.csv&quot;),
   row.names = TRUE
 )
 
-module04_threshold_results &lt;- list(
+module04_results &lt;- list(
   model_comparison = model_comparison,
+  selected_methods = selected_methods,
   model_selection = model_selection,
   convergence_overview = convergence_overview,
   rrblup_heritability_by_fold = rrblup_heritability_by_fold,
   rrblup_heritability_summary = rrblup_heritability_summary,
-  selected_oof_genomic_values = selected_oof_genomic_values,
+  oof_genomic_values = oof_genomic_values,
+  oof_genomic_correlations = oof_genomic_correlations,
   genomic_ranking = genomic_ranking,
   selected_individuals_by_trait = selected_individuals_by_trait,
   multitrait_recurrence = multitrait_recurrence,
   multitrait_candidates = multitrait_candidates,
-  selected_oof_correlations = selected_oof_correlations,
   settings = list(
     correlation_threshold = CORRELATION_SELECTION_THRESHOLD,
     nrmse_threshold = NRMSE_SELECTION_THRESHOLD,
@@ -5693,30 +5857,31 @@ module04_threshold_results &lt;- list(
 )
 
 saveRDS(
-  module04_threshold_results,
-  here(&quot;output&quot;, &quot;results&quot;, &quot;m04&quot;, &quot;threshold_selection&quot;, &quot;module04_threshold_results.rds&quot;)
+  module04_results,
+  file.path(results_dir, &quot;module04_results.rds&quot;)
 )</code></pre>
 </div>
-<div id="final-interpretation" class="section level2">
-<h2>12. Final interpretation</h2>
-<p>The comparison now clearly separates three decisions. First, the
-method is chosen within each trait using OOF predictive metrics, while
-DIC is retained as complementary information. Second, only traits with
-<span class="math inline">\(r &gt; 0.30\)</span> and
-<code>NRMSE &lt; 1</code> are considered sufficiently predictive for
-selection. Third, within those traits, the most favorable 20% of
-individuals are prioritized according to the breeding objective.</p>
-<p>MCMC diagnostics indicate behavior compatible with convergence for
-the large majority of monitored fits and parameters without being used
-as a decision filter. The observed-versus-predicted figure adds a visual
-assessment of association and calibration to the numerical metrics.</p>
-<p>OOF GEBVs remain cross-fitted scores. Adding the phenotypic mean
-places them on a more interpretable scale, but does not turn them into
-complete phenotypic predictions and does not change rankings. Recurrence
-across traits remains descriptive and is not equivalent to a multi-trait
-selection index.</p>
+<div id="summary-and-interpretation" class="section level2">
+<h2>8. Summary and interpretation</h2>
+<p>The seven methods are compared separately for each trait. OOF
+predictive evidence determines which method is used in subsequent steps,
+while DIC remains complementary information.</p>
+<p>OOF GEBVs from the selected methods are first examined across all ten
+traits, including their correlations. This step precedes eligibility
+criteria and allows relationships among traits to be interpreted without
+restricting the analysis to traits that later enter genomic
+selection.</p>
+<p>Genomic selection is then limited to traits with <span
+class="math inline">\(r &gt; 0.30\)</span> and
+<code>NRMSE &lt; 1</code>. Within those traits, the most favorable 20%
+of individuals are prioritized according to the breeding objective, and
+recurrence summarizes the presence of the same individuals across
+traits.</p>
+<p>The GEBVs remain cross-fitted scores. Adding the phenotypic mean
+improves interpretation in trait units but does not alter rankings or
+represent a complete phenotypic prediction.</p>
 <p>Conclusions remain conditional on the represented breeding
-population, the available SSR panel, and the validation design used.</p>
+population, the available SSR panel, and the validation design.</p>
 <div id="refs" class="references csl-bib-body hanging-indent">
 <div id="ref-silva2021brrguava" class="csl-entry">
 Silva, Flavia Alves da, Alexandre Pio Viana, Caio Cezar Guedes Correa,
@@ -5743,35 +5908,35 @@ Matrix products: default
   LAPACK version 3.12.1
 
 locale:
-[1] LC_COLLATE=Portuguese_Brazil.utf8  LC_CTYPE=Portuguese_Brazil.utf8
-[3] LC_MONETARY=Portuguese_Brazil.utf8 LC_NUMERIC=C
-[5] LC_TIME=Portuguese_Brazil.utf8
+[1] LC_COLLATE=Portuguese_Brazil.utf8  LC_CTYPE=Portuguese_Brazil.utf8   
+[3] LC_MONETARY=Portuguese_Brazil.utf8 LC_NUMERIC=C                      
+[5] LC_TIME=Portuguese_Brazil.utf8    
 
 time zone: America/Sao_Paulo
 tzcode source: internal
 
 attached base packages:
-[1] stats     graphics  grDevices datasets  utils     methods   base
+[1] stats     graphics  grDevices datasets  utils     methods   base     
 
 other attached packages:
-[1] here_1.0.2      knitr_1.51      ggthemes_6.0.0  ggplot2_4.0.3
+[1] here_1.0.2      knitr_1.51      ggthemes_6.0.0  ggplot2_4.0.3  
 [5] tidyr_1.3.2     dplyr_1.2.1     workflowr_1.7.2
 
 loaded via a namespace (and not attached):
- [1] sass_0.4.10        generics_0.1.4     renv_1.2.3         lattice_0.22-9
- [5] stringi_1.8.7      digest_0.6.39      magrittr_2.0.5     evaluate_1.0.5
- [9] grid_4.5.1         RColorBrewer_1.1-3 fastmap_1.2.0      Matrix_1.7-5
-[13] rprojroot_2.1.1    jsonlite_2.0.0     processx_3.9.0     whisker_0.4.1
-[17] promises_1.5.0     mgcv_1.9-4         httr_1.4.8         purrr_1.2.2
-[21] scales_1.4.0       jquerylib_0.1.4    cli_3.6.6          rlang_1.3.0
-[25] splines_4.5.1      withr_3.0.3        cachem_1.1.0       yaml_2.3.12
-[29] otel_0.2.0         tools_4.5.1        httpuv_1.6.17      vctrs_0.7.3
-[33] R6_2.6.1           lifecycle_1.0.5    git2r_0.36.2       stringr_1.6.0
-[37] fs_2.1.0           pkgconfig_2.0.3    callr_3.8.0        pillar_1.11.1
-[41] bslib_0.11.0       later_1.4.8        gtable_0.3.6       glue_1.8.1
-[45] Rcpp_1.1.2         xfun_0.60          tibble_3.3.1       tidyselect_1.2.1
-[49] rstudioapi_0.19.0  farver_2.1.2       nlme_3.1-170       htmltools_0.5.9
-[53] rmarkdown_2.31     labeling_0.4.3     compiler_4.5.1     getPass_0.2-4
+ [1] sass_0.4.10        generics_0.1.4     renv_1.2.3         lattice_0.22-9    
+ [5] stringi_1.8.7      digest_0.6.39      magrittr_2.0.5     evaluate_1.0.5    
+ [9] grid_4.5.1         RColorBrewer_1.1-3 fastmap_1.2.0      Matrix_1.7-5      
+[13] rprojroot_2.1.1    jsonlite_2.0.0     processx_3.9.0     whisker_0.4.1     
+[17] promises_1.5.0     mgcv_1.9-4         httr_1.4.8         purrr_1.2.2       
+[21] scales_1.4.0       jquerylib_0.1.4    cli_3.6.6          rlang_1.3.0       
+[25] splines_4.5.1      withr_3.0.3        cachem_1.1.0       yaml_2.3.12       
+[29] otel_0.2.0         tools_4.5.1        httpuv_1.6.17      vctrs_0.7.3       
+[33] R6_2.6.1           lifecycle_1.0.5    git2r_0.36.2       stringr_1.6.0     
+[37] fs_2.1.0           pkgconfig_2.0.3    callr_3.8.0        pillar_1.11.1     
+[41] bslib_0.11.0       later_1.4.8        gtable_0.3.6       glue_1.8.1        
+[45] Rcpp_1.1.2         xfun_0.60          tibble_3.3.1       tidyselect_1.2.1  
+[49] rstudioapi_0.19.0  farver_2.1.2       nlme_3.1-170       htmltools_0.5.9   
+[53] rmarkdown_2.31     labeling_0.4.3     compiler_4.5.1     getPass_0.2-4     
 [57] S7_0.2.2          </code></pre>
 </div>
 </div>
@@ -5786,7 +5951,7 @@ class="footnote-back">↩︎</a></p></li>
 </ol>
 </div>
 
-<div id="rmd-source-code">LS0tDQp0aXRsZTogIk1vZGVsIGNvbXBhcmlzb24sIGdlbm9taWMgc2VsZWN0aW9uLCBhbmQgcmVzdWx0cyINCmF1dGhvcjoNCiAgLSBDb3N0YSwgVy4gRy5eW1dldmVydG9uIEdvbWVzIGRhIENvc3RhLCBQb3N0ZG9jdG9yYWwgUmVzZWFyY2hlciwgRGVwYXJ0bWVudCBvZiBTdGF0aXN0aWNzIC0gRmVkZXJhbCBVbml2ZXJzaXR5IG9mIFZpw6dvc2EsIHdldmVydG9uLmNvc3RhQHVmdi5icl0NCmRhdGU6ICJgciBTeXMuRGF0ZSgpYCINCnNpdGU6IHdvcmtmbG93cjo6d2Zsb3dfc2l0ZQ0KdXJsOiBodHRwczovL3dldmVydG9uZ29tZXNjb3N0YS5naXRodWIuaW8vQmF5ZXNpYW4tcmlkZ2UtcmVncmVzc2lvbi1wYXBheWEvDQpiaWJsaW9ncmFwaHk6IC4uL1JFRkVSRU5DRVMuYmliDQpsaW5rLWNpdGF0aW9uczogdHJ1ZQ0Kb3V0cHV0Og0KICB3b3JrZmxvd3I6OndmbG93X2h0bWw6DQogICAgdG9jOiB0cnVlDQogICAgdG9jX2RlcHRoOiAzDQogICAgdG9jX2Zsb2F0OiB0cnVlDQogICAgY29kZV9kb3dubG9hZDogdHJ1ZQ0KICAgIGNvZGVfZm9sZGluZzogc2hvdw0KZWRpdG9yX29wdGlvbnM6DQogIGNodW5rX291dHB1dF90eXBlOiBjb25zb2xlDQpnaXRodWItcmVwbzogV2V2ZXJ0b25Hb21lc0Nvc3RhL0JheWVzaWFuLXJpZGdlLXJlZ3Jlc3Npb24tcGFwYXlhDQotLS0NCg0KYGBge3Igc2V0dXAsIGluY2x1ZGU9RkFMU0V9DQprbml0cjo6b3B0c19jaHVuayRzZXQoDQogIGVjaG8gPSBUUlVFLA0KICB3YXJuaW5nID0gRkFMU0UsDQogIG1lc3NhZ2UgPSBGQUxTRSwNCiAgY2FjaGUgPSBGQUxTRSwNCiAgZmlnLmFsaWduID0gImNlbnRlciIsDQogIG91dC53aWR0aCA9ICIxMDAlIg0KKQ0KYGBgDQoNCiMjIDEuIE9iamVjdGl2ZQ0KDQpVc2luZyB0aGUgT09GIHByZWRpY3Rpb25zLCBwZXJmb3JtYW5jZSBtZXRyaWNzLCBhbmQgZGlhZ25vc3RpY3Mgb2J0YWluZWQgaW4NCk1vZHVsZSAwMywgdGhpcyBmaW5hbCBtb2R1bGUgb3JnYW5pemVzIG1vZGVsIGNvbXBhcmlzb24gYW5kIGdlbm9taWMgc2VsZWN0aW9uDQppbiBhIG1vcmUgZGlyZWN0IHNlcXVlbmNlOiAqKmNvbXBhcmUg4oaSIGNob29zZSB0aGUgbWV0aG9kIOKGkiBkZWZpbmUgdHJhaXQNCmVsaWdpYmlsaXR5IOKGkiBpbnRlcnByZXQgR0VCVnMg4oaSIHNlbGVjdCBpbmRpdmlkdWFscyoqLg0KDQpNZXRob2QgY2hvaWNlIGlzIHRyYWl0LXNwZWNpZmljIGFuZCBwcmlvcml0aXplcyBwcmVkaWN0aXZlIHBlcmZvcm1hbmNlOiBoaWdoZXN0DQpwb29sZWQgT09GIGNvcnJlbGF0aW9uLCBmb2xsb3dlZCBieSBsb3dlc3QgUk1TRSBhbmQgbG93ZXN0IE1BRTsgRElDIGlzIHJldGFpbmVkDQphcyBjb21wbGVtZW50YXJ5IGV2aWRlbmNlIGFuZCBhIGZpbmFsIHRpZS1icmVha2VyLiBNQ01DIGRpYWdub3N0aWNzIGFyZQ0Kc3VtbWFyaXplZCBhcyBhIGdsb2JhbCBjaGVjayBvZiBjaGFpbiBhZGVxdWFjeSwgYnV0IHRoZXkgYXJlIG5vdCBjb252ZXJ0ZWQgaW50bw0KYW4gZXhjbHVzaW9uIG9yIHJldmlldyBydWxlLg0KDQpJbmRpdmlkdWFscyBhcmUgc2VsZWN0ZWQgb25seSBmb3IgdHJhaXRzIHRoYXQgbWVldCBhIHByZS1kZWZpbmVkIG1pbmltdW0gbGV2ZWwNCm9mIHByZWRpY3RpdmUgZXZpZGVuY2UuIEluIHRoaXMgdmVyc2lvbiwgYSB0cmFpdCBpcyBlbGlnaWJsZSB3aGVuIHRoZSBzZWxlY3RlZA0KbWV0aG9kIGhhcyBPT0YgY29ycmVsYXRpb24gZ3JlYXRlciB0aGFuIDAuMzAgYW5kIE5STVNFIGxvd2VyIHRoYW4gMSwgdGhhdCBpcywNClJNU0UgbG93ZXIgdGhhbiBvbmUgcGhlbm90eXBpYyBzdGFuZGFyZCBkZXZpYXRpb24uIFRoZSBzZWxlY3RlZCBwcm9wb3J0aW9uDQpyZW1haW5zIDIwJSBvZiB0aGUgaW5kaXZpZHVhbHMgZm9yIGVhY2ggZWxpZ2libGUgdHJhaXQuDQoNClRvIGltcHJvdmUgaW50ZXJwcmV0YXRpb24gb24gdGhlIG9yaWdpbmFsIHRyYWl0IHNjYWxlLCB0aGUgY2VudGVyZWQgT09GIGdlbm9taWMNCmNvbXBvbmVudCBpcyBwcmVzZXJ2ZWQgYW5kIGlzIGFsc28gcHJlc2VudGVkIGFmdGVyIGFkZGluZyB0aGUgcGhlbm90eXBpYyB0cmFpdA0KbWVhbi4gVGhpcyB0cmFuc2Zvcm1hdGlvbiBzaGlmdHMgdGhlIHNjYWxlIGJ1dCBkb2VzIG5vdCBjaGFuZ2UgdGhlIHJhbmtpbmcgb2YNCmluZGl2aWR1YWxzIHdpdGhpbiBhIHRyYWl0Lg0KDQojIyAyLiBQYWNrYWdlcyBhbmQgbW9kZWwtZml0dGluZyByZXN1bHRzDQoNCiMjIyAyLjEgUGFja2FnZXMgdXNlZA0KDQpUaGUgcGFja2FnZXMgdXNlZCBoZXJlIGhhdmUgZGlzdGluY3Qgcm9sZXM6DQoNCi0gYGRwbHlyYDogZ3JvdXBpbmcsIGpvaW5pbmcsIG9yZGVyaW5nLCBhbmQgc3VtbWFyaXppbmcgcmVzdWx0IHRhYmxlczsNCi0gYHRpZHlyYDogcmVzaGFwaW5nIHRhYmxlcyBiZXR3ZWVuIGxvbmcgYW5kIHdpZGUgZm9ybWF0czsNCi0gYGdncGxvdDJgOiBidWlsZGluZyBwZXJmb3JtYW5jZSBhbmQgb2JzZXJ2ZWQtdmVyc3VzLXByZWRpY3RlZCBmaWd1cmVzOw0KLSBgZ2d0aGVtZXNgOiBhcHBseWluZyB0aGUgR0RvY3MgdGhlbWUgYW5kIGNvbG9yIHNjYWxlOw0KLSBga25pdHJgOiBmb3JtYXR0aW5nIHRhYmxlcyBpbiBSIE1hcmtkb3duIGRvY3VtZW50czsNCi0gYGhlcmVgOiBidWlsZGluZyBwcm9qZWN0LXJlbGF0aXZlIGZpbGUgcGF0aHMuDQoNCmBgYHtyIHBhY2thZ2VzLCB3YXJuaW5nPUZBTFNFLCBtZXNzYWdlPUZBTFNFfQ0KbGlicmFyeShkcGx5cikgIyBHcm91cCwgam9pbiwgYW5kIHN1bW1hcml6ZSB0YWJsZXMuDQpsaWJyYXJ5KHRpZHlyKSAgICMgUmVzaGFwZSBkYXRhIGJldHdlZW4gbG9uZyBhbmQgd2lkZSBmb3JtYXRzLg0KbGlicmFyeShnZ3Bsb3QyKSAjIEJ1aWxkIGRpYWdub3N0aWMgZmlndXJlcy4NCmxpYnJhcnkoZ2d0aGVtZXMpICMgQXBwbHkgdGhlIEdEb2NzIHRoZW1lIGFuZCBjb2xvciBzY2FsZS4NCmxpYnJhcnkoa25pdHIpICAgIyBGb3JtYXQgdGFibGVzIGluIFIgTWFya2Rvd24gZG9jdW1lbnRzLg0KbGlicmFyeShoZXJlKSAgIyBCdWlsZCBwcm9qZWN0LXJlbGF0aXZlIHBhdGhzLg0KYGBgDQoNCmBgYHtyIHRhYmxlLWZvcm1hdHRpbmcsIGluY2x1ZGU9RkFMU0V9DQpmb3JtYXRfdGFibGUgPC0gZnVuY3Rpb24oeCwgY2FwdGlvbiA9IE5VTEwsIGRpZ2l0cyA9IGdldE9wdGlvbigiZGlnaXRzIiksIGNvbC5uYW1lcyA9IE5BKSB7DQogIHRhYmxlIDwtIGtuaXRyOjprYWJsZSgNCiAgICB4LA0KICAgIGZvcm1hdCA9ICJodG1sIiwNCiAgICBjYXB0aW9uID0gY2FwdGlvbiwNCiAgICBkaWdpdHMgPSBkaWdpdHMsDQogICAgY29sLm5hbWVzID0gY29sLm5hbWVzLA0KICAgIHRhYmxlLmF0dHIgPSBwYXN0ZTAoDQogICAgICAnY2xhc3M9InRhYmxlIHRhYmxlLXN0cmlwZWQgdGFibGUtaG92ZXIiICcsDQogICAgICAnc3R5bGU9IndpZHRoOjEwMCU7IG1hcmdpbi1ib3R0b206MDsiJw0KICAgICkNCiAgKQ0KICBrbml0cjo6YXNpc19vdXRwdXQoDQogICAgcGFzdGUwKA0KICAgICAgJzxkaXYgc3R5bGU9IndpZHRoOjEwMCU7IG92ZXJmbG93LXg6YXV0bzsgbWFyZ2luLWJvdHRvbToxLjI1cmVtOyI+JywNCiAgICAgIHRhYmxlLA0KICAgICAgJzwvZGl2PicNCiAgICApDQogICkNCn0NCmBgYA0KDQojIyMgMi4yIElucHV0IG9iamVjdHMNCg0KVGhlIG1vZHVsZSB1c2VzIHR3byBjb25zb2xpZGF0ZWQgb2JqZWN0czogYG1hdHJpY2VzX29iamVjdC5yZHNgLCB3aGljaCBzdXBwbGllcyBwaGVub3R5cGVzLCBtZXRhZGF0YSwgYW5kIGRlZmluaXRpb25zIGZyb20gTW9kdWxlIDAyLCBhbmQgYG1vZGVsc19vYmplY3QucmRzYCwgd2hpY2ggc3VwcGxpZXMgZm9sZC1sZXZlbCBtZXRyaWNzLCBPT0YgcHJlZGljdGlvbnMsIGFuZCBNQ01DIGRpYWdub3N0aWNzIGZyb20gTW9kdWxlIDAzLiBEdXJpbmcgZGVyaXZhdGlvbiwgbm8gb3V0cHV0IGRpcmVjdG9yeSBpcyBjcmVhdGVkOyByZXZpc2VkIHJlc3VsdHMgYXJlIHBlcnNpc3RlZCBvbmx5IGluIHRoZSBmaW5hbCBzZWN0aW9uIGFuZCBkbyBub3Qgb3ZlcndyaXRlIHByZXZpb3VzIE0wNCBvdXRwdXRzLg0KDQpgYGB7ciBpbnB1dHN9DQptYXRyaWNlc19vYmplY3QgPC0gcmVhZFJEUygNCiAgaGVyZSgib3V0cHV0IiwgIm1hdHJpY2VzIiwgIm1hdHJpY2VzX29iamVjdC5yZHMiKQ0KKQ0KDQptb2RlbHNfb2JqZWN0IDwtIHJlYWRSRFMoDQogIGhlcmUoIm91dHB1dCIsICJtb2RlbHMiLCAibW9kZWxzX29iamVjdC5yZHMiKQ0KKQ0KDQptZXRyaWNzIDwtIG1vZGVsc19vYmplY3QkbWV0cmljc19ieV9mb2xkDQpwcmVkaWN0aW9ucyA8LSBtb2RlbHNfb2JqZWN0JHByZWRpY3Rpb25zDQpjb252ZXJnZW5jZSA8LSBtb2RlbHNfb2JqZWN0JGNvbnZlcmdlbmNlX2RpYWdub3N0aWNzDQoNCnRyYWl0cyA8LSBjb2xuYW1lcyhtYXRyaWNlc19vYmplY3QkcGhlbm90eXBlcykNCm1ldGhvZHMgPC0gbW9kZWxzX29iamVjdCRzZXR0aW5ncyRtZXRob2RzDQpgYGANCg0KIyMjIDIuMyBQcmVzZW50YXRpb24gbGFiZWxzIGFuZCBncmFwaGljYWwgc3RhbmRhcmQNCg0KVGhlIGNhbGN1bGF0aW9ucyByZXRhaW4gdGhlIG1ldGhvZCBjb2RlcyBzdG9yZWQgaW4gdGhlIGFuYWx5dGljYWwgb2JqZWN0cy4NClJlYWRhYmxlIGxhYmVscyBhbmQgdGhlIGdyYXBoaWNhbCB0aGVtZSBiZWxvdyBhZmZlY3QgcHJlc2VudGF0aW9uIG9ubHk7IHRoZXkNCmRvIG5vdCBtb2RpZnkgYW55IHNjaWVudGlmaWMgcXVhbnRpdHkuDQoNCmBgYHtyIHByZXNlbnRhdGlvbi1zdHlsZX0NCm1ldGhvZF9sYWJlbHMgPC0gYygNCiAgUlJCTFVQID0gIlJSLUJMVVAvQlJSIiwNCiAgQmF5ZXNBID0gIkJheWVzQSIsDQogIEJheWVzQiA9ICJCYXllc0IiLA0KICBCYXllc0IyID0gIkJheWVzQjIiLA0KICBCYXllc0MgPSAiQmF5ZXNDIiwNCiAgQkwgPSAiQmF5ZXNpYW4gTGFzc28iLA0KICBHQkxVUCA9ICJHQkxVUCINCikNCg0Kc2VsZWN0aW9uX29iamVjdGl2ZV9sYWJlbHMgPC0gYygNCiAgaW5jcmVhc2UgPSAiSW5jcmVhc2UiLA0KICBkZWNyZWFzZSA9ICJEZWNyZWFzZSINCikNCg0KcHJvamVjdF90aGVtZSA8LSB0aGVtZV9nZG9jcygpICsNCiAgdGhlbWUoDQogICAgbGVnZW5kLnBvc2l0aW9uID0gImJvdHRvbSIsDQogICAgbGVnZW5kLmRpcmVjdGlvbiA9ICJob3Jpem9udGFsIiwNCiAgICBsZWdlbmQuYm94ID0gImhvcml6b250YWwiLA0KICAgIHN0cmlwLnRleHQgPSBlbGVtZW50X3RleHQoZmFjZSA9ICJib2xkIiksDQogICAgcGxvdC50aXRsZSA9IGVsZW1lbnRfdGV4dChmYWNlID0gImJvbGQiKQ0KICApDQpgYGANCg0KIyMgMy4gT09GIHByZWRpY3RpdmUgcGVyZm9ybWFuY2UNCg0KIyMjIDMuMSBTY29wZSBvZiBPT0YgZXZhbHVhdGlvbg0KDQpUaGUgT09GIGVzdGltYXRlcyBpbmhlcml0IHRoZSBmYW1pbHktc3RyYXRpZmllZCBkZXNpZ24gb2YgTW9kdWxlcyAwMiBhbmQNCjAzLiBUaGV5IHF1YW50aWZ5IHByZWRpY3Rpb24gd2l0aGluIHRoZSByZXByZXNlbnRlZCBicmVlZGluZyBwb3B1bGF0aW9uIGFuZCBkbw0Kbm90IGVzdGltYXRlIGdlbmVyYWxpemF0aW9uIHRvIGVudGlyZWx5IG5ldyBmYW1pbGllcy4NCg0KVGhlIG1haW4gbWV0cmljcyBhcmUgcmVjYWxjdWxhdGVkIHVzaW5nIHRoZSAxNTAgb3V0LW9mLWZvbGQgcHJlZGljdGlvbnMgZm9yDQplYWNoIHRyYWl0IMOXIG1ldGhvZCBjb21iaW5hdGlvbi4gRWFjaCBpbmRpdmlkdWFsIGNvbnRyaWJ1dGVzIG9uZSBPT0YNCnByZWRpY3Rpb24gZm9yIGV2ZXJ5IG1ldGhvZC4NCg0KIyMjIDMuMiBQb29sZWQgT09GIHBlcmZvcm1hbmNlDQoNCkZvciBlYWNoIHRyYWl0IMOXIG1ldGhvZCBjb21iaW5hdGlvbiwgY29ycmVsYXRpb24sIFJNU0UsIE1BRSwgYmlhcywgYW5kIHNsb3BlIGFyZSBjYWxjdWxhdGVkIGZyb20gdGhlIDE1MCBPT0YgcHJlZGljdGlvbnMuIFRoZSB0d28tc2lkZWQgUGVhcnNvbi1jb3JyZWxhdGlvbiBwLXZhbHVlIGlzIHJldGFpbmVkIG9ubHkgYXMgYSBub21pbmFsIGRlc2NyaXB0aXZlIG1lYXN1cmUgYmVjYXVzZSB0cmFpbmluZyBzZXRzIG92ZXJsYXAgYWNyb3NzIGZvbGRzLg0KDQpgYGB7ciBwb29sZWQtb29mLW1ldHJpY3N9DQojIENvbWJpbmUgT09GIHByZWRpY3Rpb25zIGFuZCBjb21wdXRlIGFnZ3JlZ2F0ZSBwcmVkaWN0aXZlIG1ldHJpY3MgYnkgdHJhaXQgYW5kIG1ldGhvZC4NCnBvb2xlZF9tZXRyaWNzIDwtIHByZWRpY3Rpb25zIHw+DQogIGdyb3VwX2J5KFRyYWl0LCBNZXRob2QpIHw+DQogIHN1bW1hcmlzZSgNCiAgICBOID0gbigpLA0KICAgIHIgPSBjb3IoT2JzZXJ2ZWQsIFByZWRpY3RlZCksDQogICAgUk1TRSA9IHNxcnQobWVhbigoT2JzZXJ2ZWQgLSBQcmVkaWN0ZWQpXjIpKSwNCiAgICBNQUUgPSBtZWFuKGFicyhPYnNlcnZlZCAtIFByZWRpY3RlZCkpLA0KICAgIEJpYXMgPSBtZWFuKFByZWRpY3RlZCAtIE9ic2VydmVkKSwNCiAgICBTbG9wZSA9IGNvdihPYnNlcnZlZCwgUHJlZGljdGVkKSAvIHZhcihQcmVkaWN0ZWQpLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKSB8Pg0KICBtdXRhdGUoDQogICAgdF92YWx1ZSA9IHIgKiBzcXJ0KChOIC0gMikgLyAoMSAtIHJeMikpLA0KICAgIHBfdmFsdWUgPSAyICogcHQoYWJzKHRfdmFsdWUpLCBkZiA9IE4gLSAyLCBsb3dlci50YWlsID0gRkFMU0UpDQogICkgfD4NCiAgc2VsZWN0KC10X3ZhbHVlKQ0KDQojIFN1bW1hcml6ZSB0aGUgcmVzdWx0cyBpbiBgZm9sZF9zdW1tYXJ5YC4NCmZvbGRfc3VtbWFyeSA8LSBtZXRyaWNzIHw+DQogIGdyb3VwX2J5KFRyYWl0LCBNZXRob2QpIHw+DQogIHN1bW1hcmlzZSgNCiAgICBNZWFuX0RJQyA9IG1lYW4oRElDKSwNCiAgICBTRF9ESUMgPSBzZChESUMpLA0KICAgIE1lYW5fZm9sZF9yID0gbWVhbihDb3JyZWxhdGlvbiksDQogICAgU0RfZm9sZF9yID0gc2QoQ29ycmVsYXRpb24pLA0KICAgIE1lYW5fZm9sZF9STVNFID0gbWVhbihSTVNFKSwNCiAgICBTRF9mb2xkX1JNU0UgPSBzZChSTVNFKSwNCiAgICBNZWFuX2ZvbGRfTUFFID0gbWVhbihNQUUpLA0KICAgIFNEX2ZvbGRfTUFFID0gc2QoTUFFKSwNCiAgICAuZ3JvdXBzID0gImRyb3AiDQogICkNCmBgYA0KDQpgcG9vbGVkX21ldHJpY3NgIGNvbWJpbmVzIHRoZSAxNTAgT09GIHByZWRpY3Rpb25zIGFuZCBwcm92aWRlcyBvdmVyYWxsIHBlcmZvcm1hbmNlIGZvciBlYWNoIHRyYWl0IMOXIG1ldGhvZCBjb21iaW5hdGlvbi4gYGZvbGRfc3VtbWFyeWAgcmV0YWlucyBzdW1tYXJpZXMgaW5oZXJpdGVkIGZyb20gdGhlIGZpdmUgZm9sZHMgdG8gaW50ZWdyYXRlIERJQyBhbmQgYXV4aWxpYXJ5IG1ldHJpY3MgaW4gdGhlIGNvbXBhcmlzb24gdGFibGUuDQoNClBlYXJzb24tY29ycmVsYXRpb24gcC12YWx1ZXMgcmVtYWluIGRlc2NyaXB0aXZlIGNvbnRleHQgb25seSBhbmQgZG8gbm90IGRlZmluZSBlbGlnaWJpbGl0eSBmb3IgZ2Vub21pYyBzZWxlY3Rpb24uDQoNCiMjIDQuIERJQyBhbmQgcmVsYXRpdmUgc3VwcG9ydCBmb3IgdGhlIG1ldGhvZHMNCg0KIyMjIDQuMSBESUMtZGVyaXZlZCByZWxhdGl2ZSBzdXBwb3J0DQoNCkZvbGxvd2luZyB0aGUgbG9naWMgdXNlZCBpbiB0aGUgcmVmZXJlbmNlIHN0dWR5IFtAc2lsdmEyMDIxYnJyZ3VhdmFdLCB0aGUNCmRpZmZlcmVuY2UgZnJvbSB0aGUgc21hbGxlc3QgbWVhbiBESUMgd2l0aGluIGVhY2ggdHJhaXQgaXMgY29udmVydGVkIGludG8NCnJlbGF0aXZlIHdlaWdodHM6DQoNClxbDQpcRGVsdGFfaj1cb3ZlcmxpbmV7RElDfV9qLVxtaW5fayhcb3ZlcmxpbmV7RElDfV9rKSwNClxdDQoNClxbDQpXcHJvYl9qPVxmcmFje1xleHAoLVxEZWx0YV9qLzIpfXtcc3VtX2tcZXhwKC1cRGVsdGFfay8yKX0sDQpccXF1YWQNCkVSX2o9XGZyYWN7V3Byb2Jfe1xtYXh9fXtXcHJvYl9qfS4NClxdDQoNCmBXcHJvYmAgaXMgdXNlZCBoZXJlIGFzIGEgRElDLWRlcml2ZWQgcmVsYXRpdmUtc3VwcG9ydCB3ZWlnaHQuIEl0IGlzIG5vdA0KaW50ZXJwcmV0ZWQgYXMgYSBjYWxpYnJhdGVkIHBvc3RlcmlvciBwcm9iYWJpbGl0eSBvZiBhIG1vZGVsLg0KDQpUaGUgaW1wbGVtZW50YXRpb24gdXNlcyBsb2ctd2VpZ2h0cyBiZWZvcmUgbm9ybWFsaXphdGlvbiB0byBpbXByb3ZlIG51bWVyaWNhbCBzdGFiaWxpdHkgd2l0aG91dCBjaGFuZ2luZyByZWxhdGl2ZSByYXRpb3MuIGBXcHJvYmAgc3VtcyB0byAxIHdpdGhpbiBlYWNoIHRyYWl0LCBhbmQgYEVSYCBleHByZXNzZXMgc3VwcG9ydCByZWxhdGl2ZSB0byB0aGUgbWV0aG9kIHdpdGggdGhlIGxhcmdlc3Qgd2VpZ2h0Lg0KDQpgYGB7ciBtb2RlbC1jb21wYXJpc29ufQ0KIyBDb21iaW5lIGZvbGQgcGVyZm9ybWFuY2UgYW5kIERJQyB0byBidWlsZCB0aGUgcXVhbnRpdGllcyB1c2VkIGZvciBtb2RlbCBjb21wYXJpc29uLg0KbW9kZWxfY29tcGFyaXNvbiA8LSBwb29sZWRfbWV0cmljcyB8Pg0KICBsZWZ0X2pvaW4oZm9sZF9zdW1tYXJ5LCBieSA9IGMoIlRyYWl0IiwgIk1ldGhvZCIpKSB8Pg0KICBncm91cF9ieShUcmFpdCkgfD4NCiAgbXV0YXRlKA0KICAgIERlbHRhX0RJQyA9IE1lYW5fRElDIC0gbWluKE1lYW5fRElDKSwNCiAgICBsb2dfd2VpZ2h0ID0gLTAuNSAqIERlbHRhX0RJQywNCiAgICBzdGFibGVfd2VpZ2h0ID0gZXhwKGxvZ193ZWlnaHQgLSBtYXgobG9nX3dlaWdodCkpLA0KICAgIFdwcm9iID0gc3RhYmxlX3dlaWdodCAvIHN1bShzdGFibGVfd2VpZ2h0KSwNCiAgICAjIENvbXB1dGUgdGhlIGV2aWRlbmNlIHJhdGlvIHJlbGF0aXZlIHRvIHRoZSBtZXRob2Qgd2l0aCB0aGUgbGFyZ2VzdCBXcHJvYiBpbiBlYWNoIHRyYWl0Lg0KICAgIEVSID0gbWF4KFdwcm9iKSAvIFdwcm9iDQogICkgfD4NCiAgdW5ncm91cCgpIHw+DQogIHNlbGVjdCgNCiAgICBUcmFpdCwgTWV0aG9kLCBNZWFuX0RJQywgU0RfRElDLCBEZWx0YV9ESUMsIFdwcm9iLCBFUiwNCiAgICBOLCByLCBwX3ZhbHVlLCBSTVNFLCBNQUUsIEJpYXMsIFNsb3BlLA0KICAgIE1lYW5fZm9sZF9yLCBTRF9mb2xkX3IsIE1lYW5fZm9sZF9STVNFLCBTRF9mb2xkX1JNU0UsDQogICAgTWVhbl9mb2xkX01BRSwgU0RfZm9sZF9NQUUNCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpLCBEZWx0YV9ESUMpDQpgYGANCg0KIyMjIDQuMiBSZWxhdGlvbnNoaXAgYmV0d2VlbiBCYXllc2lhbiBmaXQgYW5kIHByZWRpY3RpdmUgcGVyZm9ybWFuY2UNCg0KYG1vZGVsX2NvbXBhcmlzb25gIGNvbWJpbmVzIE9PRiBwZXJmb3JtYW5jZSBhbmQgRElDLWRlcml2ZWQgcmVsYXRpdmUgc3VwcG9ydCBmb3IgZXZlcnkgdHJhaXQgYW5kIG1ldGhvZC4gRElDIHF1YW50aXRpZXMgYXJlIGNvbXBhcmFibGUgb25seSB3aXRoaW4gdGhlIHNhbWUgdHJhaXQgYW5kIGRvIG5vdCByZXBsYWNlIHByZWRpY3RpdmUgZXZpZGVuY2UuDQoNCkluIHRoZSBqb2ludCBjb21wYXJpc29uLCBtZXRob2RzIHdpdGggc2ltaWxhciBESUMgY2FuIGhhdmUgZGlmZmVyZW50IE9PRiBwZXJmb3JtYW5jZSwgYW5kIHRoZSBtZXRob2Qgd2l0aCB0aGUgbGFyZ2VzdCBgV3Byb2JgIG5lZWQgbm90IGhhdmUgdGhlIGxhcmdlc3QgcHJlZGljdGl2ZSBjb3JyZWxhdGlvbi4gQmF5ZXNpYW4gZml0IGFuZCBwcmVkaWN0aXZlIGFiaWxpdHkgdGhlcmVmb3JlIHJlbWFpbiBjb21wbGVtZW50YXJ5IHJhdGhlciB0aGFuIGludGVyY2hhbmdlYWJsZSBjcml0ZXJpYS4NCg0KIyMjIDQuMyBWaXN1YWwgY29tcGFyaXNvbiBvZiBPT0YgcHJlZGljdGl2ZSBwZXJmb3JtYW5jZQ0KDQpUaGUgcG9vbGVkIE9PRiBjb3JyZWxhdGlvbiBpcyB0aGUgcHJpbWFyeSB2aXN1YWwgcmVmZXJlbmNlIGZvciBwcmVkaWN0aXZlDQpjb21wYXJpc29uLiBUaGUgaG9yaXpvbnRhbCBsaW5lIGF0IHplcm8gc2VwYXJhdGVzIHBvc2l0aXZlIGZyb20gbm9ucG9zaXRpdmUNCmFzc29jaWF0aW9uLiBCYXJzIGFyZSBwb2ludCBlc3RpbWF0ZXMsIG5vdCB1bmNlcnRhaW50eSBpbnRlcnZhbHMuDQoNCmBgYHtyIHByZWRpY3RpdmUtY29ycmVsYXRpb24tZmlndXJlLCBmaWcud2lkdGg9MTMsIGZpZy5oZWlnaHQ9MTAsIGZpZy5hbHQ9IkZhY2V0ZWQgYmFyIGNoYXJ0IGNvbXBhcmluZyBwb29sZWQgb3V0LW9mLWZvbGQgcHJlZGljdGl2ZSBjb3JyZWxhdGlvbnMgb2YgdGhlIHNldmVuIGdlbm9taWMgcHJlZGljdGlvbiBtZXRob2RzIGFjcm9zcyB0aGUgdGVuIHRyYWl0cywgd2l0aCBhIGhvcml6b250YWwgcmVmZXJlbmNlIGF0IHplcm8uIn0NCiMgT3JkZXIgbWV0aG9kcyBhbmQgYnVpbGQgdGhlIE9PRi1jb3JyZWxhdGlvbiBmaWd1cmUgYnkgdHJhaXQuDQpwcmVkaWN0aXZlX3Bsb3QgPC0gbW9kZWxfY29tcGFyaXNvbiB8Pg0KICBtdXRhdGUoTWV0aG9kID0gZmFjdG9yKE1ldGhvZCwgbGV2ZWxzID0gbWV0aG9kcykpIHw+DQogIGdncGxvdChhZXMoeCA9IE1ldGhvZCwgeSA9IHIsIGZpbGwgPSBNZXRob2QpKSArDQogIGdlb21faGxpbmUoeWludGVyY2VwdCA9IDAsIGxpbmV0eXBlID0gMiwgbGluZXdpZHRoID0gMC40KSArDQogIGdlb21fY29sKHdpZHRoID0gMC43NSkgKw0KICBmYWNldF93cmFwKH4gVHJhaXQsIHNjYWxlcyA9ICJmaXhlZCIsIG5jb2wgPSAyKSArDQogIHNjYWxlX2ZpbGxfZ2RvY3MoDQogICAgYnJlYWtzID0gbWV0aG9kcywNCiAgICBsYWJlbHMgPSBtZXRob2RfbGFiZWxzDQogICkgKw0KICBzY2FsZV94X2Rpc2NyZXRlKGxhYmVscyA9IG1ldGhvZF9sYWJlbHMpICsNCiAgbGFicygNCiAgICB4ID0gTlVMTCwNCiAgICB5ID0gIk9PRiBjb3JyZWxhdGlvbiIsDQogICAgZmlsbCA9ICJNZXRob2QiLA0KICAgIHRpdGxlID0gIlByZWRpY3RpdmUgYWJpbGl0eSBvZiB0aGUgc2V2ZW4gbWV0aG9kcyINCiAgKSArDQogIHByb2plY3RfdGhlbWUgKw0KICBndWlkZXMoZmlsbCA9IGd1aWRlX2xlZ2VuZChucm93ID0gMSwgYnlyb3cgPSBUUlVFKSkgKw0KICB0aGVtZSgNCiAgICBsZWdlbmQuZGlyZWN0aW9uID0gImhvcml6b250YWwiLA0KICAgIGxlZ2VuZC5ib3ggPSAiaG9yaXpvbnRhbCIsDQogICAgYXhpcy50ZXh0LnggPSBlbGVtZW50X3RleHQoYW5nbGUgPSA0NSwgaGp1c3QgPSAxKQ0KICApDQoNCnByZWRpY3RpdmVfcGxvdA0KYGBgDQoNCg0KUHJlZGljdGl2ZSBtYWduaXR1ZGUgYW5kIG1ldGhvZCBvcmRlcmluZyB2YXJ5IGFtb25nIHRyYWl0cy4gVGhlIHdvcmtmbG93DQp0aGVyZWZvcmUgZG9lcyBub3QgZGVmaW5lIG9uZSBnbG9iYWxseSBzdXBlcmlvciBtZXRob2Q7IHNlbGVjdGlvbiByZW1haW5zDQp0cmFpdC1zcGVjaWZpYyBhbmQgY29udGludWVzIHdpdGggY29tcGxlbWVudGFyeSBESUMgYW5kIGRpYWdub3N0aWMgZXZpZGVuY2UuDQoNCiMjIyA0LjQgSm9pbnQgcHJlZGljdGl2ZSBhbmQgRElDIGNvbXBhcmlzb24NCg0KVGhlIHRhYmxlIGJlbG93IHBsYWNlcyB0aGUgY29tcGxlbWVudGFyeSBldmlkZW5jZSBzb3VyY2VzIHNpZGUgYnkgc2lkZS4NCkRJQy1kZXJpdmVkIHF1YW50aXRpZXMgYXJlIGNvbXBhcmVkIG9ubHkgd2l0aGluIHRoZSBzYW1lIHRyYWl0LCB3aGlsZSBPT0YNCmNvcnJlbGF0aW9uIHJldGFpbnMgaXRzIHByZWRpY3RpdmUgaW50ZXJwcmV0YXRpb24uIFRoZSBub21pbmFsIHAtdmFsdWUgaXMNCnNob3duIGZvciBjb250ZXh0IGFuZCBpcyBub3QgYSByYW5raW5nLWVsaWdpYmlsaXR5IGNyaXRlcmlvbi4NCg0KYGBge3IgbW9kZWwtY29tcGFyaXNvbi10YWJsZX0NCiMgRElTUExBWS1PTkxZIFNUQVJUDQptb2RlbF9jb21wYXJpc29uX2Rpc3BsYXkgPC0gbW9kZWxfY29tcGFyaXNvbiB8Pg0KICBtdXRhdGUoTWV0aG9kX2xhYmVsID0gdW5uYW1lKG1ldGhvZF9sYWJlbHNbTWV0aG9kXSkpIHw+DQogIHRyYW5zbXV0ZSgNCiAgICBUcmFpdCwNCiAgICBNZXRob2QsDQogICAgTWV0aG9kX2xhYmVsLA0KICAgIERJQyA9IHNwcmludGYoIiUuMmYiLCBNZWFuX0RJQyksDQogICAgRGVsdGFfRElDID0gc3ByaW50ZigiJS4yZiIsIERlbHRhX0RJQyksDQogICAgV3Byb2IgPSBzcHJpbnRmKCIlLjNmIiwgV3Byb2IpLA0KICAgIEVSID0gc3ByaW50ZigiJS4zZiIsIEVSKSwNCiAgICByID0gc3ByaW50ZigiJS4zZiIsIHIpLA0KICAgIHBfdmFsdWUgPSBpZl9lbHNlKA0KICAgICAgcF92YWx1ZSA8IDAuMDAxLA0KICAgICAgIjwwLjAwMSIsDQogICAgICBzcHJpbnRmKCIlLjNmIiwgcF92YWx1ZSkNCiAgICApDQogICkgfD4NCiAgYXJyYW5nZShtYXRjaChUcmFpdCwgdHJhaXRzKSwgbWF0Y2goTWV0aG9kLCBtZXRob2RzKSkNCg0KZm9ybWF0X3RhYmxlKA0KICBtb2RlbF9jb21wYXJpc29uX2Rpc3BsYXkgfD4NCiAgICBzZWxlY3QoVHJhaXQsIE1ldGhvZF9sYWJlbCwgRElDLCBEZWx0YV9ESUMsIFdwcm9iLCBFUiwgciwgcF92YWx1ZSksDQogIGNhcHRpb24gPSAiQ29tcGFyaXNvbiBvZiB0aGUgc2V2ZW4gbWV0aG9kcyBieSB0cmFpdCIsDQogIGNvbC5uYW1lcyA9IGMoIlRyYWl0IiwgIk1ldGhvZCIsICJESUMiLCAiRGVsdGEgRElDIiwgIldwcm9iIiwgIkVSIiwgInIiLCAicC12YWx1ZSIpDQopDQojIERJU1BMQVktT05MWSBFTkQNCmBgYA0KDQojIyA1LiBNZXRob2QgY2hvaWNlIGFuZCBlbGlnaWJpbGl0eSBmb3Igc2VsZWN0aW9uDQoNCiMjIyA1LjEgQWRvcHRlZCBjcml0ZXJpYQ0KDQpNZXRob2QgY2hvaWNlIGFuZCB0aGUgZGVjaXNpb24gdG8gdXNlIGEgdHJhaXQgZm9yIHNlbGVjdGlvbiBhcmUgdHdvIGRpc3RpbmN0DQpzdGVwcy4gRmlyc3QsIHRoZSBzZXZlbiBtZXRob2RzIGFyZSBvcmRlcmVkIHdpdGhpbiBlYWNoIHRyYWl0IGJ5IHBvb2xlZCBPT0YNCmNvcnJlbGF0aW9uOyB0aWVzIGFyZSByZXNvbHZlZCwgaW4gdGhpcyBvcmRlciwgYnkgbG93ZXIgUk1TRSwgbG93ZXIgTUFFLCBhbmQNCmxvd2VyIG1lYW4gRElDLiBUaHVzLCBubyBhcnRpZmljaWFsIHNjb3JlIGlzIGNyZWF0ZWQgYnkgbWl4aW5nIG1ldHJpY3Mgd2l0aA0KZGlmZmVyZW50IG1lYW5pbmdzLg0KDQpBZnRlciB0aGUgbWV0aG9kIGlzIGNob3NlbiwgdGhlIHRyYWl0IGlzIGNvbnNpZGVyZWQgZWxpZ2libGUgZm9yIHNlbGVjdGlvbiBvbmx5DQp3aGVuIGl0IHNpbXVsdGFuZW91c2x5IHNhdGlzZmllcyB0d28gcGVyZm9ybWFuY2UgY3JpdGVyaWE6DQoNClxbDQpyX3tPT0Z9ID4gMC4zMA0KXF0NCg0KYW5kDQoNClxbDQpOUk1TRSA9IFxmcmFje1JNU0V9e3NfeX0gPCAxLA0KXF0NCg0Kd2hlcmUgXChzX3lcKSBpcyB0aGUgb2JzZXJ2ZWQgcGhlbm90eXBpYyBzdGFuZGFyZCBkZXZpYXRpb24gb2YgdGhlIHRyYWl0LiBUaGUNCnNlY29uZCBjcml0ZXJpb24gcmVxdWlyZXMgbW9kZWwgZXJyb3IgdG8gYmUgbG93ZXIgdGhhbiB0aGUgb2JzZXJ2ZWQgcGhlbm90eXBpYw0KZGlzcGVyc2lvbiBhbmQgY29tcGxlbWVudHMgdGhlIGNvcnJlbGF0aW9uIHRocmVzaG9sZC4NCg0KYGBge3Igc2VsZWN0aW9uLXBhcmFtZXRlcnN9DQpDT1JSRUxBVElPTl9TRUxFQ1RJT05fVEhSRVNIT0xEIDwtIDAuMzANCk5STVNFX1NFTEVDVElPTl9USFJFU0hPTEQgPC0gMS4wMA0KU0VMRUNUSU9OX1BST1BPUlRJT04gPC0gMC4yMA0KDQpzZWxlY3Rpb25fb2JqZWN0aXZlX21hcCA8LSBjKA0KICBNTUNPTSA9ICJpbmNyZWFzZSIsDQogIFBST0RDT00gPSAiaW5jcmVhc2UiLA0KICBQUk9ERUYgPSAiZGVjcmVhc2UiLA0KICBDRiA9ICJpbmNyZWFzZSIsDQogIERGID0gImluY3JlYXNlIiwNCiAgRENJID0gImRlY3JlYXNlIiwNCiAgRVAgPSAiaW5jcmVhc2UiLA0KICBGRkMgPSAiaW5jcmVhc2UiLA0KICBGRlAgPSAiaW5jcmVhc2UiLA0KICBTUyA9ICJpbmNyZWFzZSINCikNCg0Kc2VsZWN0aW9uX29iamVjdGl2ZXMgPC0gZGF0YS5mcmFtZSgNCiAgVHJhaXQgPSB0cmFpdHMsDQogIFNlbGVjdGlvbl9vYmplY3RpdmUgPSB1bm5hbWUoc2VsZWN0aW9uX29iamVjdGl2ZV9tYXBbdHJhaXRzXSksDQogIHN0cmluZ3NBc0ZhY3RvcnMgPSBGQUxTRQ0KKQ0KDQpzZWxlY3Rpb25fcGFyYW1ldGVycyA8LSBkYXRhLmZyYW1lKA0KICBQYXJhbWV0ZXIgPSBjKA0KICAgICJNZXRob2QgY2hvaWNlIiwNCiAgICAiTWluaW11bSBPT0YgY29ycmVsYXRpb24iLA0KICAgICJNYXhpbXVtIE5STVNFIiwNCiAgICAiU2VsZWN0ZWQgcHJvcG9ydGlvbiINCiAgKSwNCiAgUnVsZSA9IGMoDQogICAgIkhpZ2hlc3QgcjsgdGllcyBieSBsb3dlciBSTVNFLCBsb3dlciBNQUUsIGFuZCBsb3dlciBESUMiLA0KICAgICI+IDAuMzAiLA0KICAgICI8IDEuMDAiLA0KICAgICIyMCUgcGVyIGVsaWdpYmxlIHRyYWl0Ig0KICApLA0KICBzdHJpbmdzQXNGYWN0b3JzID0gRkFMU0UNCikNCg0KZm9ybWF0X3RhYmxlKA0KICBzZWxlY3Rpb25fcGFyYW1ldGVycywNCiAgY2FwdGlvbiA9ICJQYXJhbWV0ZXJzIGFkb3B0ZWQgZm9yIG1ldGhvZCBjaG9pY2UgYW5kIGdlbm9taWMgc2VsZWN0aW9uIiwNCiAgY29sLm5hbWVzID0gYygiUGFyYW1ldGVyIiwgIlJ1bGUiKQ0KKQ0KYGBgDQoNCiMjIyA1LjIgU2VsZWN0ZWQgbWV0aG9kIGFuZCB0cmFpdCBlbGlnaWJpbGl0eQ0KDQpUaGUgcGhlbm90eXBpYyBtZWFuIGFuZCBzdGFuZGFyZCBkZXZpYXRpb24gYXJlIGNhbGN1bGF0ZWQgb25jZSBwZXIgdHJhaXQgZnJvbQ0KdGhlIG9ic2VydmVkIHZhbHVlcy4gRHVwbGljYXRlIG9ic2VydmF0aW9ucyBhY3Jvc3MgbWV0aG9kcyBhcmUgcmVtb3ZlZCBiZWZvcmUNCnRoaXMgY2FsY3VsYXRpb24uDQoNCmBgYHtyIGZpbmFsLW1vZGVsLXNlbGVjdGlvbn0NCnRyYWl0X3NjYWxlIDwtIHByZWRpY3Rpb25zIHw+DQogIGRpc3RpbmN0KFRyYWl0LCBJTkQsIE9ic2VydmVkKSB8Pg0KICBncm91cF9ieShUcmFpdCkgfD4NCiAgc3VtbWFyaXNlKA0KICAgIFBoZW5vdHlwaWNfbWVhbiA9IG1lYW4oT2JzZXJ2ZWQsIG5hLnJtID0gVFJVRSksDQogICAgUGhlbm90eXBpY19TRCA9IHNkKE9ic2VydmVkLCBuYS5ybSA9IFRSVUUpLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKQ0KDQptb2RlbF9zZWxlY3Rpb24gPC0gbW9kZWxfY29tcGFyaXNvbiB8Pg0KICBncm91cF9ieShUcmFpdCkgfD4NCiAgYXJyYW5nZShkZXNjKHIpLCBSTVNFLCBNQUUsIE1lYW5fRElDLCAuYnlfZ3JvdXAgPSBUUlVFKSB8Pg0KICBzbGljZSgxTCkgfD4NCiAgdW5ncm91cCgpIHw+DQogIHRyYW5zbXV0ZSgNCiAgICBUcmFpdCwNCiAgICBTZWxlY3RlZF9tZXRob2QgPSBNZXRob2QsDQogICAgciwNCiAgICBwX3ZhbHVlLA0KICAgIFJNU0UsDQogICAgTUFFLA0KICAgIEJpYXMsDQogICAgU2xvcGUsDQogICAgTWVhbl9ESUMsDQogICAgRGVsdGFfRElDLA0KICAgIFdwcm9iLA0KICAgIEVSDQogICkgfD4NCiAgbGVmdF9qb2luKHRyYWl0X3NjYWxlLCBieSA9ICJUcmFpdCIpIHw+DQogIGxlZnRfam9pbihzZWxlY3Rpb25fb2JqZWN0aXZlcywgYnkgPSAiVHJhaXQiKSB8Pg0KICBtdXRhdGUoDQogICAgTlJNU0UgPSBSTVNFIC8gUGhlbm90eXBpY19TRCwNCiAgICBQcmVkaWN0aXZlX3NraWxsX3ZzX1NEID0gMSAtIE5STVNFLA0KICAgIEVsaWdpYmxlX2J5X2NvcnJlbGF0aW9uID0gciA+IENPUlJFTEFUSU9OX1NFTEVDVElPTl9USFJFU0hPTEQsDQogICAgRWxpZ2libGVfYnlfZXJyb3IgPSBOUk1TRSA8IE5STVNFX1NFTEVDVElPTl9USFJFU0hPTEQsDQogICAgU2VsZWN0aW9uX2VsaWdpYmxlID0gRWxpZ2libGVfYnlfY29ycmVsYXRpb24gJiBFbGlnaWJsZV9ieV9lcnJvcg0KICApIHw+DQogIGFycmFuZ2UobWF0Y2goVHJhaXQsIHRyYWl0cykpDQoNCmVsaWdpYmxlX3RyYWl0cyA8LSBtb2RlbF9zZWxlY3Rpb24gfD4NCiAgZmlsdGVyKFNlbGVjdGlvbl9lbGlnaWJsZSkgfD4NCiAgcHVsbChUcmFpdCkNCmBgYA0KDQpUaGUgbWFpbiB0YWJsZSBjb25jZW50cmF0ZXMgdGhlIG1ldHJpY3MgbmVlZGVkIHRvIGludGVycHJldCBtZXRob2QgY2hvaWNlIGFuZA0KZWxpZ2liaWxpdHksIGF2b2lkaW5nIHBhcmFsbGVsIHRhYmxlcyBmb3IgdGhlIHNhbWUgZGVjaXNpb24uIFRoZSBjb3JyZWxhdGlvbg0KcC12YWx1ZSByZW1haW5zIGF2YWlsYWJsZSBpbiB0aGUgc2NpZW50aWZpYyBvYmplY3QgYnV0IGlzIG5vdCB1c2VkIGFzIGENCnNlbGVjdGlvbiBmaWx0ZXIuDQoNCmBgYHtyIG1vZGVsLXNlbGVjdGlvbi10YWJsZX0NCiMgRElTUExBWS1PTkxZIFNUQVJUDQptb2RlbF9zZWxlY3Rpb25fZGlzcGxheSA8LSBtb2RlbF9zZWxlY3Rpb24gfD4NCiAgbXV0YXRlKA0KICAgIE1ldGhvZF9sYWJlbCA9IHVubmFtZShtZXRob2RfbGFiZWxzW1NlbGVjdGVkX21ldGhvZF0pLA0KICAgIE9iamVjdGl2ZSA9IHVubmFtZShzZWxlY3Rpb25fb2JqZWN0aXZlX2xhYmVsc1tTZWxlY3Rpb25fb2JqZWN0aXZlXSksDQogICAgRWxpZ2libGUgPSBpZl9lbHNlKFNlbGVjdGlvbl9lbGlnaWJsZSwgIlllcyIsICJObyIpDQogICkgfD4NCiAgdHJhbnNtdXRlKA0KICAgIFRyYWl0LA0KICAgIE1ldGhvZF9sYWJlbCwNCiAgICBPYmplY3RpdmUsDQogICAgciA9IHNwcmludGYoIiUuM2YiLCByKSwNCiAgICBSTVNFID0gc3ByaW50ZigiJS4zZiIsIFJNU0UpLA0KICAgIE5STVNFID0gc3ByaW50ZigiJS4zZiIsIE5STVNFKSwNCiAgICBNQUUgPSBzcHJpbnRmKCIlLjNmIiwgTUFFKSwNCiAgICBCaWFzID0gc3ByaW50ZigiJS4zZiIsIEJpYXMpLA0KICAgIFNsb3BlID0gc3ByaW50ZigiJS4zZiIsIFNsb3BlKSwNCiAgICBESUMgPSBzcHJpbnRmKCIlLjJmIiwgTWVhbl9ESUMpLA0KICAgIEVsaWdpYmxlDQogICkNCg0KZm9ybWF0X3RhYmxlKA0KICBtb2RlbF9zZWxlY3Rpb25fZGlzcGxheSwNCiAgY2FwdGlvbiA9ICJTZWxlY3RlZCBtZXRob2QgYW5kIGVsaWdpYmlsaXR5IGZvciBzZWxlY3Rpb24gYnkgdHJhaXQiLA0KICBjb2wubmFtZXMgPSBjKA0KICAgICJUcmFpdCIsICJNZXRob2QiLCAiT2JqZWN0aXZlIiwgInIiLCAiUk1TRSIsICJOUk1TRSIsDQogICAgIk1BRSIsICJCaWFzIiwgIlNsb3BlIiwgIk1lYW4gRElDIiwgIkVsaWdpYmxlIg0KICApDQopDQojIERJU1BMQVktT05MWSBFTkQNCmBgYA0KDQojIyMgNS4zIFN1bW1hcnkgb2YgTUNNQyBkaWFnbm9zdGljcw0KDQpEaWFnbm9zdGljcyBjYWxjdWxhdGVkIGluIE1vZHVsZSAwMyBhcmUgc3VtbWFyaXplZCBoZXJlIHdpdGhvdXQgY3JlYXRpbmcgYQ0KcmV2aWV3IHN0YWdlLiBBIGNoYWluIGlzIGNvdW50ZWQgYXMgbm90IGZsYWdnZWQgd2hlbiBub25lIG9mIHRoZSBtb25pdG9yZWQNCnBhcmFtZXRlcnMgaW4gdGhhdCBmaXQgcmVjZWl2ZWQgYFJldmlld19mbGFnYCBpbiB0aGUgc291cmNlIG9iamVjdC4gVGhlIGZpZWxkDQpuYW1lIGlzIHByZXNlcnZlZCBmb3IgdHJhY2VhYmlsaXR5LCBidXQgaXRzIGludGVycHJldGF0aW9uIGhlcmUgaXMgb25seSBhDQpkaWFnbm9zdGljIHN1bW1hcnkuDQoNCmBgYHtyIGNvbnZlcmdlbmNlLW92ZXJ2aWV3fQ0KZml0X2NvbnZlcmdlbmNlIDwtIGNvbnZlcmdlbmNlIHw+DQogIGdyb3VwX2J5KFJ1bl9pZCwgVHJhaXQsIE1ldGhvZCkgfD4NCiAgc3VtbWFyaXNlKA0KICAgIERpYWdub3N0aWNfZmxhZyA9IGFueShSZXZpZXdfZmxhZywgbmEucm0gPSBUUlVFKSwNCiAgICAuZ3JvdXBzID0gImRyb3AiDQogICkNCg0KY29udmVyZ2VuY2Vfb3ZlcnZpZXcgPC0gZGF0YS5mcmFtZSgNCiAgTGV2ZWwgPSBjKCJGaXRzIiwgIk1vbml0b3JlZCBwYXJhbWV0ZXJzIiksDQogIFRvdGFsID0gYyhucm93KGZpdF9jb252ZXJnZW5jZSksIG5yb3coY29udmVyZ2VuY2UpKSwNCiAgV2l0aG91dF9mbGFncyA9IGMoDQogICAgc3VtKCFmaXRfY29udmVyZ2VuY2UkRGlhZ25vc3RpY19mbGFnKSwNCiAgICBzdW0oIWNvbnZlcmdlbmNlJFJldmlld19mbGFnLCBuYS5ybSA9IFRSVUUpDQogICkNCikgfD4NCiAgbXV0YXRlKA0KICAgIFByb3BvcnRpb25fd2l0aG91dF9mbGFncyA9IFdpdGhvdXRfZmxhZ3MgLyBUb3RhbA0KICApDQoNCmZvcm1hdF90YWJsZSgNCiAgY29udmVyZ2VuY2Vfb3ZlcnZpZXcsDQogIGRpZ2l0cyA9IDQsDQogIGNhcHRpb24gPSAiR2xvYmFsIHN1bW1hcnkgb2YgTUNNQyBkaWFnbm9zdGljcyIsDQogIGNvbC5uYW1lcyA9IGMoIkxldmVsIiwgIlRvdGFsIiwgIldpdGhvdXQgZmxhZ3MiLCAiUHJvcG9ydGlvbiIpDQopDQpgYGANCg0KVGhlIHByZWRvbWluYW5jZSBvZiBmaXRzIGFuZCBwYXJhbWV0ZXJzIHdpdGhvdXQgZmxhZ3Mgc3VwcG9ydHMgdGhlIGNvbmNsdXNpb24NCnRoYXQgbW9zdCBjaGFpbnMgc2hvd2VkIGJlaGF2aW9yIGNvbXBhdGlibGUgd2l0aCBjb252ZXJnZW5jZSBhY2NvcmRpbmcgdG8gdGhlDQptb25pdG9yZWQgZGlhZ25vc3RpY3MuIFRoaXMgc3VtbWFyeSBkb2VzIG5vdCBwcm92ZSBjb252ZXJnZW5jZSBvZiBldmVyeSBtYXJrZXINCmVmZmVjdCBpbmRpdmlkdWFsbHkgYW5kIGRvZXMgbm90IHBhcnRpY2lwYXRlIGluIG1ldGhvZCBjaG9pY2UuDQoNCiMjIyA1LjQgUmVsYXRpb25zaGlwIGJldHdlZW4gb2JzZXJ2ZWQgYW5kIHByZWRpY3RlZCB2YWx1ZXMNCg0KSW4gYWRkaXRpb24gdG8gbnVtZXJpY2FsIG1ldHJpY3MsIG9ic2VydmVkIHZlcnN1cyBwcmVkaWN0ZWQgdmFsdWVzIGFyZSBzaG93bg0KZm9yIHRoZSBzZWxlY3RlZCBtZXRob2QgaW4gZWFjaCB0cmFpdC4gVGhlIGRhc2hlZCBsaW5lIHJlcHJlc2VudHMgdGhlIDE6MQ0KcmVsYXRpb25zaGlwOyB0aGUgZml0dGVkIGxpbmUgaXMgdGhlIGxpbmVhciByZWdyZXNzaW9uIG9mIG9ic2VydmVkIHZhbHVlcyBvbg0KdGhlIE9PRiBwcmVkaWN0aW9ucy4gRGlmZmVyZW5jZXMgYmV0d2VlbiB0aGUgdHdvIGhlbHAgdmlzdWFsaXplIGNhbGlicmF0aW9uIGluDQphZGRpdGlvbiB0byB0aGUgYXNzb2NpYXRpb24gc3VtbWFyaXplZCBieSBcKHJcKS4NCg0KYGBge3Igb2JzZXJ2ZWQtcHJlZGljdGVkLWZpZ3VyZSwgZmlnLndpZHRoPTEyLCBmaWcuaGVpZ2h0PTEwLCBmaWcuYWx0PSJGYWNldGVkIHNjYXR0ZXJwbG90cyBvZiBvYnNlcnZlZCB2YWx1ZXMgYWdhaW5zdCBPT0YgdmFsdWVzIHByZWRpY3RlZCBieSB0aGUgc2VsZWN0ZWQgbWV0aG9kIGZvciBlYWNoIHRyYWl0LCB3aXRoIGEgMToxIGxpbmUgYW5kIGZpdHRlZCBsaW5lYXIgcmVncmVzc2lvbi4ifQ0Kc2VsZWN0ZWRfcHJlZGljdGlvbnMgPC0gcHJlZGljdGlvbnMgfD4NCiAgaW5uZXJfam9pbigNCiAgICBtb2RlbF9zZWxlY3Rpb24gfD4NCiAgICAgIHNlbGVjdChUcmFpdCwgU2VsZWN0ZWRfbWV0aG9kLCByLCBTZWxlY3Rpb25fZWxpZ2libGUpLA0KICAgIGJ5ID0gIlRyYWl0Ig0KICApIHw+DQogIGZpbHRlcihNZXRob2QgPT0gU2VsZWN0ZWRfbWV0aG9kKSB8Pg0KICBtdXRhdGUoDQogICAgTWV0aG9kX2xhYmVsID0gdW5uYW1lKG1ldGhvZF9sYWJlbHNbTWV0aG9kXSksDQogICAgRmFjZXQgPSBwYXN0ZTAoDQogICAgICBUcmFpdCwgIiDigJQgIiwgTWV0aG9kX2xhYmVsLA0KICAgICAgIlxuciA9ICIsIHNwcmludGYoIiUuM2YiLCByKQ0KICAgICkNCiAgKQ0KDQpvYnNlcnZlZF9wcmVkaWN0ZWRfcGxvdCA8LSBzZWxlY3RlZF9wcmVkaWN0aW9ucyB8Pg0KICBnZ3Bsb3QoYWVzKHggPSBQcmVkaWN0ZWQsIHkgPSBPYnNlcnZlZCkpICsNCiAgZ2VvbV9hYmxpbmUoaW50ZXJjZXB0ID0gMCwgc2xvcGUgPSAxLCBsaW5ldHlwZSA9IDIsIGxpbmV3aWR0aCA9IDAuNSkgKw0KICBnZW9tX3BvaW50KGFscGhhID0gMC42NSwgc2l6ZSA9IDEuNikgKw0KICBnZW9tX3Ntb290aChtZXRob2QgPSAibG0iLCBmb3JtdWxhID0geSB+IHgsIHNlID0gRkFMU0UsIGxpbmV3aWR0aCA9IDAuNykgKw0KICBmYWNldF93cmFwKH4gRmFjZXQsIHNjYWxlcyA9ICJmcmVlIiwgbmNvbCA9IDIpICsNCiAgbGFicygNCiAgICB4ID0gIk9PRiBwcmVkaWN0ZWQgdmFsdWUiLA0KICAgIHkgPSAiT2JzZXJ2ZWQgdmFsdWUiLA0KICAgIHRpdGxlID0gIlJlbGF0aW9uc2hpcCBiZXR3ZWVuIG9ic2VydmVkIGFuZCBwcmVkaWN0ZWQgdmFsdWVzIg0KICApICsNCiAgcHJvamVjdF90aGVtZSArDQogIHRoZW1lKGxlZ2VuZC5wb3NpdGlvbiA9ICJub25lIikNCg0Kb2JzZXJ2ZWRfcHJlZGljdGVkX3Bsb3QNCmBgYA0KDQojIyA2LiBNYXJrZXItYmFzZWQgaGVyaXRhYmlsaXR5IGFuYWxvZ3VlIGFuZCBhZGp1c3RlZCBhY2N1cmFjeSBpbiBSUi1CTFVQL0JSUg0KDQojIyMgNi4xIERlZmluaXRpb24gYW5kIGludGVycHJldGF0aW9uIGxpbWl0cw0KDQpGb2xsb3dpbmcgU2lsdmEgZXQgYWwuIFtAc2lsdmEyMDIxYnJyZ3VhdmFdLCBhIG1hcmtlci1iYXNlZCBhZGRpdGl2ZS12YXJpYW5jZQ0KYW5hbG9ndWUgaXMgb2J0YWluZWQgZnJvbSB0aGUgY29tbW9uIG1hcmtlciB2YXJpYW5jZSBhbmQgdGhlIFwoXHN1bSAycHFcKQ0KZGVub21pbmF0b3IuIEZvbGQtbGV2ZWwgYWRqdXN0ZWQgYWNjdXJhY3kgaXMgZGVmaW5lZCBhcw0KXChyX2YvXHNxcnR7SF9mXjJ9XCkuIFRoZSByZXN1bHRpbmcgXChIXjJcKSBpcyByZXBvcnRlZCBhcyBhIG1vZGVsLWJhc2VkDQpoZXJpdGFiaWxpdHkgYW5hbG9ndWUgcmF0aGVyIHRoYW4gYXMgYW4gaW5kZXBlbmRlbnQgY2xhc3NpY2FsIGVzdGltYXRlIG9mDQpuYXJyb3ctc2Vuc2UgaGVyaXRhYmlsaXR5LiBUaGUgcXVhbnRpdHkgbmFtZWQgYFByZWRpY3RpdmVfYWNjdXJhY3lgIGlzIGEgZGVyaXZlZCByYXRpbywgYHJfZi9zcXJ0KEhfZl4yKWAsIHJhdGhlciB0aGFuIGFuIG9ic2VydmVkIGNvcnJlbGF0aW9uIGJldHdlZW4gdHJ1ZSBhbmQgcHJlZGljdGVkIGdlbmV0aWMgdmFsdWVzLiBCZWNhdXNlIGl0IGRlcGVuZHMgb24gc2FtcGxlIGVzdGltYXRlcyBvZiBgcl9mYCBhbmQgYEhfZl4yYCwgaXQgbWF5IGJlIG5lZ2F0aXZlIG9yIGV4Y2VlZCAxOyBpdCBzaG91bGQgdGhlcmVmb3JlIGJlIGludGVycHJldGVkIGFzIGFuIGFkanVzdGVkLWFjY3VyYWN5IGluZGV4IHVuZGVyIHRoaXMgZGVmaW5pdGlvbiwgbm90IGFzIGEgbWVhc3VyZSBuZWNlc3NhcmlseSBib3VuZGVkIHRvIFswLCAxXS4NCg0KIyMjIDYuMiBGb2xkLWxldmVsIGRlcml2YXRpb24gYW5kIGFjcm9zcy1mb2xkIHN1bW1hcnkNCg0KYGBge3IgcnJibHVwLWhlcml0YWJpbGl0eX0NCiMgQ29tcHV0ZSBhbmQgb3JnYW5pemUgdGhlIFJSLUJMVVAvQlJSIG1vZGVsLWJhc2VkIGhlcml0YWJpbGl0eSBzdW1tYXJ5Lg0KcnJibHVwX3ZhcmlhbmNlX2NvbXBvbmVudHMgPC0gY29udmVyZ2VuY2UgfD4NCiAgZmlsdGVyKA0KICAgIE1ldGhvZCA9PSAiUlJCTFVQIiwNCiAgICBQYXJhbWV0ZXIgJWluJSBjKCJSZXNpZHVhbF92YXJpYW5jZSIsICJNYXJrZXJfdmFyaWFuY2UiKQ0KICApIHw+DQogIHNlbGVjdChSdW5faWQsIFRyYWl0LCBGb2xkLCBNZXRob2QsIFBhcmFtZXRlciwgUG9zdGVyaW9yX21lYW4pIHw+DQogIHBpdm90X3dpZGVyKG5hbWVzX2Zyb20gPSBQYXJhbWV0ZXIsIHZhbHVlc19mcm9tID0gUG9zdGVyaW9yX21lYW4pDQoNCnJyYmx1cF9mb2xkX2NvcnJlbGF0aW9ucyA8LSBtZXRyaWNzIHw+DQogIGZpbHRlcihNZXRob2QgPT0gIlJSQkxVUCIpIHw+DQogIHNlbGVjdChUcmFpdCwgRm9sZCwgQ29ycmVsYXRpb24pDQoNCiMgT3JnYW5pemUgdGhlIGNyb3NzLXZhbGlkYXRpb24gYW5kIGZpdHRpbmcgc3RydWN0dXJlLg0KcnJibHVwX2hlcml0YWJpbGl0eV9ieV9mb2xkIDwtIHJyYmx1cF92YXJpYW5jZV9jb21wb25lbnRzIHw+DQogIGxlZnRfam9pbihycmJsdXBfZm9sZF9jb3JyZWxhdGlvbnMsIGJ5ID0gYygiVHJhaXQiLCAiRm9sZCIpKSB8Pg0KICBtdXRhdGUoDQogICAgTWFya2VyX3ZhcmlhbmNlX2Rlbm9taW5hdG9yID0gbWF0cmljZXNfb2JqZWN0JGRlbm9taW5hdG9yLA0KICAgIEFkZGl0aXZlX3ZhcmlhbmNlID0gTWFya2VyX3ZhcmlhbmNlICogTWFya2VyX3ZhcmlhbmNlX2Rlbm9taW5hdG9yLA0KICAgIEgyID0gQWRkaXRpdmVfdmFyaWFuY2UgLyAoQWRkaXRpdmVfdmFyaWFuY2UgKyBSZXNpZHVhbF92YXJpYW5jZSksDQogICAgUHJlZGljdGl2ZV9hY2N1cmFjeSA9IENvcnJlbGF0aW9uIC8gc3FydChIMikNCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpLCBGb2xkKQ0KDQojIFN1bW1hcml6ZSB0aGUgUlItQkxVUC9CUlIgbW9kZWwtYmFzZWQgaGVyaXRhYmlsaXR5IGFuYWxvZ3VlIGFuZCBhZGp1c3RlZCBhY2N1cmFjeSBhY3Jvc3MgZm9sZHMuDQpycmJsdXBfaGVyaXRhYmlsaXR5X3N1bW1hcnkgPC0gcnJibHVwX2hlcml0YWJpbGl0eV9ieV9mb2xkIHw+DQogIGdyb3VwX2J5KFRyYWl0KSB8Pg0KICBzdW1tYXJpc2UoDQogICAgTWVhbl9IMiA9IG1lYW4oSDIpLA0KICAgIFNEX0gyID0gc2QoSDIpLA0KICAgIE1lYW5fZm9sZF9yID0gbWVhbihDb3JyZWxhdGlvbiksDQogICAgU0RfZm9sZF9yID0gc2QoQ29ycmVsYXRpb24pLA0KICAgIE1lYW5fcHJlZGljdGl2ZV9hY2N1cmFjeSA9IG1lYW4oUHJlZGljdGl2ZV9hY2N1cmFjeSksDQogICAgU0RfcHJlZGljdGl2ZV9hY2N1cmFjeSA9IHNkKFByZWRpY3RpdmVfYWNjdXJhY3kpLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpKQ0KYGBgDQoNCmBycmJsdXBfaGVyaXRhYmlsaXR5X3N1bW1hcnlgIHJldGFpbnMsIGJ5IHRyYWl0LCB0aGUgbW9kZWwtZGVyaXZlZCBSUi1CTFVQL0JSUiBoZXJpdGFiaWxpdHkgYW5hbG9ndWUgYW5kIHRoZSByYXRpbyBgQ29ycmVsYXRpb24gLyBzcXJ0KEgyKWAuIFRoaXMgcmF0aW8gaXMgbm90IGEgY29udmVudGlvbmFsIGNvcnJlbGF0aW9uIGFuZCBtYXkgbGllIG91dHNpZGUgWzAsIDFdLg0KDQojIyMgNi4zIFRyYWl0LWxldmVsIHN1bW1hcnkNCg0KVGhlIHRhYmxlIHByZXNlbnRzIHRoZSBxdWFudGl0aWVzIGp1c3QgZGVyaXZlZC4gYFJSQkxVUF9IMmAgaXMgYQ0KbWFya2VyLW1vZGVsLWJhc2VkIGFuYWxvZ3VlIHJhdGhlciB0aGFuIGFuIGluZGVwZW5kZW50IGNsYXNzaWNhbCBlc3RpbWF0ZSBvZg0KbmFycm93LXNlbnNlIGhlcml0YWJpbGl0eSwgYW5kIHRoZSBhZGp1c3RlZC1hY2N1cmFjeSByYXRpbyBpcyBub3QgY29uc3RyYWluZWQNCnRvIGBbMCwgMV1gLg0KDQpgYGB7ciBycmJsdXAtaGVyaXRhYmlsaXR5LXRhYmxlfQ0KIyBESVNQTEFZLU9OTFkgU1RBUlQNCnJyYmx1cF90YWJsZSA8LSBycmJsdXBfaGVyaXRhYmlsaXR5X3N1bW1hcnkgfD4NCiAgdHJhbnNtdXRlKA0KICAgIFRyYWl0LA0KICAgIFJSQkxVUF9IMiA9IHNwcmludGYoIiUuM2YiLCBNZWFuX0gyKSwNCiAgICBTRF9SUkJMVVBfSDIgPSBzcHJpbnRmKCIlLjNmIiwgU0RfSDIpLA0KICAgIFJSQkxVUF9wcmVkaWN0aXZlX2FjY3VyYWN5ID0gc3ByaW50ZigiJS4zZiIsIE1lYW5fcHJlZGljdGl2ZV9hY2N1cmFjeSksDQogICAgU0RfUlJCTFVQX3ByZWRpY3RpdmVfYWNjdXJhY3kgPSBzcHJpbnRmKCIlLjNmIiwgU0RfcHJlZGljdGl2ZV9hY2N1cmFjeSkNCiAgKQ0KDQpmb3JtYXRfdGFibGUoDQogIHJyYmx1cF90YWJsZSwNCiAgY2FwdGlvbiA9ICJNYXJrZXItYmFzZWQgaGVyaXRhYmlsaXR5IGFuYWxvZ3VlIGFuZCBhZGp1c3RlZCBwcmVkaWN0aXZlIGFjY3VyYWN5IGluIFJSLUJMVVAvQlJSIiwNCiAgY29sLm5hbWVzID0gYygiVHJhaXQiLCAiUlItQkxVUCBIMiIsICJTRCBSUi1CTFVQIEgyIiwgIlJSLUJMVVAgcHJlZGljdGl2ZSBhY2N1cmFjeSIsICJTRCBSUi1CTFVQIHByZWRpY3RpdmUgYWNjdXJhY3kiKQ0KKQ0KIyBESVNQTEFZLU9OTFkgRU5EDQpgYGANCg0KIyMgNy4gT09GIEdFQlZzIGFuZCBhbiBpbnRlcnByZXRhYmxlIHBoZW5vdHlwaWMgc2NhbGUNCg0KIyMjIDcuMSBDcm9zcy1maXR0ZWQgZ2Vub21pYyBjb21wb25lbnQNCg0KVGhlIGdlbm9taWMgY29tcG9uZW50IG9mIGVhY2ggaW5kaXZpZHVhbCBjb250aW51ZXMgdG8gYmUgb2J0YWluZWQgaW4gdGhlIGZvbGQNCmluIHdoaWNoIHRoYXQgaW5kaXZpZHVhbCdzIHBoZW5vdHlwZSB3YXMgbWFza2VkLiBUaGVyZWZvcmUsIGBHRUJWX2NlbnRlcmVkYCBpcw0KYSBjcm9zcy1maXR0ZWQgT09GIHNjb3JlIGFuZCBub3QgYSBmaW5hbCBnZW5ldGljIHZhbHVlIGZyb20gcmVmaXR0aW5nIGFsbCAxNTANCnBoZW5vdHlwZXMuDQoNClRvIGZhY2lsaXRhdGUgaW50ZXJwcmV0YXRpb24gaW4gdGhlIHRyYWl0IHVuaXQsIHRoZSBmb2xsb3dpbmcgcXVhbnRpdHkgaXMgYWxzbw0KY2FsY3VsYXRlZDoNCg0KXFsNCkdFQlZfe3NjYWxlfSA9IFxiYXJ7eX0gKyBHRUJWX3tjZW50ZXJlZH0uDQpcXQ0KDQpBZGRpbmcgdGhlIHBoZW5vdHlwaWMgbWVhbiBzaGlmdHMgdGhlIHNjYWxlLiBJdCBkb2VzIG5vdCBjaGFuZ2UgdGhlIG9yZGVyaW5nIG9mDQppbmRpdmlkdWFscyBhbmQgc2hvdWxkIG5vdCBiZSBjb25mdXNlZCB3aXRoIHRoZSBjb21wbGV0ZSBwaGVub3R5cGljIHByZWRpY3Rpb24sDQpiZWNhdXNlIG90aGVyIG1vZGVsIGNvbXBvbmVudHMgbWF5IGNvbnRyaWJ1dGUgdG8gYFByZWRpY3RlZGAuDQoNCmBgYHtyIHNlbGVjdGVkLW9vZi1nZW5vbWljLXZhbHVlc30NCnNlbGVjdGVkX29vZl9nZW5vbWljX3ZhbHVlcyA8LSBwcmVkaWN0aW9ucyB8Pg0KICBpbm5lcl9qb2luKA0KICAgIG1vZGVsX3NlbGVjdGlvbiB8Pg0KICAgICAgc2VsZWN0KA0KICAgICAgICBUcmFpdCwgU2VsZWN0ZWRfbWV0aG9kLCByLCBwX3ZhbHVlLCBOUk1TRSwNCiAgICAgICAgU2VsZWN0aW9uX2VsaWdpYmxlLCBTZWxlY3Rpb25fb2JqZWN0aXZlDQogICAgICApLA0KICAgIGJ5ID0gIlRyYWl0Ig0KICApIHw+DQogIGZpbHRlcihNZXRob2QgPT0gU2VsZWN0ZWRfbWV0aG9kKSB8Pg0KICBsZWZ0X2pvaW4odHJhaXRfc2NhbGUsIGJ5ID0gIlRyYWl0IikgfD4NCiAgdHJhbnNtdXRlKA0KICAgIElORCwNCiAgICBUcmFpdCwNCiAgICBGb2xkLA0KICAgIE1ldGhvZCwNCiAgICBPYnNlcnZlZCwNCiAgICBQcmVkaWN0ZWQsDQogICAgU2VsZWN0aW9uX29iamVjdGl2ZSwNCiAgICBTZWxlY3Rpb25fZWxpZ2libGUsDQogICAgT09GX3IgPSByLA0KICAgIE9PRl9wX3ZhbHVlID0gcF92YWx1ZSwNCiAgICBPT0ZfTlJNU0UgPSBOUk1TRSwNCiAgICBQaGVub3R5cGljX21lYW4sDQogICAgR0VCVl9jZW50ZXJlZCA9IEdlbm9taWNfY29tcG9uZW50LA0KICAgIEdFQlZfb25fdHJhaXRfc2NhbGUgPSBQaGVub3R5cGljX21lYW4gKyBHZW5vbWljX2NvbXBvbmVudA0KICApIHw+DQogIGFycmFuZ2UobWF0Y2goVHJhaXQsIHRyYWl0cyksIElORCkNCmBgYA0KDQojIyA4LiBJbmRpdmlkdWFsIHNlbGVjdGlvbiBpbiBlbGlnaWJsZSB0cmFpdHMNCg0KIyMjIDguMSBSYW5raW5nIGFuZCBzZWxlY3Rpb24gaW50ZW5zaXR5DQoNCk9ubHkgdHJhaXRzIHRoYXQgc2ltdWx0YW5lb3VzbHkgc2F0aXNmeSAkciA+IDAuMzAkIGFuZCBgTlJNU0UgPCAxYCBlbnRlciB0aGlzDQpzdGFnZS4gV2l0aGluIGVhY2ggZWxpZ2libGUgdHJhaXQsIGluZGl2aWR1YWxzIGFyZSBvcmRlcmVkIGJ5IHRoZSBHRUJWIG9uIHRoZQ0KdHJhaXQgc2NhbGUgd2hpbGUgcmVzcGVjdGluZyB0aGUgYnJlZWRpbmcgb2JqZWN0aXZlLiBGb3IgdHJhaXRzIHRvIGJlIHJlZHVjZWQsDQp0aGUgc2lnbiBpcyByZXZlcnNlZCBvbmx5IGZvciByYW5raW5nLiBUaGUgYWRvcHRlZCBzZWxlY3Rpb24gaW50ZW5zaXR5IHJlbWFpbnMNCjIwJSwgYW5kIGBJTkRgIGlzIHVzZWQgb25seSBhcyBhIGRldGVybWluaXN0aWMgdGllLWJyZWFrZXIgZm9yIGV4YWN0IHRpZXMuDQoNCmBgYHtyIGdlbm9taWMtcmFua2luZ30NCmdlbm9taWNfcmFua2luZyA8LSBzZWxlY3RlZF9vb2ZfZ2Vub21pY192YWx1ZXMgfD4NCiAgZmlsdGVyKFNlbGVjdGlvbl9lbGlnaWJsZSkgfD4NCiAgbXV0YXRlKA0KICAgIFNlbGVjdGlvbl9zY29yZSA9IGNhc2Vfd2hlbigNCiAgICAgIFNlbGVjdGlvbl9vYmplY3RpdmUgPT0gImluY3JlYXNlIiB+IEdFQlZfb25fdHJhaXRfc2NhbGUsDQogICAgICBTZWxlY3Rpb25fb2JqZWN0aXZlID09ICJkZWNyZWFzZSIgfiAtR0VCVl9vbl90cmFpdF9zY2FsZSwNCiAgICAgIFRSVUUgfiBOQV9yZWFsXw0KICAgICkNCiAgKSB8Pg0KICBncm91cF9ieShUcmFpdCkgfD4NCiAgYXJyYW5nZShkZXNjKFNlbGVjdGlvbl9zY29yZSksIElORCwgLmJ5X2dyb3VwID0gVFJVRSkgfD4NCiAgbXV0YXRlKFJhbmsgPSByb3dfbnVtYmVyKCkpIHw+DQogIHVuZ3JvdXAoKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpLCBSYW5rKQ0KDQpzZWxlY3Rpb25fc2l6ZXMgPC0gZ2Vub21pY19yYW5raW5nIHw+DQogIGNvdW50KFRyYWl0LCBuYW1lID0gIk5fYXZhaWxhYmxlIikgfD4NCiAgbXV0YXRlKA0KICAgIFNlbGVjdGlvbl9wcm9wb3J0aW9uID0gU0VMRUNUSU9OX1BST1BPUlRJT04sDQogICAgTl9zZWxlY3RlZCA9IHBtYXgoDQogICAgICAxTCwNCiAgICAgIGFzLmludGVnZXIoY2VpbGluZyhTZWxlY3Rpb25fcHJvcG9ydGlvbiAqIE5fYXZhaWxhYmxlKSkNCiAgICApDQogICkgfD4NCiAgYXJyYW5nZShtYXRjaChUcmFpdCwgdHJhaXRzKSkNCg0Kc2VsZWN0ZWRfaW5kaXZpZHVhbHNfYnlfdHJhaXQgPC0gZ2Vub21pY19yYW5raW5nIHw+DQogIGlubmVyX2pvaW4oc2VsZWN0aW9uX3NpemVzLCBieSA9ICJUcmFpdCIpIHw+DQogIGZpbHRlcihSYW5rIDw9IE5fc2VsZWN0ZWQpIHw+DQogIGxlZnRfam9pbigNCiAgICBtYXRyaWNlc19vYmplY3QkbWV0YWRhdGEgfD4NCiAgICAgIHNlbGVjdChJTkQsIEZBTSksDQogICAgYnkgPSAiSU5EIg0KICApIHw+DQogIHNlbGVjdCgNCiAgICBUcmFpdCwgUmFuaywgSU5ELCBGQU0sIE1ldGhvZCwgU2VsZWN0aW9uX29iamVjdGl2ZSwNCiAgICBHRUJWX2NlbnRlcmVkLCBHRUJWX29uX3RyYWl0X3NjYWxlLCBTZWxlY3Rpb25fc2NvcmUsDQogICAgT09GX3IsIE9PRl9OUk1TRSwgU2VsZWN0aW9uX3Byb3BvcnRpb24sDQogICAgTl9hdmFpbGFibGUsIE5fc2VsZWN0ZWQNCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpLCBSYW5rKQ0KYGBgDQoNCiMjIyA4LjIgUHJldmlldyBvZiBzZWxlY3RlZCBpbmRpdmlkdWFscw0KDQpUaGUgdGFibGUgc2hvd3MgdGhlIGZpcnN0IGZpdmUgaW5kaXZpZHVhbHMgZm9yIGVhY2ggZWxpZ2libGUgdHJhaXQuIFRoZQ0KYHNlbGVjdGVkX2luZGl2aWR1YWxzX2J5X3RyYWl0YCBvYmplY3QgcmV0YWlucyB0aGUgY29tcGxldGUgc2V0IG9mIHRoZSBzZWxlY3RlZA0KMjAlLg0KDQpgYGB7ciBwcm9wb3J0aW9uYWwtc2VsZWN0aW9uLXByZXZpZXd9DQojIERJU1BMQVktT05MWSBTVEFSVA0Kc2VsZWN0aW9uX3ByZXZpZXcgPC0gc2VsZWN0ZWRfaW5kaXZpZHVhbHNfYnlfdHJhaXQgfD4NCiAgZ3JvdXBfYnkoVHJhaXQpIHw+DQogIHNsaWNlX2hlYWQobiA9IDUpIHw+DQogIHVuZ3JvdXAoKSB8Pg0KICBtdXRhdGUoDQogICAgTWV0aG9kX2xhYmVsID0gdW5uYW1lKG1ldGhvZF9sYWJlbHNbTWV0aG9kXSksDQogICAgT2JqZWN0aXZlID0gdW5uYW1lKHNlbGVjdGlvbl9vYmplY3RpdmVfbGFiZWxzW1NlbGVjdGlvbl9vYmplY3RpdmVdKQ0KICApIHw+DQogIHRyYW5zbXV0ZSgNCiAgICBUcmFpdCwNCiAgICBSYW5rLA0KICAgIElORCwNCiAgICBGQU0sDQogICAgTWV0aG9kX2xhYmVsLA0KICAgIE9iamVjdGl2ZSwNCiAgICBHRUJWID0gc3ByaW50ZigiJS4zZiIsIEdFQlZfb25fdHJhaXRfc2NhbGUpLA0KICAgIHIgPSBzcHJpbnRmKCIlLjNmIiwgT09GX3IpLA0KICAgIE5STVNFID0gc3ByaW50ZigiJS4zZiIsIE9PRl9OUk1TRSkNCiAgKQ0KDQpmb3JtYXRfdGFibGUoDQogIHNlbGVjdGlvbl9wcmV2aWV3LA0KICBjYXB0aW9uID0gIkZpcnN0IGZpdmUgc2VsZWN0ZWQgaW5kaXZpZHVhbHMgZm9yIGVhY2ggZWxpZ2libGUgdHJhaXQiLA0KICBjb2wubmFtZXMgPSBjKA0KICAgICJUcmFpdCIsICJSYW5rIiwgIklORCIsICJGQU0iLCAiTWV0aG9kIiwgIk9iamVjdGl2ZSIsDQogICAgIkdFQlYgKyBtZWFuIiwgIk9PRiByIiwgIk5STVNFIg0KICApDQopDQojIERJU1BMQVktT05MWSBFTkQNCmBgYA0KDQojIyA5LiBSZWN1cnJlbmNlIGFjcm9zcyBlbGlnaWJsZSB0cmFpdHMNCg0KIyMjIDkuMSBEZWZpbml0aW9uDQoNClJlY3VycmVuY2UgaXMgZGVzY3JpcHRpdmUgYW5kIHVzZXMgb25seSByYW5raW5ncyBmcm9tIHRyYWl0cyB0aGF0IHBhc3NlZCBib3RoDQplbGlnaWJpbGl0eSB0aHJlc2hvbGRzLiBGb3IgZWFjaCBpbmRpdmlkdWFsLCBpdCBjb3VudHMgaG93IG1hbnkgb2YgdGhlc2UgdHJhaXRzDQppbmNsdWRlIHRoZSBpbmRpdmlkdWFsIGFtb25nIHRoZSBzZWxlY3RlZCAyMCUuIEZyZXF1ZW5jeSBpcyBjYWxjdWxhdGVkIHJlbGF0aXZlDQp0byB0aGUgbnVtYmVyIG9mIGVsaWdpYmxlIHRyYWl0czsgbm8gbXVsdGktdHJhaXQgc2VsZWN0aW9uIGluZGV4IGlzIGNvbnN0cnVjdGVkDQphbmQgbm8gd2VpZ2h0cyBhcmUgYXNzaWduZWQgYWNyb3NzIHRyYWl0cy4NCg0KYGBge3IgbXVsdGl0cmFpdC1yZWN1cnJlbmNlfQ0KcmVjdXJyZW5jZV9jb3VudHMgPC0gc2VsZWN0ZWRfaW5kaXZpZHVhbHNfYnlfdHJhaXQgfD4NCiAgZ3JvdXBfYnkoSU5ELCBGQU0pIHw+DQogIHN1bW1hcmlzZSgNCiAgICBOX3RyYWl0cyA9IG4oKSwNCiAgICBUcmFpdHMgPSBwYXN0ZShUcmFpdCwgY29sbGFwc2UgPSAiLCAiKSwNCiAgICBCZXN0X3JhbmsgPSBtaW4oUmFuayksDQogICAgTWVhbl9yYW5rX3ByZXNlbnQgPSBtZWFuKFJhbmspLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKQ0KDQpuX2VsaWdpYmxlX3RyYWl0cyA8LSBsZW5ndGgoZWxpZ2libGVfdHJhaXRzKQ0KDQptdWx0aXRyYWl0X3JlY3VycmVuY2UgPC0gbWF0cmljZXNfb2JqZWN0JG1ldGFkYXRhIHw+DQogIHNlbGVjdChJTkQsIEZBTSkgfD4NCiAgbGVmdF9qb2luKHJlY3VycmVuY2VfY291bnRzLCBieSA9IGMoIklORCIsICJGQU0iKSkgfD4NCiAgbXV0YXRlKA0KICAgIE5fdHJhaXRzID0gdGlkeXI6OnJlcGxhY2VfbmEoTl90cmFpdHMsIDBMKSwNCiAgICBUcmFpdHMgPSB0aWR5cjo6cmVwbGFjZV9uYShUcmFpdHMsICIiKSwNCiAgICBCZXN0X3JhbmsgPSBpZl9lbHNlKE5fdHJhaXRzID09IDBMLCBOQV9pbnRlZ2VyXywgQmVzdF9yYW5rKSwNCiAgICBNZWFuX3JhbmtfcHJlc2VudCA9IGlmX2Vsc2UoDQogICAgICBOX3RyYWl0cyA9PSAwTCwNCiAgICAgIE5BX3JlYWxfLA0KICAgICAgTWVhbl9yYW5rX3ByZXNlbnQNCiAgICApLA0KICAgIFNlbGVjdGlvbl9mcmVxdWVuY3kgPSBpZiAobl9lbGlnaWJsZV90cmFpdHMgPiAwKSB7DQogICAgICBOX3RyYWl0cyAvIG5fZWxpZ2libGVfdHJhaXRzDQogICAgfSBlbHNlIHsNCiAgICAgIDANCiAgICB9LA0KICAgIFJlY3VycmVuY2VfY2xhc3MgPSBjYXNlX3doZW4oDQogICAgICBOX3RyYWl0cyA+PSA0TCB+ICJoaWdoXzRwbHVzIiwNCiAgICAgIE5fdHJhaXRzID09IDNMIH4gImludGVybWVkaWF0ZV8zIiwNCiAgICAgIE5fdHJhaXRzID09IDJMIH4gImJyb2FkXzIiLA0KICAgICAgTl90cmFpdHMgPT0gMUwgfiAic3BlY2lmaWNfMSIsDQogICAgICBUUlVFIH4gIm5vbmVfMCINCiAgICApDQogICkgfD4NCiAgYXJyYW5nZShkZXNjKE5fdHJhaXRzKSwgRkFNLCBJTkQpDQoNCnJlY3VycmVuY2VfZGlzdHJpYnV0aW9uIDwtIG11bHRpdHJhaXRfcmVjdXJyZW5jZSB8Pg0KICBjb3VudChOX3RyYWl0cywgUmVjdXJyZW5jZV9jbGFzcywgbmFtZSA9ICJOX2luZGl2aWR1YWxzIikgfD4NCiAgbXV0YXRlKA0KICAgIFByb3BvcnRpb25fb2ZfcG9wdWxhdGlvbiA9DQogICAgICBOX2luZGl2aWR1YWxzIC8gbnJvdyhtYXRyaWNlc19vYmplY3QkbWV0YWRhdGEpDQogICkgfD4NCiAgYXJyYW5nZShkZXNjKE5fdHJhaXRzKSkNCg0KbXVsdGl0cmFpdF9jYW5kaWRhdGVzIDwtIG11bHRpdHJhaXRfcmVjdXJyZW5jZSB8Pg0KICBmaWx0ZXIoTl90cmFpdHMgPj0gMkwpIHw+DQogIGFycmFuZ2UoZGVzYyhOX3RyYWl0cyksIEZBTSwgSU5EKQ0KYGBgDQoNCiMjIyA5LjIgUmVjdXJyZW5jZSBkaXN0cmlidXRpb24NCg0KYGBge3IgcmVjdXJyZW5jZS1kaXN0cmlidXRpb24tdGFibGV9DQojIERJU1BMQVktT05MWSBTVEFSVA0KcmVjdXJyZW5jZV9jbGFzc19sYWJlbHMgPC0gYygNCiAgaGlnaF80cGx1cyA9ICJIaWdoICg+PTQpIiwNCiAgaW50ZXJtZWRpYXRlXzMgPSAiSW50ZXJtZWRpYXRlICgzKSIsDQogIGJyb2FkXzIgPSAiQnJvYWQgKDIpIiwNCiAgc3BlY2lmaWNfMSA9ICJTcGVjaWZpYyAoMSkiLA0KICBub25lXzAgPSAiTm9uZSAoMCkiDQopDQoNCnJlY3VycmVuY2VfZGlzdHJpYnV0aW9uX2Rpc3BsYXkgPC0gcmVjdXJyZW5jZV9kaXN0cmlidXRpb24gfD4NCiAgbXV0YXRlKA0KICAgIENsYXNzID0gdW5uYW1lKHJlY3VycmVuY2VfY2xhc3NfbGFiZWxzW1JlY3VycmVuY2VfY2xhc3NdKQ0KICApIHw+DQogIHRyYW5zbXV0ZSgNCiAgICBOX3RyYWl0cywNCiAgICBDbGFzcywNCiAgICBOX2luZGl2aWR1YWxzLA0KICAgIFByb3BvcnRpb25fb2ZfcG9wdWxhdGlvbiA9IHNwcmludGYoIiUuM2YiLCBQcm9wb3J0aW9uX29mX3BvcHVsYXRpb24pDQogICkNCg0KZm9ybWF0X3RhYmxlKA0KICByZWN1cnJlbmNlX2Rpc3RyaWJ1dGlvbl9kaXNwbGF5LA0KICBjYXB0aW9uID0gIkRpc3RyaWJ1dGlvbiBvZiBpbmRpdmlkdWFscyBieSByZWN1cnJlbmNlIGFjcm9zcyBlbGlnaWJsZSB0cmFpdHMiLA0KICBjb2wubmFtZXMgPSBjKA0KICAgICJOdW1iZXIgb2YgdHJhaXRzIiwgIkNsYXNzIiwgIkluZGl2aWR1YWxzIiwNCiAgICAiUG9wdWxhdGlvbiBwcm9wb3J0aW9uIg0KICApDQopDQojIERJU1BMQVktT05MWSBFTkQNCmBgYA0KDQojIyMgOS4zIFJlY3VycmVudCBpbmRpdmlkdWFscw0KDQpUaGUgdGFibGUgaW5jbHVkZXMgaW5kaXZpZHVhbHMgc2VsZWN0ZWQgaW4gYXQgbGVhc3QgdHdvIGVsaWdpYmxlIHRyYWl0cy4gQW4NCmFkZGl0aW9uYWwgdGFibGUgd2l0aCBvbmUgcmFuayBjb2x1bW4gcGVyIHRyYWl0IGlzIG5vdCBkaXNwbGF5ZWQ7IGluZGl2aWR1YWwNCnBvc2l0aW9ucyByZW1haW4gYXZhaWxhYmxlIGluIGBzZWxlY3RlZF9pbmRpdmlkdWFsc19ieV90cmFpdGAuDQoNCmBgYHtyIHJlY3VycmVudC1jYW5kaWRhdGVzLXRhYmxlfQ0KIyBESVNQTEFZLU9OTFkgU1RBUlQNCnJlY3VycmVudF9jYW5kaWRhdGVzX2Rpc3BsYXkgPC0gbXVsdGl0cmFpdF9jYW5kaWRhdGVzIHw+DQogIG11dGF0ZSgNCiAgICBDbGFzcyA9IHVubmFtZShyZWN1cnJlbmNlX2NsYXNzX2xhYmVsc1tSZWN1cnJlbmNlX2NsYXNzXSkNCiAgKSB8Pg0KICB0cmFuc211dGUoDQogICAgSU5ELA0KICAgIEZBTSwNCiAgICBOX3RyYWl0cywNCiAgICBTZWxlY3Rpb25fZnJlcXVlbmN5ID0gc3ByaW50ZigiJS4zZiIsIFNlbGVjdGlvbl9mcmVxdWVuY3kpLA0KICAgIENsYXNzLA0KICAgIFRyYWl0cywNCiAgICBCZXN0X3JhbmssDQogICAgTWVhbl9yYW5rX3ByZXNlbnQgPSBzcHJpbnRmKCIlLjJmIiwgTWVhbl9yYW5rX3ByZXNlbnQpDQogICkNCg0KZm9ybWF0X3RhYmxlKA0KICByZWN1cnJlbnRfY2FuZGlkYXRlc19kaXNwbGF5LA0KICBjYXB0aW9uID0gIkluZGl2aWR1YWxzIHJlY3VycmVudCBpbiBhdCBsZWFzdCB0d28gZWxpZ2libGUgdHJhaXRzIiwNCiAgY29sLm5hbWVzID0gYygNCiAgICAiSU5EIiwgIkZBTSIsICJOdW1iZXIgb2YgdHJhaXRzIiwgIkZyZXF1ZW5jeSIsDQogICAgIkNsYXNzIiwgIlRyYWl0cyIsICJCZXN0IHJhbmsiLCAiTWVhbiByYW5rIg0KICApDQopDQojIERJU1BMQVktT05MWSBFTkQNCmBgYA0KDQojIyAxMC4gQ29ycmVsYXRpb25zIGFtb25nIE9PRiBHRUJWcyBvZiBlbGlnaWJsZSB0cmFpdHMNCg0KVGhlc2UgY29ycmVsYXRpb25zIGRlc2NyaWJlIGFzc29jaWF0aW9ucyBhbW9uZyB0aGUgT09GIGdlbm9taWMgdmFsdWVzIHByb2R1Y2VkIGJ5IHRoZSBzZWxlY3RlZCBtZXRob2QgZm9yIGVhY2ggdHJhaXQuIEJlY2F1c2UgZGlmZmVyZW50IHRyYWl0cyBtYXkgdXNlIGRpZmZlcmVudCBtZXRob2RzIGFuZCB0aGUgdmFsdWVzIGFyZSBjcm9zcy1maXR0ZWQsIHRoZSBtYXRyaXggc3VtbWFyaXplcyBhc3NvY2lhdGlvbnMgYW1vbmcgcHJlZGljdGl2ZSBzY29yZXMgcmF0aGVyIHRoYW4gam9pbnRseSBlc3RpbWF0ZWQgZ2VuZXRpYyBjb3ZhcmlhbmNlLiBJdCBzaG91bGQgdGhlcmVmb3JlIG5vdCBiZSBpbnRlcnByZXRlZCBhcyBhIGdlbmV0aWMtY29ycmVsYXRpb24gbWF0cml4IGZyb20gYSBtdWx0aXZhcmlhdGUgbW9kZWwuDQoNCg0KYGBge3Igb29mLWNvcnJlbGF0aW9uc30NCnNlbGVjdGVkX2dlbm9taWNfd2lkZSA8LSBzZWxlY3RlZF9vb2ZfZ2Vub21pY192YWx1ZXMgfD4NCiAgZmlsdGVyKFNlbGVjdGlvbl9lbGlnaWJsZSkgfD4NCiAgc2VsZWN0KElORCwgVHJhaXQsIEdFQlZfY2VudGVyZWQpIHw+DQogIHBpdm90X3dpZGVyKG5hbWVzX2Zyb20gPSBUcmFpdCwgdmFsdWVzX2Zyb20gPSBHRUJWX2NlbnRlcmVkKQ0KDQpzZWxlY3RlZF9vb2ZfY29ycmVsYXRpb25zIDwtIGNvcigNCiAgYXMubWF0cml4KHNlbGVjdGVkX2dlbm9taWNfd2lkZVssIGVsaWdpYmxlX3RyYWl0cywgZHJvcCA9IEZBTFNFXSkNCikNCmBgYA0KDQpgc2VsZWN0ZWRfb29mX2NvcnJlbGF0aW9uc2AgaXMgZGVyaXZlZCBoZXJlIGFuZCB2aXN1YWxpemVkIGltbWVkaWF0ZWx5IGJlbG93LiBJdCBzaG91bGQgYmUgaW50ZXJwcmV0ZWQgb25seSBhcyBhc3NvY2lhdGlvbiBhbW9uZyBPT0Ygc2NvcmVzLCBub3QgYXMgam9pbnQgZ2VuZXRpYyBjb3JyZWxhdGlvbi4NCg0KIyMjIDEwLjEgRXhwbG9yYXRvcnkgaGVhdG1hcA0KDQpUaGUgaGVhdG1hcCB2aXN1YWxpemVzIHRoZSBtYXRyaXgganVzdCBkZXJpdmVkLiBDb2xvcnMgdXNlIHRoZSBvcmlnaW5hbA0KdW5yb3VuZGVkIHZhbHVlcy4gVGhlc2UgYXJlIGFzc29jaWF0aW9ucyBhbW9uZyBjcm9zcy1maXR0ZWQgc2NvcmVzIGFuZCBtdXN0DQpub3QgYmUgaW50ZXJwcmV0ZWQgYXMgZ2VuZXRpYyBjb3JyZWxhdGlvbnMgZnJvbSBhIG11bHRpdmFyaWF0ZSBtb2RlbC4NCg0KYGBge3Igb29mLWNvcnJlbGF0aW9uLWZpZ3VyZSwgZmlnLndpZHRoPTEwLCBmaWcuaGVpZ2h0PTksIGZpZy5hbHQ9IkhlYXRtYXAgb2YgcGFpcndpc2UgY29ycmVsYXRpb25zIGFtb25nIGNyb3NzLWZpdHRlZCBPT0YgZ2Vub21pYy12YWx1ZSBzY29yZXMgZm9yIHRoZSB0cmFpdHMsIHJlcHJlc2VudGluZyBleHBsb3JhdG9yeSBhc3NvY2lhdGlvbnMgcmF0aGVyIHRoYW4gbXVsdGl2YXJpYXRlIGdlbmV0aWMgY29ycmVsYXRpb25zLiJ9DQojIFJlc2hhcGUgdGhlIE9PRiBjb3JyZWxhdGlvbiBtYXRyaXggYW5kIGJ1aWxkIHRoZSBjcm9zcy10cmFpdCBoZWF0bWFwLg0KY29ycmVsYXRpb25fbG9uZyA8LSBhcy5kYXRhLmZyYW1lKA0KICBhcy50YWJsZShzZWxlY3RlZF9vb2ZfY29ycmVsYXRpb25zKQ0KKQ0KbmFtZXMoY29ycmVsYXRpb25fbG9uZykgPC0gYygNCiAgIlRyYWl0XzEiLA0KICAiVHJhaXRfMiIsDQogICJDb3JyZWxhdGlvbiINCikNCg0KIyBTZXQgb25seSB0aGUgbGFiZWwgb2YgfHJ8IDwgMC4wMDUgdG8gemVybzsgdGhlIG9yaWdpbmFsIGNvcnJlbGF0aW9uIHN0aWxsIGRyaXZlcyBhbmFseXNpcyBhbmQgY29sb3IuDQpjb3JyZWxhdGlvbl9sb25nIDwtIGNvcnJlbGF0aW9uX2xvbmcgfD4NCiAgbXV0YXRlKA0KICAgIENvcnJlbGF0aW9uX2xhYmVsID0gcmVwbGFjZSgNCiAgICAgIENvcnJlbGF0aW9uLA0KICAgICAgYWJzKENvcnJlbGF0aW9uKSA8IDAuMDA1LA0KICAgICAgMA0KICAgICkNCiAgKQ0KDQojIEJ1aWxkIHRoZSBoZWF0bWFwIG9mIGNvcnJlbGF0aW9ucyBhbW9uZyBPT0YgZ2Vub21pYyB2YWx1ZXMuDQpjb3JyZWxhdGlvbl9wbG90IDwtIGdncGxvdCgNCiAgY29ycmVsYXRpb25fbG9uZywNCiAgYWVzKHggPSBUcmFpdF8xLCB5ID0gVHJhaXRfMiwgZmlsbCA9IENvcnJlbGF0aW9uKQ0KKSArDQogIGdlb21fdGlsZSgpICsNCiAgZ2VvbV90ZXh0KA0KICAgIGFlcyhsYWJlbCA9IHNwcmludGYoIiUuMmYiLCBDb3JyZWxhdGlvbl9sYWJlbCkpLA0KICAgIHNpemUgPSAzDQogICkgKw0KICBzY2FsZV9maWxsX2Rpc3RpbGxlcigNCiAgICB0eXBlID0gImRpdiIsDQogICAgcGFsZXR0ZSA9ICJSZEJ1IiwNCiAgICBkaXJlY3Rpb24gPSAxLA0KICAgIGxpbWl0cyA9IGMoLTEsIDEpDQogICkgKw0KICBsYWJzKA0KICAgIHggPSBOVUxMLA0KICAgIHkgPSBOVUxMLA0KICAgIGZpbGwgPSAiciIsDQogICAgdGl0bGUgPSAiQ29ycmVsYXRpb24gYW1vbmcgT09GIEdFQlZzIG9mIGVsaWdpYmxlIHRyYWl0cyINCiAgKSArDQogIGNvb3JkX2VxdWFsKCkgKw0KICBwcm9qZWN0X3RoZW1lICsNCiAgdGhlbWUoYXhpcy50ZXh0LnggPSBlbGVtZW50X3RleHQoYW5nbGUgPSA0NSwgaGp1c3QgPSAxKSkNCg0KY29ycmVsYXRpb25fcGxvdA0KYGBgDQoNCg0KUG9zaXRpdmUgdmFsdWVzIGluZGljYXRlIHRoYXQgdHdvIHNjb3JlIHNldHMgdGVuZCB0byBvcmRlciBjYW5kaWRhdGVzIGluIHRoZQ0Kc2FtZSBkaXJlY3Rpb24sIHdoaWxlIG5lZ2F0aXZlIHZhbHVlcyBpbmRpY2F0ZSBvcHBvc2luZyBkaXJlY3Rpb25zLiBUaGUgbWF0cml4DQpkb2VzIG5vdCBjcmVhdGUgYW4gYWRkaXRpb25hbCBzZWxlY3Rpb24gY3JpdGVyaW9uLg0KDQojIyAxMS4gUGVyc2lzdGVuY2Ugb2YgcmV2aXNlZCByZXN1bHRzDQoNClRoZSBwcmV2aW91cyByZXN1bHRzIGZyb20gdmVyc2lvbiBgdjEuMC41YCBhcmUgbm90IG92ZXJ3cml0dGVuLiBUaGlzIHJldmlzaW9uDQppcyBzYXZlZCBpbiBpdHMgb3duIE0wNCBzdWJkaXJlY3RvcnksIGFsbG93aW5nIHRoZSBwcmV2aW91cyBzdHJ1Y3R1cmUgdG8gYmUNCmNvbXBhcmVkIG9yIHJlY292ZXJlZCB3aGVuIG5lZWRlZC4NCg0KYGBge3Igc2F2ZS1yZXN1bHRzfQ0KdGhyZXNob2xkX3Jlc3VsdHNfZGlyIDwtIGhlcmUoDQogICJvdXRwdXQiLCAicmVzdWx0cyIsICJtMDQiLCAidGhyZXNob2xkX3NlbGVjdGlvbiINCikNCmRpci5jcmVhdGUodGhyZXNob2xkX3Jlc3VsdHNfZGlyLCByZWN1cnNpdmUgPSBUUlVFLCBzaG93V2FybmluZ3MgPSBGQUxTRSkNCg0Kd3JpdGUuY3N2KA0KICBtb2RlbF9zZWxlY3Rpb24sDQogIGZpbGUucGF0aCh0aHJlc2hvbGRfcmVzdWx0c19kaXIsICJtb2RlbF9zZWxlY3Rpb24uY3N2IiksDQogIHJvdy5uYW1lcyA9IEZBTFNFDQopDQp3cml0ZS5jc3YoDQogIHNlbGVjdGVkX29vZl9nZW5vbWljX3ZhbHVlcywNCiAgZmlsZS5wYXRoKHRocmVzaG9sZF9yZXN1bHRzX2RpciwgInNlbGVjdGVkX29vZl9nZW5vbWljX3ZhbHVlcy5jc3YiKSwNCiAgcm93Lm5hbWVzID0gRkFMU0UNCikNCndyaXRlLmNzdigNCiAgc2VsZWN0ZWRfaW5kaXZpZHVhbHNfYnlfdHJhaXQsDQogIGZpbGUucGF0aCh0aHJlc2hvbGRfcmVzdWx0c19kaXIsICJzZWxlY3RlZF9pbmRpdmlkdWFsc19ieV90cmFpdC5jc3YiKSwNCiAgcm93Lm5hbWVzID0gRkFMU0UNCikNCndyaXRlLmNzdigNCiAgbXVsdGl0cmFpdF9yZWN1cnJlbmNlLA0KICBmaWxlLnBhdGgodGhyZXNob2xkX3Jlc3VsdHNfZGlyLCAibXVsdGl0cmFpdF9yZWN1cnJlbmNlLmNzdiIpLA0KICByb3cubmFtZXMgPSBGQUxTRQ0KKQ0Kd3JpdGUuY3N2KA0KICBtdWx0aXRyYWl0X2NhbmRpZGF0ZXMsDQogIGZpbGUucGF0aCh0aHJlc2hvbGRfcmVzdWx0c19kaXIsICJtdWx0aXRyYWl0X2NhbmRpZGF0ZXMuY3N2IiksDQogIHJvdy5uYW1lcyA9IEZBTFNFDQopDQp3cml0ZS5jc3YoDQogIHNlbGVjdGVkX29vZl9jb3JyZWxhdGlvbnMsDQogIGZpbGUucGF0aCh0aHJlc2hvbGRfcmVzdWx0c19kaXIsICJzZWxlY3RlZF9vb2ZfY29ycmVsYXRpb25zLmNzdiIpLA0KICByb3cubmFtZXMgPSBUUlVFDQopDQoNCm1vZHVsZTA0X3RocmVzaG9sZF9yZXN1bHRzIDwtIGxpc3QoDQogIG1vZGVsX2NvbXBhcmlzb24gPSBtb2RlbF9jb21wYXJpc29uLA0KICBtb2RlbF9zZWxlY3Rpb24gPSBtb2RlbF9zZWxlY3Rpb24sDQogIGNvbnZlcmdlbmNlX292ZXJ2aWV3ID0gY29udmVyZ2VuY2Vfb3ZlcnZpZXcsDQogIHJyYmx1cF9oZXJpdGFiaWxpdHlfYnlfZm9sZCA9IHJyYmx1cF9oZXJpdGFiaWxpdHlfYnlfZm9sZCwNCiAgcnJibHVwX2hlcml0YWJpbGl0eV9zdW1tYXJ5ID0gcnJibHVwX2hlcml0YWJpbGl0eV9zdW1tYXJ5LA0KICBzZWxlY3RlZF9vb2ZfZ2Vub21pY192YWx1ZXMgPSBzZWxlY3RlZF9vb2ZfZ2Vub21pY192YWx1ZXMsDQogIGdlbm9taWNfcmFua2luZyA9IGdlbm9taWNfcmFua2luZywNCiAgc2VsZWN0ZWRfaW5kaXZpZHVhbHNfYnlfdHJhaXQgPSBzZWxlY3RlZF9pbmRpdmlkdWFsc19ieV90cmFpdCwNCiAgbXVsdGl0cmFpdF9yZWN1cnJlbmNlID0gbXVsdGl0cmFpdF9yZWN1cnJlbmNlLA0KICBtdWx0aXRyYWl0X2NhbmRpZGF0ZXMgPSBtdWx0aXRyYWl0X2NhbmRpZGF0ZXMsDQogIHNlbGVjdGVkX29vZl9jb3JyZWxhdGlvbnMgPSBzZWxlY3RlZF9vb2ZfY29ycmVsYXRpb25zLA0KICBzZXR0aW5ncyA9IGxpc3QoDQogICAgY29ycmVsYXRpb25fdGhyZXNob2xkID0gQ09SUkVMQVRJT05fU0VMRUNUSU9OX1RIUkVTSE9MRCwNCiAgICBucm1zZV90aHJlc2hvbGQgPSBOUk1TRV9TRUxFQ1RJT05fVEhSRVNIT0xELA0KICAgIHNlbGVjdGlvbl9wcm9wb3J0aW9uID0gU0VMRUNUSU9OX1BST1BPUlRJT04sDQogICAgZWxpZ2libGVfdHJhaXRzID0gZWxpZ2libGVfdHJhaXRzDQogICkNCikNCg0Kc2F2ZVJEUygNCiAgbW9kdWxlMDRfdGhyZXNob2xkX3Jlc3VsdHMsDQogIGhlcmUoIm91dHB1dCIsICJyZXN1bHRzIiwgIm0wNCIsICJ0aHJlc2hvbGRfc2VsZWN0aW9uIiwgIm1vZHVsZTA0X3RocmVzaG9sZF9yZXN1bHRzLnJkcyIpDQopDQpgYGANCg0KIyMgMTIuIEZpbmFsIGludGVycHJldGF0aW9uDQoNClRoZSBjb21wYXJpc29uIG5vdyBjbGVhcmx5IHNlcGFyYXRlcyB0aHJlZSBkZWNpc2lvbnMuIEZpcnN0LCB0aGUgbWV0aG9kIGlzDQpjaG9zZW4gd2l0aGluIGVhY2ggdHJhaXQgdXNpbmcgT09GIHByZWRpY3RpdmUgbWV0cmljcywgd2hpbGUgRElDIGlzIHJldGFpbmVkIGFzDQpjb21wbGVtZW50YXJ5IGluZm9ybWF0aW9uLiBTZWNvbmQsIG9ubHkgdHJhaXRzIHdpdGggJHIgPiAwLjMwJCBhbmQgYE5STVNFIDwgMWANCmFyZSBjb25zaWRlcmVkIHN1ZmZpY2llbnRseSBwcmVkaWN0aXZlIGZvciBzZWxlY3Rpb24uIFRoaXJkLCB3aXRoaW4gdGhvc2UNCnRyYWl0cywgdGhlIG1vc3QgZmF2b3JhYmxlIDIwJSBvZiBpbmRpdmlkdWFscyBhcmUgcHJpb3JpdGl6ZWQgYWNjb3JkaW5nIHRvIHRoZQ0KYnJlZWRpbmcgb2JqZWN0aXZlLg0KDQpNQ01DIGRpYWdub3N0aWNzIGluZGljYXRlIGJlaGF2aW9yIGNvbXBhdGlibGUgd2l0aCBjb252ZXJnZW5jZSBmb3IgdGhlIGxhcmdlDQptYWpvcml0eSBvZiBtb25pdG9yZWQgZml0cyBhbmQgcGFyYW1ldGVycyB3aXRob3V0IGJlaW5nIHVzZWQgYXMgYSBkZWNpc2lvbg0KZmlsdGVyLiBUaGUgb2JzZXJ2ZWQtdmVyc3VzLXByZWRpY3RlZCBmaWd1cmUgYWRkcyBhIHZpc3VhbCBhc3Nlc3NtZW50IG9mDQphc3NvY2lhdGlvbiBhbmQgY2FsaWJyYXRpb24gdG8gdGhlIG51bWVyaWNhbCBtZXRyaWNzLg0KDQpPT0YgR0VCVnMgcmVtYWluIGNyb3NzLWZpdHRlZCBzY29yZXMuIEFkZGluZyB0aGUgcGhlbm90eXBpYyBtZWFuIHBsYWNlcyB0aGVtIG9uDQphIG1vcmUgaW50ZXJwcmV0YWJsZSBzY2FsZSwgYnV0IGRvZXMgbm90IHR1cm4gdGhlbSBpbnRvIGNvbXBsZXRlIHBoZW5vdHlwaWMNCnByZWRpY3Rpb25zIGFuZCBkb2VzIG5vdCBjaGFuZ2UgcmFua2luZ3MuIFJlY3VycmVuY2UgYWNyb3NzIHRyYWl0cyByZW1haW5zDQpkZXNjcmlwdGl2ZSBhbmQgaXMgbm90IGVxdWl2YWxlbnQgdG8gYSBtdWx0aS10cmFpdCBzZWxlY3Rpb24gaW5kZXguDQoNCkNvbmNsdXNpb25zIHJlbWFpbiBjb25kaXRpb25hbCBvbiB0aGUgcmVwcmVzZW50ZWQgYnJlZWRpbmcgcG9wdWxhdGlvbiwgdGhlDQphdmFpbGFibGUgU1NSIHBhbmVsLCBhbmQgdGhlIHZhbGlkYXRpb24gZGVzaWduIHVzZWQuDQo=</div>
+<div id="rmd-source-code">LS0tDQp0aXRsZTogIk1vZGVsIGNvbXBhcmlzb24sIGdlbm9taWMgc2VsZWN0aW9uLCBhbmQgcmVzdWx0cyINCmF1dGhvcjoNCiAgLSBDb3N0YSwgVy4gRy5eW1dldmVydG9uIEdvbWVzIGRhIENvc3RhLCBQb3N0ZG9jdG9yYWwgUmVzZWFyY2hlciwgRGVwYXJ0bWVudCBvZiBTdGF0aXN0aWNzIC0gRmVkZXJhbCBVbml2ZXJzaXR5IG9mIFZpw6dvc2EsIHdldmVydG9uLmNvc3RhQHVmdi5icl0NCmRhdGU6ICJgciBTeXMuRGF0ZSgpYCINCnNpdGU6IHdvcmtmbG93cjo6d2Zsb3dfc2l0ZQ0KdXJsOiBodHRwczovL3dldmVydG9uZ29tZXNjb3N0YS5naXRodWIuaW8vQmF5ZXNpYW4tcmlkZ2UtcmVncmVzc2lvbi1wYXBheWEvDQpiaWJsaW9ncmFwaHk6IC4uL1JFRkVSRU5DRVMuYmliDQpsaW5rLWNpdGF0aW9uczogdHJ1ZQ0Kb3V0cHV0Og0KICB3b3JrZmxvd3I6OndmbG93X2h0bWw6DQogICAgdG9jOiB0cnVlDQogICAgdG9jX2RlcHRoOiAzDQogICAgdG9jX2Zsb2F0OiB0cnVlDQogICAgY29kZV9kb3dubG9hZDogdHJ1ZQ0KICAgIGNvZGVfZm9sZGluZzogc2hvdw0KZWRpdG9yX29wdGlvbnM6DQogIGNodW5rX291dHB1dF90eXBlOiBjb25zb2xlDQpnaXRodWItcmVwbzogV2V2ZXJ0b25Hb21lc0Nvc3RhL0JheWVzaWFuLXJpZGdlLXJlZ3Jlc3Npb24tcGFwYXlhDQotLS0NCg0KYGBge3Igc2V0dXAsIGluY2x1ZGU9RkFMU0V9DQprbml0cjo6b3B0c19jaHVuayRzZXQoDQogIGVjaG8gPSBUUlVFLA0KICB3YXJuaW5nID0gRkFMU0UsDQogIG1lc3NhZ2UgPSBGQUxTRSwNCiAgY2FjaGUgPSBGQUxTRSwNCiAgZmlnLmFsaWduID0gImNlbnRlciIsDQogIG91dC53aWR0aCA9ICIxMDAlIg0KKQ0KYGBgDQoNCiMjIDEuIE9iamVjdGl2ZQ0KDQpUaGlzIG1vZHVsZSBicmluZ3MgdG9nZXRoZXIgdGhlIHJlc3VsdHMgcHJvZHVjZWQgaW4gTW9kdWxlIDAzIGFuZCBvcmdhbml6ZXMgdGhlbSBpbnRvIGEgc2VxdWVuY2UgZm9jdXNlZCBvbiBpbnRlcnByZXRhdGlvbiBhbmQgZ2Vub21pYyBzZWxlY3Rpb246DQoNCioqY29tcGFyZSBtZXRob2RzIOKGkiBjaG9vc2UgYSBtZXRob2QgZm9yIGVhY2ggdHJhaXQg4oaSIGludGVycHJldCBnZW5vbWljIHZhbHVlcyDihpIgZXhhbWluZSByZWxhdGlvbnNoaXBzIGFtb25nIHRyYWl0cyDihpIgZGVmaW5lIGVsaWdpYmlsaXR5IOKGkiBzZWxlY3QgaW5kaXZpZHVhbHMg4oaSIGV2YWx1YXRlIHJlY3VycmVuY2UuKioNCg0KTWV0aG9kIGNob2ljZSBpcyBwZXJmb3JtZWQgc2VwYXJhdGVseSBmb3IgZWFjaCB0cmFpdCBhbmQgcHJpb3JpdGl6ZXMgT09GIHByZWRpY3RpdmUgcGVyZm9ybWFuY2UuIERJQyByZW1haW5zIGNvbXBsZW1lbnRhcnkgaW5mb3JtYXRpb24uIE1DTUMgZGlhZ25vc3RpY3Mgc3VtbWFyaXplIG92ZXJhbGwgY2hhaW4gYmVoYXZpb3IgYnV0IGRvIG5vdCBhY3QgYXMgYSBzZWxlY3Rpb24gZmlsdGVyLg0KDQpBZnRlciBtZXRob2QgY2hvaWNlLCBPT0YgR0VCVnMgYXJlIG9idGFpbmVkIGZvciBhbGwgdHJhaXRzIGFuZCBhcmUgYWxzbyBleGFtaW5lZCBqb2ludGx5IHRocm91Z2ggdGhlaXIgY29ycmVsYXRpb25zLiBFbGlnaWJpbGl0eSBjcml0ZXJpYSBmb3IgZ2Vub21pYyBzZWxlY3Rpb24gYXJlIGFwcGxpZWQgb25seSBhZnRlciB0aGlzIHN0ZXAuDQoNCiMjIDIuIFByZXBhcmluZyB0aGUgYW5hbHlzaXMNCg0KIyMjIDIuMSBQYWNrYWdlcyBhbmQgaGVscGVyIGZ1bmN0aW9ucw0KDQpUaGUgcGFja2FnZXMgYmVsb3cgYXJlIHVzZWQgZm9yIHRhYmxlIG1hbmlwdWxhdGlvbiwgZmlndXJlcywgZm9ybWF0dGluZywgYW5kIHByb2plY3QtcmVsYXRpdmUgcGF0aHMuDQoNCmBgYHtyIHBhY2thZ2VzLCB3YXJuaW5nPUZBTFNFLCBtZXNzYWdlPUZBTFNFfQ0KbGlicmFyeShkcGx5cikgIyBHcm91cCwgam9pbiwgYW5kIHN1bW1hcml6ZSB0YWJsZXMuDQpsaWJyYXJ5KHRpZHlyKSAgICMgUmVzaGFwZSBkYXRhIGJldHdlZW4gbG9uZyBhbmQgd2lkZSBmb3JtYXRzLg0KbGlicmFyeShnZ3Bsb3QyKSAjIEJ1aWxkIGRpYWdub3N0aWMgZmlndXJlcy4NCmxpYnJhcnkoZ2d0aGVtZXMpICMgQXBwbHkgdGhlIEdEb2NzIHRoZW1lIGFuZCBjb2xvciBzY2FsZS4NCmxpYnJhcnkoa25pdHIpICAgIyBGb3JtYXQgdGFibGVzIGluIFIgTWFya2Rvd24gZG9jdW1lbnRzLg0KbGlicmFyeShoZXJlKSAgIyBCdWlsZCBwcm9qZWN0LXJlbGF0aXZlIHBhdGhzLg0KYGBgDQoNClRoZSBoZWxwZXIgZnVuY3Rpb24gYmVsb3cgc3RhbmRhcmRpemVzIHRhYmxlIHByZXNlbnRhdGlvbiB0aHJvdWdob3V0IHRoZSB0dXRvcmlhbC4NCg0KYGBge3IgdGFibGUtZm9ybWF0dGluZywgaW5jbHVkZT1GQUxTRX0NCmZvcm1hdF90YWJsZSA8LSBmdW5jdGlvbih4LCBjYXB0aW9uID0gTlVMTCwgZGlnaXRzID0gZ2V0T3B0aW9uKCJkaWdpdHMiKSwgY29sLm5hbWVzID0gTkEpIHsNCiAgdGFibGUgPC0ga25pdHI6OmthYmxlKA0KICAgIHgsDQogICAgZm9ybWF0ID0gImh0bWwiLA0KICAgIGNhcHRpb24gPSBjYXB0aW9uLA0KICAgIGRpZ2l0cyA9IGRpZ2l0cywNCiAgICBjb2wubmFtZXMgPSBjb2wubmFtZXMsDQogICAgdGFibGUuYXR0ciA9IHBhc3RlMCgNCiAgICAgICdjbGFzcz0idGFibGUgdGFibGUtc3RyaXBlZCB0YWJsZS1ob3ZlciIgJywNCiAgICAgICdzdHlsZT0id2lkdGg6MTAwJTsgbWFyZ2luLWJvdHRvbTowOyInDQogICAgKQ0KICApDQogIGtuaXRyOjphc2lzX291dHB1dCgNCiAgICBwYXN0ZTAoDQogICAgICAnPGRpdiBzdHlsZT0id2lkdGg6MTAwJTsgb3ZlcmZsb3cteDphdXRvOyBtYXJnaW4tYm90dG9tOjEuMjVyZW07Ij4nLA0KICAgICAgdGFibGUsDQogICAgICAnPC9kaXY+Jw0KICAgICkNCiAgKQ0KfQ0KYGBgDQoNCiMjIyAyLjIgSW5wdXQgb2JqZWN0cyBhbmQgY29uZmlndXJhdGlvbg0KDQpUaGUgbW9kdWxlIHVzZXMgYG1hdHJpY2VzX29iamVjdC5yZHNgLCBjb250YWluaW5nIHBoZW5vdHlwZXMgYW5kIG1ldGFkYXRhLCBhbmQgYG1vZGVsc19vYmplY3QucmRzYCwgY29udGFpbmluZyBmb2xkLWxldmVsIG1ldHJpY3MsIE9PRiBwcmVkaWN0aW9ucywgYW5kIE1DTUMgZGlhZ25vc3RpY3MuIFJlc3VsdHMgYXJlIHdyaXR0ZW4gb25seSBhdCB0aGUgZW5kIG9mIHRoZSBhbmFseXNpcy4NCg0KYGBge3IgaW5wdXRzfQ0KbWF0cmljZXNfb2JqZWN0IDwtIHJlYWRSRFMoDQogIGhlcmUoIm91dHB1dCIsICJtYXRyaWNlcyIsICJtYXRyaWNlc19vYmplY3QucmRzIikNCikNCg0KbW9kZWxzX29iamVjdCA8LSByZWFkUkRTKA0KICBoZXJlKCJvdXRwdXQiLCAibW9kZWxzIiwgIm1vZGVsc19vYmplY3QucmRzIikNCikNCg0KbWV0cmljcyA8LSBtb2RlbHNfb2JqZWN0JG1ldHJpY3NfYnlfZm9sZA0KcHJlZGljdGlvbnMgPC0gbW9kZWxzX29iamVjdCRwcmVkaWN0aW9ucw0KY29udmVyZ2VuY2UgPC0gbW9kZWxzX29iamVjdCRjb252ZXJnZW5jZV9kaWFnbm9zdGljcw0KDQp0cmFpdHMgPC0gY29sbmFtZXMobWF0cmljZXNfb2JqZWN0JHBoZW5vdHlwZXMpDQptZXRob2RzIDwtIG1vZGVsc19vYmplY3Qkc2V0dGluZ3MkbWV0aG9kcw0KYGBgDQoNCkludGVybmFsIG1ldGhvZCBjb2RlcyBhcmUgcmV0YWluZWQgaW4gYW5hbHl0aWNhbCBvYmplY3RzLiBUaGUgbGFiZWxzIGFuZCB0aGVtZSBiZWxvdyBhZmZlY3QgcHJlc2VudGF0aW9uIG9ubHkuDQoNCmBgYHtyIHByZXNlbnRhdGlvbi1zdHlsZX0NCm1ldGhvZF9sYWJlbHMgPC0gYygNCiAgUlJCTFVQID0gIlJSLUJMVVAvQlJSIiwNCiAgQmF5ZXNBID0gIkJheWVzQSIsDQogIEJheWVzQiA9ICJCYXllc0IiLA0KICBCYXllc0IyID0gIkJheWVzQjIiLA0KICBCYXllc0MgPSAiQmF5ZXNDIiwNCiAgQkwgPSAiQmF5ZXNpYW4gTGFzc28iLA0KICBHQkxVUCA9ICJHQkxVUCINCikNCg0Kc2VsZWN0aW9uX29iamVjdGl2ZV9sYWJlbHMgPC0gYygNCiAgaW5jcmVhc2UgPSAiSW5jcmVhc2UiLA0KICBkZWNyZWFzZSA9ICJEZWNyZWFzZSINCikNCg0KcHJvamVjdF90aGVtZSA8LSB0aGVtZV9nZG9jcygpICsNCiAgdGhlbWUoDQogICAgbGVnZW5kLnBvc2l0aW9uID0gImJvdHRvbSIsDQogICAgbGVnZW5kLmRpcmVjdGlvbiA9ICJob3Jpem9udGFsIiwNCiAgICBsZWdlbmQuYm94ID0gImhvcml6b250YWwiLA0KICAgIHN0cmlwLnRleHQgPSBlbGVtZW50X3RleHQoZmFjZSA9ICJib2xkIiksDQogICAgcGxvdC50aXRsZSA9IGVsZW1lbnRfdGV4dChmYWNlID0gImJvbGQiKQ0KICApDQpgYGANCg0KIyMgMy4gTWV0aG9kIGNvbXBhcmlzb24gYW5kIGNob2ljZQ0KDQojIyMgMy4xIE9PRiBwcmVkaWN0aXZlIHBlcmZvcm1hbmNlDQoNCk9PRiBlc3RpbWF0ZXMgaW5oZXJpdCB0aGUgdmFsaWRhdGlvbiBkZXNpZ24gZGVmaW5lZCBpbiBwcmV2aW91cyBtb2R1bGVzLiBFYWNoIGluZGl2aWR1YWwgY29udHJpYnV0ZXMgb25lIE9PRiBwcmVkaWN0aW9uIHBlciBtZXRob2QgYW5kIHRyYWl0LiBQb29sZWQgbWV0cmljcyBkZXNjcmliZSBwcmVkaWN0aXZlIHBlcmZvcm1hbmNlIGluIHRoZSBwb3B1bGF0aW9uIHJlcHJlc2VudGVkIGJ5IHRoZSBkYXRhc2V0Lg0KDQpgYGB7ciBwb29sZWQtb29mLW1ldHJpY3N9DQojIENvbWJpbmUgT09GIHByZWRpY3Rpb25zIGFuZCBjb21wdXRlIGFnZ3JlZ2F0ZSBwcmVkaWN0aXZlIG1ldHJpY3MgYnkgdHJhaXQgYW5kIG1ldGhvZC4NCnBvb2xlZF9tZXRyaWNzIDwtIHByZWRpY3Rpb25zIHw+DQogIGdyb3VwX2J5KFRyYWl0LCBNZXRob2QpIHw+DQogIHN1bW1hcmlzZSgNCiAgICBOID0gbigpLA0KICAgIHIgPSBjb3IoT2JzZXJ2ZWQsIFByZWRpY3RlZCksDQogICAgUk1TRSA9IHNxcnQobWVhbigoT2JzZXJ2ZWQgLSBQcmVkaWN0ZWQpXjIpKSwNCiAgICBNQUUgPSBtZWFuKGFicyhPYnNlcnZlZCAtIFByZWRpY3RlZCkpLA0KICAgIEJpYXMgPSBtZWFuKFByZWRpY3RlZCAtIE9ic2VydmVkKSwNCiAgICBTbG9wZSA9IGNvdihPYnNlcnZlZCwgUHJlZGljdGVkKSAvIHZhcihQcmVkaWN0ZWQpLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKSB8Pg0KICBtdXRhdGUoDQogICAgdF92YWx1ZSA9IHIgKiBzcXJ0KChOIC0gMikgLyAoMSAtIHJeMikpLA0KICAgIHBfdmFsdWUgPSAyICogcHQoYWJzKHRfdmFsdWUpLCBkZiA9IE4gLSAyLCBsb3dlci50YWlsID0gRkFMU0UpDQogICkgfD4NCiAgc2VsZWN0KC10X3ZhbHVlKQ0KDQojIFN1bW1hcml6ZSB0aGUgcmVzdWx0cyBpbiBgZm9sZF9zdW1tYXJ5YC4NCmZvbGRfc3VtbWFyeSA8LSBtZXRyaWNzIHw+DQogIGdyb3VwX2J5KFRyYWl0LCBNZXRob2QpIHw+DQogIHN1bW1hcmlzZSgNCiAgICBNZWFuX0RJQyA9IG1lYW4oRElDKSwNCiAgICBTRF9ESUMgPSBzZChESUMpLA0KICAgIE1lYW5fZm9sZF9yID0gbWVhbihDb3JyZWxhdGlvbiksDQogICAgU0RfZm9sZF9yID0gc2QoQ29ycmVsYXRpb24pLA0KICAgIE1lYW5fZm9sZF9STVNFID0gbWVhbihSTVNFKSwNCiAgICBTRF9mb2xkX1JNU0UgPSBzZChSTVNFKSwNCiAgICBNZWFuX2ZvbGRfTUFFID0gbWVhbihNQUUpLA0KICAgIFNEX2ZvbGRfTUFFID0gc2QoTUFFKSwNCiAgICAuZ3JvdXBzID0gImRyb3AiDQogICkNCmBgYA0KDQpQZWFyc29uIGNvcnJlbGF0aW9uLCBSTVNFLCBNQUUsIGJpYXMsIGFuZCBzbG9wZSBhcmUgY2FsY3VsYXRlZCBmcm9tIHRoZSAxNTAgT09GIHByZWRpY3Rpb25zLiBDb3JyZWxhdGlvbiBwLXZhbHVlcyBhcmUgcmV0YWluZWQgb25seSBhcyBkZXNjcmlwdGl2ZSBpbmZvcm1hdGlvbi4NCg0KIyMjIDMuMiBESUMgYW5kIHJlbGF0aXZlIHN1cHBvcnQNCg0KRElDIGlzIHN1bW1hcml6ZWQgd2l0aGluIGVhY2ggdHJhaXQgYXMgY29tcGxlbWVudGFyeSBpbmZvcm1hdGlvbi4gRm9sbG93aW5nIHRoZSBsb2dpYyBvZiB0aGUgcmVmZXJlbmNlIHN0dWR5IFtAc2lsdmEyMDIxYnJyZ3VhdmFdOg0KDQpcWw0KXERlbHRhX2o9XG92ZXJsaW5le0RJQ31fai1cbWluX2soXG92ZXJsaW5le0RJQ31fayksDQpcXQ0KDQpcWw0KV3Byb2Jfaj1cZnJhY3tcZXhwKC1cRGVsdGFfai8yKX17XHN1bV9rXGV4cCgtXERlbHRhX2svMil9LA0KXHFxdWFkDQpFUl9qPVxmcmFje1dwcm9iX3tcbWF4fX17V3Byb2Jfan0uDQpcXQ0KDQpgV3Byb2JgIHJlcHJlc2VudHMgcmVsYXRpdmUgc3VwcG9ydCBkZXJpdmVkIGZyb20gRElDIGFuZCBpcyBub3QgaW50ZXJwcmV0ZWQgYXMgYSBjYWxpYnJhdGVkIHBvc3RlcmlvciBtb2RlbCBwcm9iYWJpbGl0eS4NCg0KYGBge3IgbW9kZWwtY29tcGFyaXNvbn0NCiMgQ29tYmluZSBmb2xkIHBlcmZvcm1hbmNlIGFuZCBESUMgdG8gYnVpbGQgdGhlIHF1YW50aXRpZXMgdXNlZCBmb3IgbW9kZWwgY29tcGFyaXNvbi4NCm1vZGVsX2NvbXBhcmlzb24gPC0gcG9vbGVkX21ldHJpY3MgfD4NCiAgbGVmdF9qb2luKGZvbGRfc3VtbWFyeSwgYnkgPSBjKCJUcmFpdCIsICJNZXRob2QiKSkgfD4NCiAgZ3JvdXBfYnkoVHJhaXQpIHw+DQogIG11dGF0ZSgNCiAgICBEZWx0YV9ESUMgPSBNZWFuX0RJQyAtIG1pbihNZWFuX0RJQyksDQogICAgbG9nX3dlaWdodCA9IC0wLjUgKiBEZWx0YV9ESUMsDQogICAgc3RhYmxlX3dlaWdodCA9IGV4cChsb2dfd2VpZ2h0IC0gbWF4KGxvZ193ZWlnaHQpKSwNCiAgICBXcHJvYiA9IHN0YWJsZV93ZWlnaHQgLyBzdW0oc3RhYmxlX3dlaWdodCksDQogICAgIyBDb21wdXRlIHRoZSBldmlkZW5jZSByYXRpbyByZWxhdGl2ZSB0byB0aGUgbWV0aG9kIHdpdGggdGhlIGxhcmdlc3QgV3Byb2IgaW4gZWFjaCB0cmFpdC4NCiAgICBFUiA9IG1heChXcHJvYikgLyBXcHJvYg0KICApIHw+DQogIHVuZ3JvdXAoKSB8Pg0KICBzZWxlY3QoDQogICAgVHJhaXQsIE1ldGhvZCwgTWVhbl9ESUMsIFNEX0RJQywgRGVsdGFfRElDLCBXcHJvYiwgRVIsDQogICAgTiwgciwgcF92YWx1ZSwgUk1TRSwgTUFFLCBCaWFzLCBTbG9wZSwNCiAgICBNZWFuX2ZvbGRfciwgU0RfZm9sZF9yLCBNZWFuX2ZvbGRfUk1TRSwgU0RfZm9sZF9STVNFLA0KICAgIE1lYW5fZm9sZF9NQUUsIFNEX2ZvbGRfTUFFDQogICkgfD4NCiAgYXJyYW5nZShtYXRjaChUcmFpdCwgdHJhaXRzKSwgRGVsdGFfRElDKQ0KYGBgDQoNCiMjIyAzLjMgSW50ZWdyYXRlZCBjb21wYXJpc29uIGFuZCBtZXRob2QgY2hvaWNlDQoNCk9PRiBwcmVkaWN0aXZlIHBlcmZvcm1hbmNlIGFuZCBESUMgYWRkcmVzcyBkaWZmZXJlbnQgcXVlc3Rpb25zLiBPT0YgY29ycmVsYXRpb24gaXMgdGhlIG1haW4gcmVmZXJlbmNlIGZvciBwcmVkaWN0aXZlIGFiaWxpdHksIHdoZXJlYXMgRElDIHByb3ZpZGVzIGNvbXBsZW1lbnRhcnkgaW5mb3JtYXRpb24gb24gZml0IGFuZCBjb21wbGV4aXR5Lg0KDQpgYGB7ciBwcmVkaWN0aXZlLWNvcnJlbGF0aW9uLWZpZ3VyZSwgZmlnLndpZHRoPTEzLCBmaWcuaGVpZ2h0PTEwLCBmaWcuYWx0PSJGYWNldGVkIGJhciBjaGFydCBjb21wYXJpbmcgcG9vbGVkIG91dC1vZi1mb2xkIHByZWRpY3RpdmUgY29ycmVsYXRpb25zIG9mIHRoZSBzZXZlbiBnZW5vbWljIHByZWRpY3Rpb24gbWV0aG9kcyBhY3Jvc3MgdGhlIHRlbiB0cmFpdHMsIHdpdGggYSBob3Jpem9udGFsIHJlZmVyZW5jZSBhdCB6ZXJvLiJ9DQojIE9yZGVyIG1ldGhvZHMgYW5kIGJ1aWxkIHRoZSBPT0YtY29ycmVsYXRpb24gZmlndXJlIGJ5IHRyYWl0Lg0KcHJlZGljdGl2ZV9wbG90IDwtIG1vZGVsX2NvbXBhcmlzb24gfD4NCiAgbXV0YXRlKE1ldGhvZCA9IGZhY3RvcihNZXRob2QsIGxldmVscyA9IG1ldGhvZHMpKSB8Pg0KICBnZ3Bsb3QoYWVzKHggPSBNZXRob2QsIHkgPSByLCBmaWxsID0gTWV0aG9kKSkgKw0KICBnZW9tX2hsaW5lKHlpbnRlcmNlcHQgPSAwLCBsaW5ldHlwZSA9IDIsIGxpbmV3aWR0aCA9IDAuNCkgKw0KICBnZW9tX2NvbCh3aWR0aCA9IDAuNzUpICsNCiAgZmFjZXRfd3JhcCh+IFRyYWl0LCBzY2FsZXMgPSAiZml4ZWQiLCBuY29sID0gMikgKw0KICBzY2FsZV9maWxsX2dkb2NzKA0KICAgIGJyZWFrcyA9IG1ldGhvZHMsDQogICAgbGFiZWxzID0gbWV0aG9kX2xhYmVscw0KICApICsNCiAgc2NhbGVfeF9kaXNjcmV0ZShsYWJlbHMgPSBtZXRob2RfbGFiZWxzKSArDQogIGxhYnMoDQogICAgeCA9IE5VTEwsDQogICAgeSA9ICJPT0YgY29ycmVsYXRpb24iLA0KICAgIGZpbGwgPSAiTWV0aG9kIiwNCiAgICB0aXRsZSA9ICJQcmVkaWN0aXZlIGFiaWxpdHkgb2YgdGhlIHNldmVuIG1ldGhvZHMiDQogICkgKw0KICBwcm9qZWN0X3RoZW1lICsNCiAgZ3VpZGVzKGZpbGwgPSBndWlkZV9sZWdlbmQobnJvdyA9IDEsIGJ5cm93ID0gVFJVRSkpICsNCiAgdGhlbWUoDQogICAgbGVnZW5kLmRpcmVjdGlvbiA9ICJob3Jpem9udGFsIiwNCiAgICBsZWdlbmQuYm94ID0gImhvcml6b250YWwiLA0KICAgIGF4aXMudGV4dC54ID0gZWxlbWVudF90ZXh0KGFuZ2xlID0gNDUsIGhqdXN0ID0gMSkNCiAgKQ0KDQpwcmVkaWN0aXZlX3Bsb3QNCmBgYA0KDQpUaGUgam9pbnQgdGFibGUgYWxsb3dzIHRoZSB0d28gZXZpZGVuY2Ugc291cmNlcyB0byBiZSBjb21wYXJlZCB3aXRob3V0IGNvbWJpbmluZyB0aGVtIGludG8gYSBzaW5nbGUgYXJ0aWZpY2lhbCBzY29yZS4NCg0KYGBge3IgbW9kZWwtY29tcGFyaXNvbi10YWJsZX0NCm1vZGVsX2NvbXBhcmlzb25fZGlzcGxheSA8LSBtb2RlbF9jb21wYXJpc29uIHw+DQogIG11dGF0ZShNZXRob2RfbGFiZWwgPSB1bm5hbWUobWV0aG9kX2xhYmVsc1tNZXRob2RdKSkgfD4NCiAgdHJhbnNtdXRlKA0KICAgIFRyYWl0LA0KICAgIE1ldGhvZCwNCiAgICBNZXRob2RfbGFiZWwsDQogICAgRElDID0gc3ByaW50ZigiJS4yZiIsIE1lYW5fRElDKSwNCiAgICBEZWx0YV9ESUMgPSBzcHJpbnRmKCIlLjJmIiwgRGVsdGFfRElDKSwNCiAgICBXcHJvYiA9IHNwcmludGYoIiUuM2YiLCBXcHJvYiksDQogICAgRVIgPSBzcHJpbnRmKCIlLjNmIiwgRVIpLA0KICAgIHIgPSBzcHJpbnRmKCIlLjNmIiwgciksDQogICAgcF92YWx1ZSA9IGlmX2Vsc2UoDQogICAgICBwX3ZhbHVlIDwgMC4wMDEsDQogICAgICAiPDAuMDAxIiwNCiAgICAgIHNwcmludGYoIiUuM2YiLCBwX3ZhbHVlKQ0KICAgICkNCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpLCBtYXRjaChNZXRob2QsIG1ldGhvZHMpKQ0KDQpmb3JtYXRfdGFibGUoDQogIG1vZGVsX2NvbXBhcmlzb25fZGlzcGxheSB8Pg0KICAgIHNlbGVjdChUcmFpdCwgTWV0aG9kX2xhYmVsLCBESUMsIERlbHRhX0RJQywgV3Byb2IsIEVSLCByLCBwX3ZhbHVlKSwNCiAgY2FwdGlvbiA9ICJDb21wYXJpc29uIG9mIHRoZSBzZXZlbiBtZXRob2RzIGJ5IHRyYWl0IiwNCiAgY29sLm5hbWVzID0gYygiVHJhaXQiLCAiTWV0aG9kIiwgIkRJQyIsICJEZWx0YSBESUMiLCAiV3Byb2IiLCAiRVIiLCAiciIsICJwLXZhbHVlIikNCikNCmBgYA0KDQpUaGUgbWV0aG9kIHVzZWQgaW4gc3Vic2VxdWVudCBzdGVwcyBpcyBzZWxlY3RlZCB3aXRoaW4gZWFjaCB0cmFpdCBieSB0aGUgaGlnaGVzdCBPT0YgY29ycmVsYXRpb24uIFRpZXMgYXJlIHJlc29sdmVkLCBpbiBvcmRlciwgYnkgbG93ZXIgUk1TRSwgbG93ZXIgTUFFLCBhbmQgbG93ZXIgbWVhbiBESUMuDQoNCmBgYHtyIGZpbmFsLW1vZGVsLXNlbGVjdGlvbn0NCnRyYWl0X3NjYWxlIDwtIHByZWRpY3Rpb25zIHw+DQogIGRpc3RpbmN0KFRyYWl0LCBJTkQsIE9ic2VydmVkKSB8Pg0KICBncm91cF9ieShUcmFpdCkgfD4NCiAgc3VtbWFyaXNlKA0KICAgIFBoZW5vdHlwaWNfbWVhbiA9IG1lYW4oT2JzZXJ2ZWQsIG5hLnJtID0gVFJVRSksDQogICAgUGhlbm90eXBpY19TRCA9IHNkKE9ic2VydmVkLCBuYS5ybSA9IFRSVUUpLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKQ0KDQpzZWxlY3RlZF9tZXRob2RzIDwtIG1vZGVsX2NvbXBhcmlzb24gfD4NCiAgZ3JvdXBfYnkoVHJhaXQpIHw+DQogIGFycmFuZ2UoZGVzYyhyKSwgUk1TRSwgTUFFLCBNZWFuX0RJQywgLmJ5X2dyb3VwID0gVFJVRSkgfD4NCiAgc2xpY2UoMUwpIHw+DQogIHVuZ3JvdXAoKSB8Pg0KICB0cmFuc211dGUoDQogICAgVHJhaXQsDQogICAgU2VsZWN0ZWRfbWV0aG9kID0gTWV0aG9kLA0KICAgIHIsDQogICAgcF92YWx1ZSwNCiAgICBSTVNFLA0KICAgIE1BRSwNCiAgICBCaWFzLA0KICAgIFNsb3BlLA0KICAgIE1lYW5fRElDLA0KICAgIERlbHRhX0RJQywNCiAgICBXcHJvYiwNCiAgICBFUg0KICApIHw+DQogIGxlZnRfam9pbih0cmFpdF9zY2FsZSwgYnkgPSAiVHJhaXQiKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpKQ0KYGBgDQoNClRoZSB0YWJsZSBiZWxvdyBzdW1tYXJpemVzIHRoZSBtZXRob2Qgc2VsZWN0ZWQgZm9yIGVhY2ggdHJhaXQgYW5kIHRoZSBtYWluDQptZXRyaWNzIHVzZWQgaW4gdGhhdCBjaG9pY2UuDQoNCmBgYHtyIHNlbGVjdGVkLW1ldGhvZHMtdGFibGV9DQpzZWxlY3RlZF9tZXRob2RzX2Rpc3BsYXkgPC0gc2VsZWN0ZWRfbWV0aG9kcyB8Pg0KICBtdXRhdGUoDQogICAgTWV0aG9kX2xhYmVsID0gdW5uYW1lKG1ldGhvZF9sYWJlbHNbU2VsZWN0ZWRfbWV0aG9kXSkNCiAgKSB8Pg0KICB0cmFuc211dGUoDQogICAgVHJhaXQsDQogICAgTWV0aG9kX2xhYmVsLA0KICAgIHIgPSBzcHJpbnRmKCIlLjNmIiwgciksDQogICAgUk1TRSA9IHNwcmludGYoIiUuM2YiLCBSTVNFKSwNCiAgICBNQUUgPSBzcHJpbnRmKCIlLjNmIiwgTUFFKSwNCiAgICBESUMgPSBzcHJpbnRmKCIlLjJmIiwgTWVhbl9ESUMpDQogICkNCg0KZm9ybWF0X3RhYmxlKA0KICBzZWxlY3RlZF9tZXRob2RzX2Rpc3BsYXksDQogIGNhcHRpb24gPSAiTWV0aG9kIHNlbGVjdGVkIGZvciBlYWNoIHRyYWl0IiwNCiAgY29sLm5hbWVzID0gYygNCiAgICAiVHJhaXQiLA0KICAgICJNZXRob2QiLA0KICAgICJPT0YgciIsDQogICAgIlJNU0UiLA0KICAgICJNQUUiLA0KICAgICJNZWFuIERJQyINCiAgKQ0KKQ0KYGBgDQoNCg0KIyMjIDMuNCBNQ01DIGRpYWdub3N0aWNzIGFuZCBvYnNlcnZlZC12ZXJzdXMtcHJlZGljdGVkIHZhbHVlcw0KDQpEaWFnbm9zdGljcyBjYWxjdWxhdGVkIGluIE1vZHVsZSAwMyBhcmUgc3VtbWFyaXplZCBnbG9iYWxseS4gQSBmaXQgaXMgY291bnRlZCBhcyB1bmZsYWdnZWQgd2hlbiBub25lIG9mIGl0cyBtb25pdG9yZWQgcGFyYW1ldGVycyByZWNlaXZlZCBgUmV2aWV3X2ZsYWdgLg0KDQpgYGB7ciBjb252ZXJnZW5jZS1vdmVydmlld30NCmZpdF9jb252ZXJnZW5jZSA8LSBjb252ZXJnZW5jZSB8Pg0KICBncm91cF9ieShSdW5faWQsIFRyYWl0LCBNZXRob2QpIHw+DQogIHN1bW1hcmlzZSgNCiAgICBEaWFnbm9zdGljX2ZsYWcgPSBhbnkoUmV2aWV3X2ZsYWcsIG5hLnJtID0gVFJVRSksDQogICAgLmdyb3VwcyA9ICJkcm9wIg0KICApDQoNCmNvbnZlcmdlbmNlX292ZXJ2aWV3IDwtIGRhdGEuZnJhbWUoDQogIExldmVsID0gYygiRml0cyIsICJNb25pdG9yZWQgcGFyYW1ldGVycyIpLA0KICBUb3RhbCA9IGMobnJvdyhmaXRfY29udmVyZ2VuY2UpLCBucm93KGNvbnZlcmdlbmNlKSksDQogIFdpdGhvdXRfZmxhZ3MgPSBjKA0KICAgIHN1bSghZml0X2NvbnZlcmdlbmNlJERpYWdub3N0aWNfZmxhZyksDQogICAgc3VtKCFjb252ZXJnZW5jZSRSZXZpZXdfZmxhZywgbmEucm0gPSBUUlVFKQ0KICApDQopIHw+DQogIG11dGF0ZSgNCiAgICBQcm9wb3J0aW9uX3dpdGhvdXRfZmxhZ3MgPSBXaXRob3V0X2ZsYWdzIC8gVG90YWwNCiAgKQ0KDQpmb3JtYXRfdGFibGUoDQogIGNvbnZlcmdlbmNlX292ZXJ2aWV3LA0KICBkaWdpdHMgPSA0LA0KICBjYXB0aW9uID0gIkdsb2JhbCBzdW1tYXJ5IG9mIE1DTUMgZGlhZ25vc3RpY3MiLA0KICBjb2wubmFtZXMgPSBjKCJMZXZlbCIsICJUb3RhbCIsICJXaXRob3V0IGZsYWdzIiwgIlByb3BvcnRpb24iKQ0KKQ0KYGBgDQoNClRoZSBwcmVkb21pbmFuY2Ugb2YgZml0cyBhbmQgcGFyYW1ldGVycyB3aXRob3V0IGZsYWdzIGluZGljYXRlcyB0aGF0IG1vc3QgY2hhaW5zIHNob3dlZCBiZWhhdmlvciBjb21wYXRpYmxlIHdpdGggY29udmVyZ2VuY2UgYWNjb3JkaW5nIHRvIHRoZSBtb25pdG9yZWQgZGlhZ25vc3RpY3MuIFRoaXMgc3VtbWFyeSBkb2VzIG5vdCBwcm92ZSBjb252ZXJnZW5jZSBvZiBldmVyeSBpbmRpdmlkdWFsIG1hcmtlciBlZmZlY3QgYW5kIGRvZXMgbm90IHBhcnRpY2lwYXRlIGluIG1ldGhvZCBjaG9pY2UuDQoNCk9ic2VydmVkLXZlcnN1cy1wcmVkaWN0ZWQgcGxvdHMgY29tcGxlbWVudCB0aGUgbnVtZXJpY2FsIG1ldHJpY3MuIFRoZSBkYXNoZWQgbGluZSByZXByZXNlbnRzIHRoZSAxOjEgcmVsYXRpb25zaGlwIGFuZCB0aGUgY29udGludW91cyBsaW5lIGlzIHRoZSByZWdyZXNzaW9uIG9mIG9ic2VydmVkIHZhbHVlcyBvbiBPT0YgcHJlZGljdGlvbnMuDQoNCmBgYHtyIG9ic2VydmVkLXByZWRpY3RlZC1maWd1cmUsIGZpZy53aWR0aD0xMiwgZmlnLmhlaWdodD0xMCwgZmlnLmFsdD0iRmFjZXRlZCBzY2F0dGVycGxvdHMgb2Ygb2JzZXJ2ZWQgdmFsdWVzIGFnYWluc3QgT09GIHZhbHVlcyBwcmVkaWN0ZWQgYnkgdGhlIHNlbGVjdGVkIG1ldGhvZCBmb3IgZWFjaCB0cmFpdCwgd2l0aCBhIDE6MSBsaW5lIGFuZCBmaXR0ZWQgbGluZWFyIHJlZ3Jlc3Npb24uIn0NCnNlbGVjdGVkX3ByZWRpY3Rpb25zIDwtIHByZWRpY3Rpb25zIHw+DQogIGlubmVyX2pvaW4oDQogICAgc2VsZWN0ZWRfbWV0aG9kcyB8Pg0KICAgICAgc2VsZWN0KFRyYWl0LCBTZWxlY3RlZF9tZXRob2QsIHIpLA0KICAgIGJ5ID0gIlRyYWl0Ig0KICApIHw+DQogIGZpbHRlcihNZXRob2QgPT0gU2VsZWN0ZWRfbWV0aG9kKSB8Pg0KICBtdXRhdGUoDQogICAgTWV0aG9kX2xhYmVsID0gdW5uYW1lKG1ldGhvZF9sYWJlbHNbTWV0aG9kXSksDQogICAgRmFjZXQgPSBwYXN0ZTAoDQogICAgICBUcmFpdCwgIiDigJQgIiwgTWV0aG9kX2xhYmVsLA0KICAgICAgIlxuciA9ICIsIHNwcmludGYoIiUuM2YiLCByKQ0KICAgICkNCiAgKQ0KDQpvYnNlcnZlZF9wcmVkaWN0ZWRfcGxvdCA8LSBzZWxlY3RlZF9wcmVkaWN0aW9ucyB8Pg0KICBnZ3Bsb3QoYWVzKHggPSBQcmVkaWN0ZWQsIHkgPSBPYnNlcnZlZCkpICsNCiAgZ2VvbV9hYmxpbmUoaW50ZXJjZXB0ID0gMCwgc2xvcGUgPSAxLCBsaW5ldHlwZSA9IDIsIGxpbmV3aWR0aCA9IDAuNSkgKw0KICBnZW9tX3BvaW50KGFscGhhID0gMC42NSwgc2l6ZSA9IDEuNikgKw0KICBnZW9tX3Ntb290aChtZXRob2QgPSAibG0iLCBmb3JtdWxhID0geSB+IHgsIHNlID0gRkFMU0UsIGxpbmV3aWR0aCA9IDAuNykgKw0KICBmYWNldF93cmFwKH4gRmFjZXQsIHNjYWxlcyA9ICJmcmVlIiwgbmNvbCA9IDIpICsNCiAgbGFicygNCiAgICB4ID0gIk9PRiBwcmVkaWN0ZWQgdmFsdWUiLA0KICAgIHkgPSAiT2JzZXJ2ZWQgdmFsdWUiLA0KICAgIHRpdGxlID0gIlJlbGF0aW9uc2hpcCBiZXR3ZWVuIG9ic2VydmVkIGFuZCBwcmVkaWN0ZWQgdmFsdWVzIg0KICApICsNCiAgcHJvamVjdF90aGVtZSArDQogIHRoZW1lKGxlZ2VuZC5wb3NpdGlvbiA9ICJub25lIikNCg0Kb2JzZXJ2ZWRfcHJlZGljdGVkX3Bsb3QNCmBgYA0KDQojIyA0LiBPT0YgZ2Vub21pYyB2YWx1ZXMgYW5kIHJlbGF0aW9uc2hpcHMgYW1vbmcgdHJhaXRzDQoNCiMjIyA0LjEgT09GIEdFQlZzIG9uIHRoZSB0cmFpdCBzY2FsZQ0KDQpGb3IgZWFjaCB0cmFpdCwgdGhlIGdlbm9taWMgY29tcG9uZW50IGNvbWVzIGZyb20gdGhlIHNlbGVjdGVkIG1ldGhvZCBhbmQgcmVtYWlucyBjcm9zcy1maXR0ZWQ6IHRoZSBpbmRpdmlkdWFsJ3Mgb3duIHBoZW5vdHlwZSB3YXMgbm90IHVzZWQgaW4gdGhlIGZpdCB0aGF0IHByb2R1Y2VkIGl0cyBPT0Ygc2NvcmUuDQoNCkEgdmVyc2lvbiBpbiB0aGUgb3JpZ2luYWwgdHJhaXQgdW5pdHMgaXMgYWxzbyBwcmVzZW50ZWQ6DQoNClxbDQpHRUJWX3tzY2FsZX0gPSBcYmFye3l9ICsgR0VCVl97Y2VudGVyZWR9Lg0KXF0NCg0KQWRkaW5nIHRoZSBwaGVub3R5cGljIG1lYW4gb25seSBzaGlmdHMgdGhlIHNjYWxlLiBJdCBkb2VzIG5vdCBjaGFuZ2UgdGhlIHJhbmtpbmcgYW5kIGRvZXMgbm90IHR1cm4gdGhlIEdFQlYgaW50byBhIGNvbXBsZXRlIHBoZW5vdHlwaWMgcHJlZGljdGlvbi4NCg0KYGBge3Igc2VsZWN0ZWQtb29mLWdlbm9taWMtdmFsdWVzfQ0Kb29mX2dlbm9taWNfdmFsdWVzIDwtIHByZWRpY3Rpb25zIHw+DQogIGlubmVyX2pvaW4oDQogICAgc2VsZWN0ZWRfbWV0aG9kcyB8Pg0KICAgICAgc2VsZWN0KA0KICAgICAgICBUcmFpdCwgU2VsZWN0ZWRfbWV0aG9kLCByLCBwX3ZhbHVlDQogICAgICApLA0KICAgIGJ5ID0gIlRyYWl0Ig0KICApIHw+DQogIGZpbHRlcihNZXRob2QgPT0gU2VsZWN0ZWRfbWV0aG9kKSB8Pg0KICBsZWZ0X2pvaW4odHJhaXRfc2NhbGUsIGJ5ID0gIlRyYWl0IikgfD4NCiAgdHJhbnNtdXRlKA0KICAgIElORCwNCiAgICBUcmFpdCwNCiAgICBGb2xkLA0KICAgIE1ldGhvZCwNCiAgICBPYnNlcnZlZCwNCiAgICBQcmVkaWN0ZWQsDQogICAgT09GX3IgPSByLA0KICAgIE9PRl9wX3ZhbHVlID0gcF92YWx1ZSwNCiAgICBQaGVub3R5cGljX21lYW4sDQogICAgR0VCVl9jZW50ZXJlZCA9IEdlbm9taWNfY29tcG9uZW50LA0KICAgIEdFQlZfb25fdHJhaXRfc2NhbGUgPSBQaGVub3R5cGljX21lYW4gKyBHZW5vbWljX2NvbXBvbmVudA0KICApIHw+DQogIGFycmFuZ2UobWF0Y2goVHJhaXQsIHRyYWl0cyksIElORCkNCmBgYA0KDQojIyMgNC4yIENvcnJlbGF0aW9uIGFtb25nIE9PRiBHRUJWcyBmb3IgYWxsIHRlbiB0cmFpdHMNCg0KQmVmb3JlIGFueSBlbGlnaWJpbGl0eSBmaWx0ZXIgaXMgYXBwbGllZCwgT09GIEdFQlZzIGZyb20gdGhlIHNlbGVjdGVkIG1ldGhvZHMgYXJlIG9yZ2FuaXplZCBmb3IgKiphbGwgdGVuIHRyYWl0cyoqLiBUaGUgbWF0cml4IGJlbG93IGRlc2NyaWJlcyBhc3NvY2lhdGlvbnMgYW1vbmcgdGhlc2UgY3Jvc3MtZml0dGVkIHNjb3Jlcy4NCg0KYGBge3Igb29mLWNvcnJlbGF0aW9uc30NCm9vZl9nZW5vbWljX3dpZGUgPC0gb29mX2dlbm9taWNfdmFsdWVzIHw+DQogIHNlbGVjdChJTkQsIFRyYWl0LCBHRUJWX2NlbnRlcmVkKSB8Pg0KICBwaXZvdF93aWRlcihuYW1lc19mcm9tID0gVHJhaXQsIHZhbHVlc19mcm9tID0gR0VCVl9jZW50ZXJlZCkNCg0Kb29mX2dlbm9taWNfY29ycmVsYXRpb25zIDwtIGNvcigNCiAgYXMubWF0cml4KG9vZl9nZW5vbWljX3dpZGVbLCB0cmFpdHMsIGRyb3AgPSBGQUxTRV0pDQopDQpgYGANCg0KVGhlc2UgY29ycmVsYXRpb25zIGFyZSBub3QgZXN0aW1hdGVzIG9mIGdlbmV0aWMgY29ycmVsYXRpb24gZnJvbSBhIG11bHRpdmFyaWF0ZSBtb2RlbC4gVGhleSBkZXNjcmliZSBvbmx5IHRoZSBhc3NvY2lhdGlvbiBhbW9uZyBPT0YgR0VCVnMgcHJvZHVjZWQgc2VwYXJhdGVseSBmb3IgZWFjaCB0cmFpdC4NCg0KYGBge3Igb29mLWNvcnJlbGF0aW9uLWZpZ3VyZSwgZmlnLndpZHRoPTEwLCBmaWcuaGVpZ2h0PTksIGZpZy5hbHQ9IkhlYXRtYXAgb2YgcGFpcndpc2UgY29ycmVsYXRpb25zIGFtb25nIGNyb3NzLWZpdHRlZCBPT0YgZ2Vub21pYy12YWx1ZSBzY29yZXMgZm9yIHRoZSB0cmFpdHMsIHJlcHJlc2VudGluZyBleHBsb3JhdG9yeSBhc3NvY2lhdGlvbnMgcmF0aGVyIHRoYW4gbXVsdGl2YXJpYXRlIGdlbmV0aWMgY29ycmVsYXRpb25zLiJ9DQojIFJlc2hhcGUgdGhlIE9PRiBjb3JyZWxhdGlvbiBtYXRyaXggYW5kIGJ1aWxkIHRoZSBjcm9zcy10cmFpdCBoZWF0bWFwLg0KY29ycmVsYXRpb25fbG9uZyA8LSBhcy5kYXRhLmZyYW1lKA0KICBhcy50YWJsZShvb2ZfZ2Vub21pY19jb3JyZWxhdGlvbnMpDQopDQpuYW1lcyhjb3JyZWxhdGlvbl9sb25nKSA8LSBjKA0KICAiVHJhaXRfMSIsDQogICJUcmFpdF8yIiwNCiAgIkNvcnJlbGF0aW9uIg0KKQ0KDQojIFNldCBvbmx5IHRoZSBsYWJlbCBvZiB8cnwgPCAwLjAwNSB0byB6ZXJvOyB0aGUgb3JpZ2luYWwgY29ycmVsYXRpb24gc3RpbGwgZHJpdmVzIGFuYWx5c2lzIGFuZCBjb2xvci4NCmNvcnJlbGF0aW9uX2xvbmcgPC0gY29ycmVsYXRpb25fbG9uZyB8Pg0KICBtdXRhdGUoDQogICAgQ29ycmVsYXRpb25fbGFiZWwgPSByZXBsYWNlKA0KICAgICAgQ29ycmVsYXRpb24sDQogICAgICBhYnMoQ29ycmVsYXRpb24pIDwgMC4wMDUsDQogICAgICAwDQogICAgKQ0KICApDQoNCiMgQnVpbGQgdGhlIGhlYXRtYXAgb2YgY29ycmVsYXRpb25zIGFtb25nIE9PRiBnZW5vbWljIHZhbHVlcy4NCmNvcnJlbGF0aW9uX3Bsb3QgPC0gZ2dwbG90KA0KICBjb3JyZWxhdGlvbl9sb25nLA0KICBhZXMoeCA9IFRyYWl0XzEsIHkgPSBUcmFpdF8yLCBmaWxsID0gQ29ycmVsYXRpb24pDQopICsNCiAgZ2VvbV90aWxlKCkgKw0KICBnZW9tX3RleHQoDQogICAgYWVzKGxhYmVsID0gc3ByaW50ZigiJS4yZiIsIENvcnJlbGF0aW9uX2xhYmVsKSksDQogICAgc2l6ZSA9IDMNCiAgKSArDQogIHNjYWxlX2ZpbGxfZGlzdGlsbGVyKA0KICAgIHR5cGUgPSAiZGl2IiwNCiAgICBwYWxldHRlID0gIlJkQnUiLA0KICAgIGRpcmVjdGlvbiA9IDEsDQogICAgbGltaXRzID0gYygtMSwgMSkNCiAgKSArDQogIGxhYnMoDQogICAgeCA9IE5VTEwsDQogICAgeSA9IE5VTEwsDQogICAgZmlsbCA9ICJyIiwNCiAgICB0aXRsZSA9ICJDb3JyZWxhdGlvbiBhbW9uZyBPT0YgR0VCVnMgb2YgZWxpZ2libGUgdHJhaXRzIg0KICApICsNCiAgY29vcmRfZXF1YWwoKSArDQogIHByb2plY3RfdGhlbWUgKw0KICB0aGVtZShheGlzLnRleHQueCA9IGVsZW1lbnRfdGV4dChhbmdsZSA9IDQ1LCBoanVzdCA9IDEpKQ0KDQpjb3JyZWxhdGlvbl9wbG90DQpgYGANCg0KUG9zaXRpdmUgdmFsdWVzIGluZGljYXRlIGEgdGVuZGVuY3kgdG8gb3JkZXIgaW5kaXZpZHVhbHMgc2ltaWxhcmx5LCB3aGVyZWFzIG5lZ2F0aXZlIHZhbHVlcyBpbmRpY2F0ZSBvcHBvc2l0ZSBvcmRlcmluZyBkaXJlY3Rpb25zLiBUaGUgbWF0cml4IGlzIGRlc2NyaXB0aXZlIGFuZCBkb2VzIG5vdCBjcmVhdGUgYW4gYWRkaXRpb25hbCBzZWxlY3Rpb24gY3JpdGVyaW9uLg0KDQojIyA1LiBHZW5vbWljIHNlbGVjdGlvbiBpbiBlbGlnaWJsZSB0cmFpdHMNCg0KIyMjIDUuMSBFbGlnaWJpbGl0eSBjcml0ZXJpYQ0KDQpTZWxlY3Rpb24gaXMgcGVyZm9ybWVkIG9ubHkgd2hlbiB0aGUgc2VsZWN0ZWQgbWV0aG9kIGZvciBhIHRyYWl0IHNpbXVsdGFuZW91c2x5IHNhdGlzZmllczoNCg0KXFsNCnJfe09PRn0gPiAwLjMwDQpcXQ0KDQphbmQNCg0KXFsNCk5STVNFID0gXGZyYWN7Uk1TRX17c195fSA8IDEsDQpcXQ0KDQp3aGVyZSBcKHNfeVwpIGlzIHRoZSBvYnNlcnZlZCBwaGVub3R5cGljIHN0YW5kYXJkIGRldmlhdGlvbi4gVGhlIGZpcnN0IGNyaXRlcmlvbiByZXF1aXJlcyBhIG1pbmltdW0gcG9zaXRpdmUgcHJlZGljdGl2ZSBhc3NvY2lhdGlvbjsgdGhlIHNlY29uZCByZXF1aXJlcyBwcmVkaWN0aW9uIGVycm9yIGJlbG93IG9uZSBwaGVub3R5cGljIHN0YW5kYXJkIGRldmlhdGlvbi4NCg0KYGBge3Igc2VsZWN0aW9uLXBhcmFtZXRlcnN9DQpDT1JSRUxBVElPTl9TRUxFQ1RJT05fVEhSRVNIT0xEIDwtIDAuMzANCk5STVNFX1NFTEVDVElPTl9USFJFU0hPTEQgPC0gMS4wMA0KU0VMRUNUSU9OX1BST1BPUlRJT04gPC0gMC4yMA0KDQpzZWxlY3Rpb25fb2JqZWN0aXZlX21hcCA8LSBjKA0KICBNTUNPTSA9ICJpbmNyZWFzZSIsDQogIFBST0RDT00gPSAiaW5jcmVhc2UiLA0KICBQUk9ERUYgPSAiZGVjcmVhc2UiLA0KICBDRiA9ICJpbmNyZWFzZSIsDQogIERGID0gImluY3JlYXNlIiwNCiAgRENJID0gImRlY3JlYXNlIiwNCiAgRVAgPSAiaW5jcmVhc2UiLA0KICBGRkMgPSAiaW5jcmVhc2UiLA0KICBGRlAgPSAiaW5jcmVhc2UiLA0KICBTUyA9ICJpbmNyZWFzZSINCikNCg0Kc2VsZWN0aW9uX29iamVjdGl2ZXMgPC0gZGF0YS5mcmFtZSgNCiAgVHJhaXQgPSB0cmFpdHMsDQogIFNlbGVjdGlvbl9vYmplY3RpdmUgPSB1bm5hbWUoc2VsZWN0aW9uX29iamVjdGl2ZV9tYXBbdHJhaXRzXSksDQogIHN0cmluZ3NBc0ZhY3RvcnMgPSBGQUxTRQ0KKQ0KDQptb2RlbF9zZWxlY3Rpb24gPC0gc2VsZWN0ZWRfbWV0aG9kcyB8Pg0KICBsZWZ0X2pvaW4oc2VsZWN0aW9uX29iamVjdGl2ZXMsIGJ5ID0gIlRyYWl0IikgfD4NCiAgbXV0YXRlKA0KICAgIE5STVNFID0gUk1TRSAvIFBoZW5vdHlwaWNfU0QsDQogICAgUHJlZGljdGl2ZV9za2lsbF92c19TRCA9IDEgLSBOUk1TRSwNCiAgICBFbGlnaWJsZV9ieV9jb3JyZWxhdGlvbiA9IHIgPiBDT1JSRUxBVElPTl9TRUxFQ1RJT05fVEhSRVNIT0xELA0KICAgIEVsaWdpYmxlX2J5X2Vycm9yID0gTlJNU0UgPCBOUk1TRV9TRUxFQ1RJT05fVEhSRVNIT0xELA0KICAgIFNlbGVjdGlvbl9lbGlnaWJsZSA9DQogICAgICBFbGlnaWJsZV9ieV9jb3JyZWxhdGlvbiAmIEVsaWdpYmxlX2J5X2Vycm9yDQogICkgfD4NCiAgYXJyYW5nZShtYXRjaChUcmFpdCwgdHJhaXRzKSkNCg0KZWxpZ2libGVfdHJhaXRzIDwtIG1vZGVsX3NlbGVjdGlvbiB8Pg0KICBmaWx0ZXIoU2VsZWN0aW9uX2VsaWdpYmxlKSB8Pg0KICBwdWxsKFRyYWl0KQ0KDQpzZWxlY3Rpb25fcGFyYW1ldGVycyA8LSBkYXRhLmZyYW1lKA0KICBQYXJhbWV0ZXIgPSBjKA0KICAgICJNZXRob2QgY2hvaWNlIiwNCiAgICAiTWluaW11bSBPT0YgY29ycmVsYXRpb24iLA0KICAgICJNYXhpbXVtIE5STVNFIiwNCiAgICAiU2VsZWN0ZWQgcHJvcG9ydGlvbiINCiAgKSwNCiAgUnVsZSA9IGMoDQogICAgIkhpZ2hlc3QgcjsgdGllcyBieSBsb3dlciBSTVNFLCBsb3dlciBNQUUsIGFuZCBsb3dlciBESUMiLA0KICAgICI+IDAuMzAiLA0KICAgICI8IDEuMDAiLA0KICAgICIyMCUgcGVyIGVsaWdpYmxlIHRyYWl0Ig0KICApLA0KICBzdHJpbmdzQXNGYWN0b3JzID0gRkFMU0UNCikNCg0KZm9ybWF0X3RhYmxlKA0KICBzZWxlY3Rpb25fcGFyYW1ldGVycywNCiAgY2FwdGlvbiA9ICJDcml0ZXJpYSB1c2VkIGZvciBtZXRob2QgY2hvaWNlIGFuZCBnZW5vbWljIHNlbGVjdGlvbiIsDQogIGNvbC5uYW1lcyA9IGMoIlBhcmFtZXRlciIsICJSdWxlIikNCikNCmBgYA0KDQpUaGUgdGFibGUgYmVsb3cgY29tYmluZXMgdGhlIHNlbGVjdGVkIG1ldGhvZCwgcmVsZXZhbnQgcGVyZm9ybWFuY2UgbWV0cmljcywgYW5kIHRoZSBlbGlnaWJpbGl0eSBkZWNpc2lvbi4gVGhlIGNvcnJlbGF0aW9uIHAtdmFsdWUgcmVtYWlucyBhdmFpbGFibGUgaW4gdGhlIGFuYWx5dGljYWwgb2JqZWN0IGJ1dCBpcyBub3QgdXNlZCBhcyBhIGZpbHRlci4NCg0KYGBge3IgbW9kZWwtc2VsZWN0aW9uLXRhYmxlfQ0KbW9kZWxfc2VsZWN0aW9uX2Rpc3BsYXkgPC0gbW9kZWxfc2VsZWN0aW9uIHw+DQogIG11dGF0ZSgNCiAgICBNZXRob2RfbGFiZWwgPSB1bm5hbWUobWV0aG9kX2xhYmVsc1tTZWxlY3RlZF9tZXRob2RdKSwNCiAgICBPYmplY3RpdmUgPSB1bm5hbWUoc2VsZWN0aW9uX29iamVjdGl2ZV9sYWJlbHNbU2VsZWN0aW9uX29iamVjdGl2ZV0pLA0KICAgIEVsaWdpYmxlID0gaWZfZWxzZShTZWxlY3Rpb25fZWxpZ2libGUsICJZZXMiLCAiTm8iKQ0KICApIHw+DQogIHRyYW5zbXV0ZSgNCiAgICBUcmFpdCwNCiAgICBNZXRob2RfbGFiZWwsDQogICAgT2JqZWN0aXZlLA0KICAgIHIgPSBzcHJpbnRmKCIlLjNmIiwgciksDQogICAgUk1TRSA9IHNwcmludGYoIiUuM2YiLCBSTVNFKSwNCiAgICBOUk1TRSA9IHNwcmludGYoIiUuM2YiLCBOUk1TRSksDQogICAgTUFFID0gc3ByaW50ZigiJS4zZiIsIE1BRSksDQogICAgQmlhcyA9IHNwcmludGYoIiUuM2YiLCBCaWFzKSwNCiAgICBTbG9wZSA9IHNwcmludGYoIiUuM2YiLCBTbG9wZSksDQogICAgRElDID0gc3ByaW50ZigiJS4yZiIsIE1lYW5fRElDKSwNCiAgICBFbGlnaWJsZQ0KICApDQoNCmZvcm1hdF90YWJsZSgNCiAgbW9kZWxfc2VsZWN0aW9uX2Rpc3BsYXksDQogIGNhcHRpb24gPSAiU2VsZWN0ZWQgbWV0aG9kIGFuZCBlbGlnaWJpbGl0eSBmb3Igc2VsZWN0aW9uIGJ5IHRyYWl0IiwNCiAgY29sLm5hbWVzID0gYygNCiAgICAiVHJhaXQiLCAiTWV0aG9kIiwgIk9iamVjdGl2ZSIsICJyIiwgIlJNU0UiLCAiTlJNU0UiLA0KICAgICJNQUUiLCAiQmlhcyIsICJTbG9wZSIsICJNZWFuIERJQyIsICJFbGlnaWJsZSINCiAgKQ0KKQ0KYGBgDQoNCiMjIyA1LjIgUmFua2luZyBhbmQgc2VsZWN0ZWQgaW5kaXZpZHVhbHMNCg0KRm9yIGVsaWdpYmxlIHRyYWl0cywgaW5kaXZpZHVhbHMgYXJlIG9yZGVyZWQgYnkgdGhlIEdFQlYgb24gdGhlIHRyYWl0IHNjYWxlIHdoaWxlIHJlc3BlY3RpbmcgdGhlIGJyZWVkaW5nIG9iamVjdGl2ZS4gRm9yIHRyYWl0cyB0byBiZSByZWR1Y2VkLCB0aGUgc2lnbiBpcyByZXZlcnNlZCBvbmx5IHdoZW4gY29uc3RydWN0aW5nIHRoZSByYW5raW5nIHNjb3JlLiBUaGUgc2VsZWN0ZWQgcHJvcG9ydGlvbiBpcyAyMCUuDQoNCmBgYHtyIGdlbm9taWMtcmFua2luZ30NCnNlbGVjdGlvbl9nZW5vbWljX3ZhbHVlcyA8LSBvb2ZfZ2Vub21pY192YWx1ZXMgfD4NCiAgaW5uZXJfam9pbigNCiAgICBtb2RlbF9zZWxlY3Rpb24gfD4NCiAgICAgIHNlbGVjdCgNCiAgICAgICAgVHJhaXQsDQogICAgICAgIFNlbGVjdGlvbl9vYmplY3RpdmUsDQogICAgICAgIFNlbGVjdGlvbl9lbGlnaWJsZSwNCiAgICAgICAgTlJNU0UNCiAgICAgICksDQogICAgYnkgPSAiVHJhaXQiDQogICkgfD4NCiAgbXV0YXRlKE9PRl9OUk1TRSA9IE5STVNFKQ0KDQpnZW5vbWljX3JhbmtpbmcgPC0gc2VsZWN0aW9uX2dlbm9taWNfdmFsdWVzIHw+DQogIGZpbHRlcihTZWxlY3Rpb25fZWxpZ2libGUpIHw+DQogIG11dGF0ZSgNCiAgICBTZWxlY3Rpb25fc2NvcmUgPSBjYXNlX3doZW4oDQogICAgICBTZWxlY3Rpb25fb2JqZWN0aXZlID09ICJpbmNyZWFzZSIgfiBHRUJWX29uX3RyYWl0X3NjYWxlLA0KICAgICAgU2VsZWN0aW9uX29iamVjdGl2ZSA9PSAiZGVjcmVhc2UiIH4gLUdFQlZfb25fdHJhaXRfc2NhbGUsDQogICAgICBUUlVFIH4gTkFfcmVhbF8NCiAgICApDQogICkgfD4NCiAgZ3JvdXBfYnkoVHJhaXQpIHw+DQogIGFycmFuZ2UoZGVzYyhTZWxlY3Rpb25fc2NvcmUpLCBJTkQsIC5ieV9ncm91cCA9IFRSVUUpIHw+DQogIG11dGF0ZShSYW5rID0gcm93X251bWJlcigpKSB8Pg0KICB1bmdyb3VwKCkgfD4NCiAgYXJyYW5nZShtYXRjaChUcmFpdCwgdHJhaXRzKSwgUmFuaykNCg0Kc2VsZWN0aW9uX3NpemVzIDwtIGdlbm9taWNfcmFua2luZyB8Pg0KICBjb3VudChUcmFpdCwgbmFtZSA9ICJOX2F2YWlsYWJsZSIpIHw+DQogIG11dGF0ZSgNCiAgICBTZWxlY3Rpb25fcHJvcG9ydGlvbiA9IFNFTEVDVElPTl9QUk9QT1JUSU9OLA0KICAgIE5fc2VsZWN0ZWQgPSBwbWF4KA0KICAgICAgMUwsDQogICAgICBhcy5pbnRlZ2VyKGNlaWxpbmcoU2VsZWN0aW9uX3Byb3BvcnRpb24gKiBOX2F2YWlsYWJsZSkpDQogICAgKQ0KICApIHw+DQogIGFycmFuZ2UobWF0Y2goVHJhaXQsIHRyYWl0cykpDQoNCnNlbGVjdGVkX2luZGl2aWR1YWxzX2J5X3RyYWl0IDwtIGdlbm9taWNfcmFua2luZyB8Pg0KICBpbm5lcl9qb2luKHNlbGVjdGlvbl9zaXplcywgYnkgPSAiVHJhaXQiKSB8Pg0KICBmaWx0ZXIoUmFuayA8PSBOX3NlbGVjdGVkKSB8Pg0KICBsZWZ0X2pvaW4oDQogICAgbWF0cmljZXNfb2JqZWN0JG1ldGFkYXRhIHw+DQogICAgICBzZWxlY3QoSU5ELCBGQU0pLA0KICAgIGJ5ID0gIklORCINCiAgKSB8Pg0KICBzZWxlY3QoDQogICAgVHJhaXQsIFJhbmssIElORCwgRkFNLCBNZXRob2QsIFNlbGVjdGlvbl9vYmplY3RpdmUsDQogICAgR0VCVl9jZW50ZXJlZCwgR0VCVl9vbl90cmFpdF9zY2FsZSwgU2VsZWN0aW9uX3Njb3JlLA0KICAgIE9PRl9yLCBPT0ZfTlJNU0UsIFNlbGVjdGlvbl9wcm9wb3J0aW9uLA0KICAgIE5fYXZhaWxhYmxlLCBOX3NlbGVjdGVkDQogICkgfD4NCiAgYXJyYW5nZShtYXRjaChUcmFpdCwgdHJhaXRzKSwgUmFuaykNCmBgYA0KDQpUaGUgdGFibGUgcHJlc2VudHMgdGhlIHRvcCBmaXZlIGluZGl2aWR1YWxzIGZvciBlYWNoIGVsaWdpYmxlIHRyYWl0OyB0aGUgY29tcGxldGUgb2JqZWN0IHJldGFpbnMgYWxsIHNlbGVjdGVkIGluZGl2aWR1YWxzLg0KDQpgYGB7ciBwcm9wb3J0aW9uYWwtc2VsZWN0aW9uLXByZXZpZXd9DQpzZWxlY3Rpb25fcHJldmlldyA8LSBzZWxlY3RlZF9pbmRpdmlkdWFsc19ieV90cmFpdCB8Pg0KICBncm91cF9ieShUcmFpdCkgfD4NCiAgc2xpY2VfaGVhZChuID0gNSkgfD4NCiAgdW5ncm91cCgpIHw+DQogIG11dGF0ZSgNCiAgICBNZXRob2RfbGFiZWwgPSB1bm5hbWUobWV0aG9kX2xhYmVsc1tNZXRob2RdKSwNCiAgICBPYmplY3RpdmUgPSB1bm5hbWUoc2VsZWN0aW9uX29iamVjdGl2ZV9sYWJlbHNbU2VsZWN0aW9uX29iamVjdGl2ZV0pDQogICkgfD4NCiAgdHJhbnNtdXRlKA0KICAgIFRyYWl0LA0KICAgIFJhbmssDQogICAgSU5ELA0KICAgIEZBTSwNCiAgICBNZXRob2RfbGFiZWwsDQogICAgT2JqZWN0aXZlLA0KICAgIEdFQlYgPSBzcHJpbnRmKCIlLjNmIiwgR0VCVl9vbl90cmFpdF9zY2FsZSksDQogICAgciA9IHNwcmludGYoIiUuM2YiLCBPT0ZfciksDQogICAgTlJNU0UgPSBzcHJpbnRmKCIlLjNmIiwgT09GX05STVNFKQ0KICApDQoNCmZvcm1hdF90YWJsZSgNCiAgc2VsZWN0aW9uX3ByZXZpZXcsDQogIGNhcHRpb24gPSAiRmlyc3QgZml2ZSBzZWxlY3RlZCBpbmRpdmlkdWFscyBmb3IgZWFjaCBlbGlnaWJsZSB0cmFpdCIsDQogIGNvbC5uYW1lcyA9IGMoDQogICAgIlRyYWl0IiwgIlJhbmsiLCAiSU5EIiwgIkZBTSIsICJNZXRob2QiLCAiT2JqZWN0aXZlIiwNCiAgICAiR0VCViArIG1lYW4iLCAiT09GIHIiLCAiTlJNU0UiDQogICkNCikNCmBgYA0KDQojIyMgNS4zIFJlY3VycmVuY2UgYW1vbmcgZWxpZ2libGUgdHJhaXRzDQoNClJlY3VycmVuY2UgY291bnRzIHRoZSBudW1iZXIgb2YgZWxpZ2libGUgdHJhaXRzIGluIHdoaWNoIGVhY2ggaW5kaXZpZHVhbCBhcHBlYXJzIGFtb25nIHRoZSBzZWxlY3RlZCAyMCUuIEZyZXF1ZW5jeSBpcyBjYWxjdWxhdGVkIHJlbGF0aXZlIHRvIHRoZSBudW1iZXIgb2YgZWxpZ2libGUgdHJhaXRzIGFuZCBpcyBub3QgYSBtdWx0aS10cmFpdCBzZWxlY3Rpb24gaW5kZXguDQoNCmBgYHtyIG11bHRpdHJhaXQtcmVjdXJyZW5jZX0NCnJlY3VycmVuY2VfY291bnRzIDwtIHNlbGVjdGVkX2luZGl2aWR1YWxzX2J5X3RyYWl0IHw+DQogIGdyb3VwX2J5KElORCwgRkFNKSB8Pg0KICBzdW1tYXJpc2UoDQogICAgTl90cmFpdHMgPSBuKCksDQogICAgVHJhaXRzID0gcGFzdGUoVHJhaXQsIGNvbGxhcHNlID0gIiwgIiksDQogICAgQmVzdF9yYW5rID0gbWluKFJhbmspLA0KICAgIE1lYW5fcmFua19wcmVzZW50ID0gbWVhbihSYW5rKSwNCiAgICAuZ3JvdXBzID0gImRyb3AiDQogICkNCg0Kbl9lbGlnaWJsZV90cmFpdHMgPC0gbGVuZ3RoKGVsaWdpYmxlX3RyYWl0cykNCg0KbXVsdGl0cmFpdF9yZWN1cnJlbmNlIDwtIG1hdHJpY2VzX29iamVjdCRtZXRhZGF0YSB8Pg0KICBzZWxlY3QoSU5ELCBGQU0pIHw+DQogIGxlZnRfam9pbihyZWN1cnJlbmNlX2NvdW50cywgYnkgPSBjKCJJTkQiLCAiRkFNIikpIHw+DQogIG11dGF0ZSgNCiAgICBOX3RyYWl0cyA9IHRpZHlyOjpyZXBsYWNlX25hKE5fdHJhaXRzLCAwTCksDQogICAgVHJhaXRzID0gdGlkeXI6OnJlcGxhY2VfbmEoVHJhaXRzLCAiIiksDQogICAgQmVzdF9yYW5rID0gaWZfZWxzZShOX3RyYWl0cyA9PSAwTCwgTkFfaW50ZWdlcl8sIEJlc3RfcmFuayksDQogICAgTWVhbl9yYW5rX3ByZXNlbnQgPSBpZl9lbHNlKA0KICAgICAgTl90cmFpdHMgPT0gMEwsDQogICAgICBOQV9yZWFsXywNCiAgICAgIE1lYW5fcmFua19wcmVzZW50DQogICAgKSwNCiAgICBTZWxlY3Rpb25fZnJlcXVlbmN5ID0gaWYgKG5fZWxpZ2libGVfdHJhaXRzID4gMCkgew0KICAgICAgTl90cmFpdHMgLyBuX2VsaWdpYmxlX3RyYWl0cw0KICAgIH0gZWxzZSB7DQogICAgICAwDQogICAgfSwNCiAgICBSZWN1cnJlbmNlX2NsYXNzID0gY2FzZV93aGVuKA0KICAgICAgTl90cmFpdHMgPj0gNEwgfiAiaGlnaF80cGx1cyIsDQogICAgICBOX3RyYWl0cyA9PSAzTCB+ICJpbnRlcm1lZGlhdGVfMyIsDQogICAgICBOX3RyYWl0cyA9PSAyTCB+ICJicm9hZF8yIiwNCiAgICAgIE5fdHJhaXRzID09IDFMIH4gInNwZWNpZmljXzEiLA0KICAgICAgVFJVRSB+ICJub25lXzAiDQogICAgKQ0KICApIHw+DQogIGFycmFuZ2UoZGVzYyhOX3RyYWl0cyksIEZBTSwgSU5EKQ0KDQpyZWN1cnJlbmNlX2Rpc3RyaWJ1dGlvbiA8LSBtdWx0aXRyYWl0X3JlY3VycmVuY2UgfD4NCiAgY291bnQoTl90cmFpdHMsIFJlY3VycmVuY2VfY2xhc3MsIG5hbWUgPSAiTl9pbmRpdmlkdWFscyIpIHw+DQogIG11dGF0ZSgNCiAgICBQcm9wb3J0aW9uX29mX3BvcHVsYXRpb24gPQ0KICAgICAgTl9pbmRpdmlkdWFscyAvIG5yb3cobWF0cmljZXNfb2JqZWN0JG1ldGFkYXRhKQ0KICApIHw+DQogIGFycmFuZ2UoZGVzYyhOX3RyYWl0cykpDQoNCm11bHRpdHJhaXRfY2FuZGlkYXRlcyA8LSBtdWx0aXRyYWl0X3JlY3VycmVuY2UgfD4NCiAgZmlsdGVyKE5fdHJhaXRzID49IDJMKSB8Pg0KICBhcnJhbmdlKGRlc2MoTl90cmFpdHMpLCBGQU0sIElORCkNCmBgYA0KDQpUaGUgZGlzdHJpYnV0aW9uIHN1bW1hcml6ZXMgaG93IG1hbnkgaW5kaXZpZHVhbHMgd2VyZSBzZWxlY3RlZCBpbiB6ZXJvLCBvbmUsIHR3bywgdGhyZWUsIG9yIG1vcmUgdHJhaXRzLg0KDQpgYGB7ciByZWN1cnJlbmNlLWRpc3RyaWJ1dGlvbi10YWJsZX0NCnJlY3VycmVuY2VfY2xhc3NfbGFiZWxzIDwtIGMoDQogIGhpZ2hfNHBsdXMgPSAiSGlnaCAoPj00KSIsDQogIGludGVybWVkaWF0ZV8zID0gIkludGVybWVkaWF0ZSAoMykiLA0KICBicm9hZF8yID0gIkJyb2FkICgyKSIsDQogIHNwZWNpZmljXzEgPSAiU3BlY2lmaWMgKDEpIiwNCiAgbm9uZV8wID0gIk5vbmUgKDApIg0KKQ0KDQpyZWN1cnJlbmNlX2Rpc3RyaWJ1dGlvbl9kaXNwbGF5IDwtIHJlY3VycmVuY2VfZGlzdHJpYnV0aW9uIHw+DQogIG11dGF0ZSgNCiAgICBDbGFzcyA9IHVubmFtZShyZWN1cnJlbmNlX2NsYXNzX2xhYmVsc1tSZWN1cnJlbmNlX2NsYXNzXSkNCiAgKSB8Pg0KICB0cmFuc211dGUoDQogICAgTl90cmFpdHMsDQogICAgQ2xhc3MsDQogICAgTl9pbmRpdmlkdWFscywNCiAgICBQcm9wb3J0aW9uX29mX3BvcHVsYXRpb24gPSBzcHJpbnRmKCIlLjNmIiwgUHJvcG9ydGlvbl9vZl9wb3B1bGF0aW9uKQ0KICApDQoNCmZvcm1hdF90YWJsZSgNCiAgcmVjdXJyZW5jZV9kaXN0cmlidXRpb25fZGlzcGxheSwNCiAgY2FwdGlvbiA9ICJEaXN0cmlidXRpb24gb2YgaW5kaXZpZHVhbHMgYnkgcmVjdXJyZW5jZSBhY3Jvc3MgZWxpZ2libGUgdHJhaXRzIiwNCiAgY29sLm5hbWVzID0gYygNCiAgICAiTnVtYmVyIG9mIHRyYWl0cyIsICJDbGFzcyIsICJJbmRpdmlkdWFscyIsDQogICAgIlBvcHVsYXRpb24gcHJvcG9ydGlvbiINCiAgKQ0KKQ0KYGBgDQoNCkluZGl2aWR1YWxzIHNlbGVjdGVkIGluIGF0IGxlYXN0IHR3byB0cmFpdHMgYXJlIHNob3duIGluIGEgc2luZ2xlIHRhYmxlLg0KDQpgYGB7ciByZWN1cnJlbnQtY2FuZGlkYXRlcy10YWJsZX0NCnJlY3VycmVudF9jYW5kaWRhdGVzX2Rpc3BsYXkgPC0gbXVsdGl0cmFpdF9jYW5kaWRhdGVzIHw+DQogIG11dGF0ZSgNCiAgICBDbGFzcyA9IHVubmFtZShyZWN1cnJlbmNlX2NsYXNzX2xhYmVsc1tSZWN1cnJlbmNlX2NsYXNzXSkNCiAgKSB8Pg0KICB0cmFuc211dGUoDQogICAgSU5ELA0KICAgIEZBTSwNCiAgICBOX3RyYWl0cywNCiAgICBTZWxlY3Rpb25fZnJlcXVlbmN5ID0gc3ByaW50ZigiJS4zZiIsIFNlbGVjdGlvbl9mcmVxdWVuY3kpLA0KICAgIENsYXNzLA0KICAgIFRyYWl0cywNCiAgICBCZXN0X3JhbmssDQogICAgTWVhbl9yYW5rX3ByZXNlbnQgPSBzcHJpbnRmKCIlLjJmIiwgTWVhbl9yYW5rX3ByZXNlbnQpDQogICkNCg0KZm9ybWF0X3RhYmxlKA0KICByZWN1cnJlbnRfY2FuZGlkYXRlc19kaXNwbGF5LA0KICBjYXB0aW9uID0gIkluZGl2aWR1YWxzIHJlY3VycmVudCBpbiBhdCBsZWFzdCB0d28gZWxpZ2libGUgdHJhaXRzIiwNCiAgY29sLm5hbWVzID0gYygNCiAgICAiSU5EIiwgIkZBTSIsICJOdW1iZXIgb2YgdHJhaXRzIiwgIkZyZXF1ZW5jeSIsDQogICAgIkNsYXNzIiwgIlRyYWl0cyIsICJCZXN0IHJhbmsiLCAiTWVhbiByYW5rIg0KICApDQopDQpgYGANCg0KIyMgNi4gTWFya2VyLWJhc2VkIGhlcml0YWJpbGl0eSBhbmFsb2d1ZSBhbmQgYWRqdXN0ZWQgYWNjdXJhY3kgaW4gUlItQkxVUC9CUlINCg0KRm9sbG93aW5nIFNpbHZhIGV0IGFsLiBbQHNpbHZhMjAyMWJycmd1YXZhXSwgUlItQkxVUC9CUlIgYWxsb3dzIGEgbWFya2VyLWJhc2VkIGhlcml0YWJpbGl0eSBhbmFsb2d1ZSB0byBiZSBkZXJpdmVkIGZyb20gbWFya2VyIHZhcmlhbmNlLiBGb2xkLWxldmVsIGFkanVzdGVkIGFjY3VyYWN5IGlzIGNhbGN1bGF0ZWQgYXMgYENvcnJlbGF0aW9uIC8gc3FydChIMilgLg0KDQpUaGlzIHJhdGlvIGlzIGEgZGVyaXZlZCBxdWFudGl0eSByYXRoZXIgdGhhbiBhIGRpcmVjdCBjb3JyZWxhdGlvbiBiZXR3ZWVuIHRydWUgYW5kIHByZWRpY3RlZCBnZW5ldGljIHZhbHVlcy4gSXQgbWF5IHRoZXJlZm9yZSBiZSBuZWdhdGl2ZSBvciBleGNlZWQgMS4NCg0KYGBge3IgcnJibHVwLWhlcml0YWJpbGl0eX0NCiMgQ29tcHV0ZSBhbmQgb3JnYW5pemUgdGhlIFJSLUJMVVAvQlJSIG1vZGVsLWJhc2VkIGhlcml0YWJpbGl0eSBzdW1tYXJ5Lg0KcnJibHVwX3ZhcmlhbmNlX2NvbXBvbmVudHMgPC0gY29udmVyZ2VuY2UgfD4NCiAgZmlsdGVyKA0KICAgIE1ldGhvZCA9PSAiUlJCTFVQIiwNCiAgICBQYXJhbWV0ZXIgJWluJSBjKCJSZXNpZHVhbF92YXJpYW5jZSIsICJNYXJrZXJfdmFyaWFuY2UiKQ0KICApIHw+DQogIHNlbGVjdChSdW5faWQsIFRyYWl0LCBGb2xkLCBNZXRob2QsIFBhcmFtZXRlciwgUG9zdGVyaW9yX21lYW4pIHw+DQogIHBpdm90X3dpZGVyKG5hbWVzX2Zyb20gPSBQYXJhbWV0ZXIsIHZhbHVlc19mcm9tID0gUG9zdGVyaW9yX21lYW4pDQoNCnJyYmx1cF9mb2xkX2NvcnJlbGF0aW9ucyA8LSBtZXRyaWNzIHw+DQogIGZpbHRlcihNZXRob2QgPT0gIlJSQkxVUCIpIHw+DQogIHNlbGVjdChUcmFpdCwgRm9sZCwgQ29ycmVsYXRpb24pDQoNCiMgT3JnYW5pemUgdGhlIGNyb3NzLXZhbGlkYXRpb24gYW5kIGZpdHRpbmcgc3RydWN0dXJlLg0KcnJibHVwX2hlcml0YWJpbGl0eV9ieV9mb2xkIDwtIHJyYmx1cF92YXJpYW5jZV9jb21wb25lbnRzIHw+DQogIGxlZnRfam9pbihycmJsdXBfZm9sZF9jb3JyZWxhdGlvbnMsIGJ5ID0gYygiVHJhaXQiLCAiRm9sZCIpKSB8Pg0KICBtdXRhdGUoDQogICAgTWFya2VyX3ZhcmlhbmNlX2Rlbm9taW5hdG9yID0gbWF0cmljZXNfb2JqZWN0JGRlbm9taW5hdG9yLA0KICAgIEFkZGl0aXZlX3ZhcmlhbmNlID0gTWFya2VyX3ZhcmlhbmNlICogTWFya2VyX3ZhcmlhbmNlX2Rlbm9taW5hdG9yLA0KICAgIEgyID0gQWRkaXRpdmVfdmFyaWFuY2UgLyAoQWRkaXRpdmVfdmFyaWFuY2UgKyBSZXNpZHVhbF92YXJpYW5jZSksDQogICAgUHJlZGljdGl2ZV9hY2N1cmFjeSA9IENvcnJlbGF0aW9uIC8gc3FydChIMikNCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpLCBGb2xkKQ0KDQojIFN1bW1hcml6ZSB0aGUgUlItQkxVUC9CUlIgbW9kZWwtYmFzZWQgaGVyaXRhYmlsaXR5IGFuYWxvZ3VlIGFuZCBhZGp1c3RlZCBhY2N1cmFjeSBhY3Jvc3MgZm9sZHMuDQpycmJsdXBfaGVyaXRhYmlsaXR5X3N1bW1hcnkgPC0gcnJibHVwX2hlcml0YWJpbGl0eV9ieV9mb2xkIHw+DQogIGdyb3VwX2J5KFRyYWl0KSB8Pg0KICBzdW1tYXJpc2UoDQogICAgTWVhbl9IMiA9IG1lYW4oSDIpLA0KICAgIFNEX0gyID0gc2QoSDIpLA0KICAgIE1lYW5fZm9sZF9yID0gbWVhbihDb3JyZWxhdGlvbiksDQogICAgU0RfZm9sZF9yID0gc2QoQ29ycmVsYXRpb24pLA0KICAgIE1lYW5fcHJlZGljdGl2ZV9hY2N1cmFjeSA9IG1lYW4oUHJlZGljdGl2ZV9hY2N1cmFjeSksDQogICAgU0RfcHJlZGljdGl2ZV9hY2N1cmFjeSA9IHNkKFByZWRpY3RpdmVfYWNjdXJhY3kpLA0KICAgIC5ncm91cHMgPSAiZHJvcCINCiAgKSB8Pg0KICBhcnJhbmdlKG1hdGNoKFRyYWl0LCB0cmFpdHMpKQ0KYGBgDQoNClRoZSB0cmFpdCBzdW1tYXJ5IHByZXNlbnRzIHRoZSBtYXJrZXItYmFzZWQgaGVyaXRhYmlsaXR5IGFuYWxvZ3VlIGFuZCBhZGp1c3RlZCBhY2N1cmFjeSBhY3Jvc3MgZm9sZHMuDQoNCmBgYHtyIHJyYmx1cC1oZXJpdGFiaWxpdHktdGFibGV9DQpycmJsdXBfdGFibGUgPC0gcnJibHVwX2hlcml0YWJpbGl0eV9zdW1tYXJ5IHw+DQogIHRyYW5zbXV0ZSgNCiAgICBUcmFpdCwNCiAgICBSUkJMVVBfSDIgPSBzcHJpbnRmKCIlLjNmIiwgTWVhbl9IMiksDQogICAgU0RfUlJCTFVQX0gyID0gc3ByaW50ZigiJS4zZiIsIFNEX0gyKSwNCiAgICBSUkJMVVBfcHJlZGljdGl2ZV9hY2N1cmFjeSA9IHNwcmludGYoIiUuM2YiLCBNZWFuX3ByZWRpY3RpdmVfYWNjdXJhY3kpLA0KICAgIFNEX1JSQkxVUF9wcmVkaWN0aXZlX2FjY3VyYWN5ID0gc3ByaW50ZigiJS4zZiIsIFNEX3ByZWRpY3RpdmVfYWNjdXJhY3kpDQogICkNCg0KZm9ybWF0X3RhYmxlKA0KICBycmJsdXBfdGFibGUsDQogIGNhcHRpb24gPSAiTWFya2VyLWJhc2VkIGhlcml0YWJpbGl0eSBhbmFsb2d1ZSBhbmQgYWRqdXN0ZWQgcHJlZGljdGl2ZSBhY2N1cmFjeSBpbiBSUi1CTFVQL0JSUiIsDQogIGNvbC5uYW1lcyA9IGMoIlRyYWl0IiwgIlJSLUJMVVAgSDIiLCAiU0QgUlItQkxVUCBIMiIsICJSUi1CTFVQIHByZWRpY3RpdmUgYWNjdXJhY3kiLCAiU0QgUlItQkxVUCBwcmVkaWN0aXZlIGFjY3VyYWN5IikNCikNCmBgYA0KDQojIyA3LiBFeHBvcnRpbmcgdGhlIGFuYWx5c2lzIHJlc3VsdHMNCg0KQXQgdGhlIGVuZCBvZiB0aGUgYW5hbHlzaXMsIHRoZSBtYWluIG9iamVjdHMgYW5kIHRhYmxlcyBhcmUgd3JpdHRlbiB0byBhIE1vZHVsZSAwNCByZXN1bHRzIGRpcmVjdG9yeS4gVGhlc2UgZmlsZXMgYWxsb3cgdGhlIHJlc3VsdHMgdG8gYmUgaW5zcGVjdGVkIGxhdGVyIHdpdGhvdXQgcmVwZWF0aW5nIHRoZSBkZXJpdmF0aW9ucyBzaG93biBhYm92ZS4NCg0KYGBge3Igc2F2ZS1yZXN1bHRzfQ0KcmVzdWx0c19kaXIgPC0gaGVyZSgNCiAgIm91dHB1dCIsICJyZXN1bHRzIiwgIm0wNCIsICJnZW5vbWljX3NlbGVjdGlvbiINCikNCmRpci5jcmVhdGUocmVzdWx0c19kaXIsIHJlY3Vyc2l2ZSA9IFRSVUUsIHNob3dXYXJuaW5ncyA9IEZBTFNFKQ0KDQp3cml0ZS5jc3YoDQogIG1vZGVsX3NlbGVjdGlvbiwNCiAgZmlsZS5wYXRoKHJlc3VsdHNfZGlyLCAibW9kZWxfc2VsZWN0aW9uLmNzdiIpLA0KICByb3cubmFtZXMgPSBGQUxTRQ0KKQ0Kd3JpdGUuY3N2KA0KICBvb2ZfZ2Vub21pY192YWx1ZXMsDQogIGZpbGUucGF0aChyZXN1bHRzX2RpciwgIm9vZl9nZW5vbWljX3ZhbHVlcy5jc3YiKSwNCiAgcm93Lm5hbWVzID0gRkFMU0UNCikNCndyaXRlLmNzdigNCiAgc2VsZWN0ZWRfaW5kaXZpZHVhbHNfYnlfdHJhaXQsDQogIGZpbGUucGF0aChyZXN1bHRzX2RpciwgInNlbGVjdGVkX2luZGl2aWR1YWxzX2J5X3RyYWl0LmNzdiIpLA0KICByb3cubmFtZXMgPSBGQUxTRQ0KKQ0Kd3JpdGUuY3N2KA0KICBtdWx0aXRyYWl0X3JlY3VycmVuY2UsDQogIGZpbGUucGF0aChyZXN1bHRzX2RpciwgIm11bHRpdHJhaXRfcmVjdXJyZW5jZS5jc3YiKSwNCiAgcm93Lm5hbWVzID0gRkFMU0UNCikNCndyaXRlLmNzdigNCiAgbXVsdGl0cmFpdF9jYW5kaWRhdGVzLA0KICBmaWxlLnBhdGgocmVzdWx0c19kaXIsICJtdWx0aXRyYWl0X2NhbmRpZGF0ZXMuY3N2IiksDQogIHJvdy5uYW1lcyA9IEZBTFNFDQopDQp3cml0ZS5jc3YoDQogIG9vZl9nZW5vbWljX2NvcnJlbGF0aW9ucywNCiAgZmlsZS5wYXRoKHJlc3VsdHNfZGlyLCAib29mX2dlbm9taWNfY29ycmVsYXRpb25zLmNzdiIpLA0KICByb3cubmFtZXMgPSBUUlVFDQopDQoNCm1vZHVsZTA0X3Jlc3VsdHMgPC0gbGlzdCgNCiAgbW9kZWxfY29tcGFyaXNvbiA9IG1vZGVsX2NvbXBhcmlzb24sDQogIHNlbGVjdGVkX21ldGhvZHMgPSBzZWxlY3RlZF9tZXRob2RzLA0KICBtb2RlbF9zZWxlY3Rpb24gPSBtb2RlbF9zZWxlY3Rpb24sDQogIGNvbnZlcmdlbmNlX292ZXJ2aWV3ID0gY29udmVyZ2VuY2Vfb3ZlcnZpZXcsDQogIHJyYmx1cF9oZXJpdGFiaWxpdHlfYnlfZm9sZCA9IHJyYmx1cF9oZXJpdGFiaWxpdHlfYnlfZm9sZCwNCiAgcnJibHVwX2hlcml0YWJpbGl0eV9zdW1tYXJ5ID0gcnJibHVwX2hlcml0YWJpbGl0eV9zdW1tYXJ5LA0KICBvb2ZfZ2Vub21pY192YWx1ZXMgPSBvb2ZfZ2Vub21pY192YWx1ZXMsDQogIG9vZl9nZW5vbWljX2NvcnJlbGF0aW9ucyA9IG9vZl9nZW5vbWljX2NvcnJlbGF0aW9ucywNCiAgZ2Vub21pY19yYW5raW5nID0gZ2Vub21pY19yYW5raW5nLA0KICBzZWxlY3RlZF9pbmRpdmlkdWFsc19ieV90cmFpdCA9IHNlbGVjdGVkX2luZGl2aWR1YWxzX2J5X3RyYWl0LA0KICBtdWx0aXRyYWl0X3JlY3VycmVuY2UgPSBtdWx0aXRyYWl0X3JlY3VycmVuY2UsDQogIG11bHRpdHJhaXRfY2FuZGlkYXRlcyA9IG11bHRpdHJhaXRfY2FuZGlkYXRlcywNCiAgc2V0dGluZ3MgPSBsaXN0KA0KICAgIGNvcnJlbGF0aW9uX3RocmVzaG9sZCA9IENPUlJFTEFUSU9OX1NFTEVDVElPTl9USFJFU0hPTEQsDQogICAgbnJtc2VfdGhyZXNob2xkID0gTlJNU0VfU0VMRUNUSU9OX1RIUkVTSE9MRCwNCiAgICBzZWxlY3Rpb25fcHJvcG9ydGlvbiA9IFNFTEVDVElPTl9QUk9QT1JUSU9OLA0KICAgIGVsaWdpYmxlX3RyYWl0cyA9IGVsaWdpYmxlX3RyYWl0cw0KICApDQopDQoNCnNhdmVSRFMoDQogIG1vZHVsZTA0X3Jlc3VsdHMsDQogIGZpbGUucGF0aChyZXN1bHRzX2RpciwgIm1vZHVsZTA0X3Jlc3VsdHMucmRzIikNCikNCmBgYA0KDQojIyA4LiBTdW1tYXJ5IGFuZCBpbnRlcnByZXRhdGlvbg0KDQpUaGUgc2V2ZW4gbWV0aG9kcyBhcmUgY29tcGFyZWQgc2VwYXJhdGVseSBmb3IgZWFjaCB0cmFpdC4gT09GIHByZWRpY3RpdmUgZXZpZGVuY2UgZGV0ZXJtaW5lcyB3aGljaCBtZXRob2QgaXMgdXNlZCBpbiBzdWJzZXF1ZW50IHN0ZXBzLCB3aGlsZSBESUMgcmVtYWlucyBjb21wbGVtZW50YXJ5IGluZm9ybWF0aW9uLg0KDQpPT0YgR0VCVnMgZnJvbSB0aGUgc2VsZWN0ZWQgbWV0aG9kcyBhcmUgZmlyc3QgZXhhbWluZWQgYWNyb3NzIGFsbCB0ZW4gdHJhaXRzLCBpbmNsdWRpbmcgdGhlaXIgY29ycmVsYXRpb25zLiBUaGlzIHN0ZXAgcHJlY2VkZXMgZWxpZ2liaWxpdHkgY3JpdGVyaWEgYW5kIGFsbG93cyByZWxhdGlvbnNoaXBzIGFtb25nIHRyYWl0cyB0byBiZSBpbnRlcnByZXRlZCB3aXRob3V0IHJlc3RyaWN0aW5nIHRoZSBhbmFseXNpcyB0byB0cmFpdHMgdGhhdCBsYXRlciBlbnRlciBnZW5vbWljIHNlbGVjdGlvbi4NCg0KR2Vub21pYyBzZWxlY3Rpb24gaXMgdGhlbiBsaW1pdGVkIHRvIHRyYWl0cyB3aXRoIFwociA+IDAuMzBcKSBhbmQgYE5STVNFIDwgMWAuIFdpdGhpbiB0aG9zZSB0cmFpdHMsIHRoZSBtb3N0IGZhdm9yYWJsZSAyMCUgb2YgaW5kaXZpZHVhbHMgYXJlIHByaW9yaXRpemVkIGFjY29yZGluZyB0byB0aGUgYnJlZWRpbmcgb2JqZWN0aXZlLCBhbmQgcmVjdXJyZW5jZSBzdW1tYXJpemVzIHRoZSBwcmVzZW5jZSBvZiB0aGUgc2FtZSBpbmRpdmlkdWFscyBhY3Jvc3MgdHJhaXRzLg0KDQpUaGUgR0VCVnMgcmVtYWluIGNyb3NzLWZpdHRlZCBzY29yZXMuIEFkZGluZyB0aGUgcGhlbm90eXBpYyBtZWFuIGltcHJvdmVzIGludGVycHJldGF0aW9uIGluIHRyYWl0IHVuaXRzIGJ1dCBkb2VzIG5vdCBhbHRlciByYW5raW5ncyBvciByZXByZXNlbnQgYSBjb21wbGV0ZSBwaGVub3R5cGljIHByZWRpY3Rpb24uDQoNCkNvbmNsdXNpb25zIHJlbWFpbiBjb25kaXRpb25hbCBvbiB0aGUgcmVwcmVzZW50ZWQgYnJlZWRpbmcgcG9wdWxhdGlvbiwgdGhlIGF2YWlsYWJsZSBTU1IgcGFuZWwsIGFuZCB0aGUgdmFsaWRhdGlvbiBkZXNpZ24uDQo=</div>
 
 <!-- Adjust MathJax settings so that all math formulae are shown using
 TeX fonts only; see
