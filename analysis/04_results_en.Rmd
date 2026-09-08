@@ -32,40 +32,19 @@ knitr::opts_chunk$set(
 
 ## 1. Objective
 
-Using the OOF predictions, performance metrics, and diagnostics obtained in
-Module 03, this final module organizes model comparison and genomic selection
-in a more direct sequence: **compare → choose the method → define trait
-eligibility → interpret GEBVs → select individuals**.
+This module brings together the results produced in Module 03 and organizes them into a sequence focused on interpretation and genomic selection:
 
-Method choice is trait-specific and prioritizes predictive performance: highest
-pooled OOF correlation, followed by lowest RMSE and lowest MAE; DIC is retained
-as complementary evidence and a final tie-breaker. MCMC diagnostics are
-summarized as a global check of chain adequacy, but they are not converted into
-an exclusion or review rule.
+**compare methods → choose a method for each trait → interpret genomic values → examine relationships among traits → define eligibility → select individuals → evaluate recurrence.**
 
-Individuals are selected only for traits that meet a pre-defined minimum level
-of predictive evidence. In this version, a trait is eligible when the selected
-method has OOF correlation greater than 0.30 and NRMSE lower than 1, that is,
-RMSE lower than one phenotypic standard deviation. The selected proportion
-remains 20% of the individuals for each eligible trait.
+Method choice is performed separately for each trait and prioritizes OOF predictive performance. DIC remains complementary information. MCMC diagnostics summarize overall chain behavior but do not act as a selection filter.
 
-To improve interpretation on the original trait scale, the centered OOF genomic
-component is preserved and is also presented after adding the phenotypic trait
-mean. This transformation shifts the scale but does not change the ranking of
-individuals within a trait.
+After method choice, OOF GEBVs are obtained for all traits and are also examined jointly through their correlations. Eligibility criteria for genomic selection are applied only after this step.
 
-## 2. Packages and model-fitting results
+## 2. Preparing the analysis
 
-### 2.1 Packages used
+### 2.1 Packages and helper functions
 
-The packages used here have distinct roles:
-
-- `dplyr`: grouping, joining, ordering, and summarizing result tables;
-- `tidyr`: reshaping tables between long and wide formats;
-- `ggplot2`: building performance and observed-versus-predicted figures;
-- `ggthemes`: applying the GDocs theme and color scale;
-- `knitr`: formatting tables in R Markdown documents;
-- `here`: building project-relative file paths.
+The packages below are used for table manipulation, figures, formatting, and project-relative paths.
 
 ```{r packages, warning=FALSE, message=FALSE}
 library(dplyr) # Group, join, and summarize tables.
@@ -75,6 +54,8 @@ library(ggthemes) # Apply the GDocs theme and color scale.
 library(knitr)   # Format tables in R Markdown documents.
 library(here)  # Build project-relative paths.
 ```
+
+The helper function below standardizes table presentation throughout the tutorial.
 
 ```{r table-formatting, include=FALSE}
 format_table <- function(x, caption = NULL, digits = getOption("digits"), col.names = NA) {
@@ -99,9 +80,9 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-### 2.2 Input objects
+### 2.2 Input objects and configuration
 
-The module uses two consolidated objects: `matrices_object.rds`, which supplies phenotypes, metadata, and definitions from Module 02, and `models_object.rds`, which supplies fold-level metrics, OOF predictions, and MCMC diagnostics from Module 03. During derivation, no output directory is created; revised results are persisted only in the final section and do not overwrite previous M04 outputs.
+The module uses `matrices_object.rds`, containing phenotypes and metadata, and `models_object.rds`, containing fold-level metrics, OOF predictions, and MCMC diagnostics. Results are written only at the end of the analysis.
 
 ```{r inputs}
 matrices_object <- readRDS(
@@ -120,11 +101,7 @@ traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
 ```
 
-### 2.3 Presentation labels and graphical standard
-
-The calculations retain the method codes stored in the analytical objects.
-Readable labels and the graphical theme below affect presentation only; they
-do not modify any scientific quantity.
+Internal method codes are retained in analytical objects. The labels and theme below affect presentation only.
 
 ```{r presentation-style}
 method_labels <- c(
@@ -152,21 +129,11 @@ project_theme <- theme_gdocs() +
   )
 ```
 
-## 3. OOF predictive performance
+## 3. Method comparison and choice
 
-### 3.1 Scope of OOF evaluation
+### 3.1 OOF predictive performance
 
-The OOF estimates inherit the family-stratified design of Modules 02 and
-03. They quantify prediction within the represented breeding population and do
-not estimate generalization to entirely new families.
-
-The main metrics are recalculated using the 150 out-of-fold predictions for
-each trait × method combination. Each individual contributes one OOF
-prediction for every method.
-
-### 3.2 Pooled OOF performance
-
-For each trait × method combination, correlation, RMSE, MAE, bias, and slope are calculated from the 150 OOF predictions. The two-sided Pearson-correlation p-value is retained only as a nominal descriptive measure because training sets overlap across folds.
+OOF estimates inherit the validation design defined in previous modules. Each individual contributes one OOF prediction per method and trait. Pooled metrics describe predictive performance in the population represented by the dataset.
 
 ```{r pooled-oof-metrics}
 # Combine OOF predictions and compute aggregate predictive metrics by trait and method.
@@ -203,17 +170,11 @@ fold_summary <- metrics |>
   )
 ```
 
-`pooled_metrics` combines the 150 OOF predictions and provides overall performance for each trait × method combination. `fold_summary` retains summaries inherited from the five folds to integrate DIC and auxiliary metrics in the comparison table.
+Pearson correlation, RMSE, MAE, bias, and slope are calculated from the 150 OOF predictions. Correlation p-values are retained only as descriptive information.
 
-Pearson-correlation p-values remain descriptive context only and do not define eligibility for genomic selection.
+### 3.2 DIC and relative support
 
-## 4. DIC and relative support for the methods
-
-### 4.1 DIC-derived relative support
-
-Following the logic used in the reference study [@silva2021brrguava], the
-difference from the smallest mean DIC within each trait is converted into
-relative weights:
+DIC is summarized within each trait as complementary information. Following the logic of the reference study [@silva2021brrguava]:
 
 \[
 \Delta_j=\overline{DIC}_j-\min_k(\overline{DIC}_k),
@@ -225,10 +186,7 @@ Wprob_j=\frac{\exp(-\Delta_j/2)}{\sum_k\exp(-\Delta_k/2)},
 ER_j=\frac{Wprob_{\max}}{Wprob_j}.
 \]
 
-`Wprob` is used here as a DIC-derived relative-support weight. It is not
-interpreted as a calibrated posterior probability of a model.
-
-The implementation uses log-weights before normalization to improve numerical stability without changing relative ratios. `Wprob` sums to 1 within each trait, and `ER` expresses support relative to the method with the largest weight.
+`Wprob` represents relative support derived from DIC and is not interpreted as a calibrated posterior model probability.
 
 ```{r model-comparison}
 # Combine fold performance and DIC to build the quantities used for model comparison.
@@ -253,17 +211,9 @@ model_comparison <- pooled_metrics |>
   arrange(match(Trait, traits), Delta_DIC)
 ```
 
-### 4.2 Relationship between Bayesian fit and predictive performance
+### 3.3 Integrated comparison and method choice
 
-`model_comparison` combines OOF performance and DIC-derived relative support for every trait and method. DIC quantities are comparable only within the same trait and do not replace predictive evidence.
-
-In the joint comparison, methods with similar DIC can have different OOF performance, and the method with the largest `Wprob` need not have the largest predictive correlation. Bayesian fit and predictive ability therefore remain complementary rather than interchangeable criteria.
-
-### 4.3 Visual comparison of OOF predictive performance
-
-The pooled OOF correlation is the primary visual reference for predictive
-comparison. The horizontal line at zero separates positive from nonpositive
-association. Bars are point estimates, not uncertainty intervals.
+OOF predictive performance and DIC address different questions. OOF correlation is the main reference for predictive ability, whereas DIC provides complementary information on fit and complexity.
 
 ```{r predictive-correlation-figure, fig.width=13, fig.height=10, fig.alt="Faceted bar chart comparing pooled out-of-fold predictive correlations of the seven genomic prediction methods across the ten traits, with a horizontal reference at zero."}
 # Order methods and build the OOF-correlation figure by trait.
@@ -295,20 +245,9 @@ predictive_plot <- model_comparison |>
 predictive_plot
 ```
 
-
-Predictive magnitude and method ordering vary among traits. The workflow
-therefore does not define one globally superior method; selection remains
-trait-specific and continues with complementary DIC and diagnostic evidence.
-
-### 4.4 Joint predictive and DIC comparison
-
-The table below places the complementary evidence sources side by side.
-DIC-derived quantities are compared only within the same trait, while OOF
-correlation retains its predictive interpretation. The nominal p-value is
-shown for context and is not a ranking-eligibility criterion.
+The joint table allows the two evidence sources to be compared without combining them into a single artificial score.
 
 ```{r model-comparison-table}
-# DISPLAY-ONLY START
 model_comparison_display <- model_comparison |>
   mutate(Method_label = unname(method_labels[Method])) |>
   transmute(
@@ -334,88 +273,9 @@ format_table(
   caption = "Comparison of the seven methods by trait",
   col.names = c("Trait", "Method", "DIC", "Delta DIC", "Wprob", "ER", "r", "p-value")
 )
-# DISPLAY-ONLY END
 ```
 
-## 5. Method choice and eligibility for selection
-
-### 5.1 Adopted criteria
-
-Method choice and the decision to use a trait for selection are two distinct
-steps. First, the seven methods are ordered within each trait by pooled OOF
-correlation; ties are resolved, in this order, by lower RMSE, lower MAE, and
-lower mean DIC. Thus, no artificial score is created by mixing metrics with
-different meanings.
-
-After the method is chosen, the trait is considered eligible for selection only
-when it simultaneously satisfies two performance criteria:
-
-\[
-r_{OOF} > 0.30
-\]
-
-and
-
-\[
-NRMSE = \frac{RMSE}{s_y} < 1,
-\]
-
-where \(s_y\) is the observed phenotypic standard deviation of the trait. The
-second criterion requires model error to be lower than the observed phenotypic
-dispersion and complements the correlation threshold.
-
-```{r selection-parameters}
-CORRELATION_SELECTION_THRESHOLD <- 0.30
-NRMSE_SELECTION_THRESHOLD <- 1.00
-SELECTION_PROPORTION <- 0.20
-
-selection_objective_map <- c(
-  MMCOM = "increase",
-  PRODCOM = "increase",
-  PRODEF = "decrease",
-  CF = "increase",
-  DF = "increase",
-  DCI = "decrease",
-  EP = "increase",
-  FFC = "increase",
-  FFP = "increase",
-  SS = "increase"
-)
-
-selection_objectives <- data.frame(
-  Trait = traits,
-  Selection_objective = unname(selection_objective_map[traits]),
-  stringsAsFactors = FALSE
-)
-
-selection_parameters <- data.frame(
-  Parameter = c(
-    "Method choice",
-    "Minimum OOF correlation",
-    "Maximum NRMSE",
-    "Selected proportion"
-  ),
-  Rule = c(
-    "Highest r; ties by lower RMSE, lower MAE, and lower DIC",
-    "> 0.30",
-    "< 1.00",
-    "20% per eligible trait"
-  ),
-  stringsAsFactors = FALSE
-)
-
-format_table(
-  selection_parameters,
-  caption = "Parameters adopted for method choice and genomic selection",
-  col.names = c("Parameter", "Rule")
-)
-```
-
-### 5.2 Selected method and trait eligibility
-
-The phenotypic mean and standard deviation are calculated once per trait from
-the observed values. Duplicate observations across methods are removed before
-this calculation.
+The method used in subsequent steps is selected within each trait by the highest OOF correlation. Ties are resolved, in order, by lower RMSE, lower MAE, and lower mean DIC.
 
 ```{r final-model-selection}
 trait_scale <- predictions |>
@@ -427,7 +287,7 @@ trait_scale <- predictions |>
     .groups = "drop"
   )
 
-model_selection <- model_comparison |>
+selected_methods <- model_comparison |>
   group_by(Trait) |>
   arrange(desc(r), RMSE, MAE, Mean_DIC, .by_group = TRUE) |>
   slice(1L) |>
@@ -447,66 +307,44 @@ model_selection <- model_comparison |>
     ER
   ) |>
   left_join(trait_scale, by = "Trait") |>
-  left_join(selection_objectives, by = "Trait") |>
-  mutate(
-    NRMSE = RMSE / Phenotypic_SD,
-    Predictive_skill_vs_SD = 1 - NRMSE,
-    Eligible_by_correlation = r > CORRELATION_SELECTION_THRESHOLD,
-    Eligible_by_error = NRMSE < NRMSE_SELECTION_THRESHOLD,
-    Selection_eligible = Eligible_by_correlation & Eligible_by_error
-  ) |>
   arrange(match(Trait, traits))
-
-eligible_traits <- model_selection |>
-  filter(Selection_eligible) |>
-  pull(Trait)
 ```
 
-The main table concentrates the metrics needed to interpret method choice and
-eligibility, avoiding parallel tables for the same decision. The correlation
-p-value remains available in the scientific object but is not used as a
-selection filter.
+The table below summarizes the method selected for each trait and the main
+metrics used in that choice.
 
-```{r model-selection-table}
-# DISPLAY-ONLY START
-model_selection_display <- model_selection |>
+```{r selected-methods-table}
+selected_methods_display <- selected_methods |>
   mutate(
-    Method_label = unname(method_labels[Selected_method]),
-    Objective = unname(selection_objective_labels[Selection_objective]),
-    Eligible = if_else(Selection_eligible, "Yes", "No")
+    Method_label = unname(method_labels[Selected_method])
   ) |>
   transmute(
     Trait,
     Method_label,
-    Objective,
     r = sprintf("%.3f", r),
     RMSE = sprintf("%.3f", RMSE),
-    NRMSE = sprintf("%.3f", NRMSE),
     MAE = sprintf("%.3f", MAE),
-    Bias = sprintf("%.3f", Bias),
-    Slope = sprintf("%.3f", Slope),
-    DIC = sprintf("%.2f", Mean_DIC),
-    Eligible
+    DIC = sprintf("%.2f", Mean_DIC)
   )
 
 format_table(
-  model_selection_display,
-  caption = "Selected method and eligibility for selection by trait",
+  selected_methods_display,
+  caption = "Method selected for each trait",
   col.names = c(
-    "Trait", "Method", "Objective", "r", "RMSE", "NRMSE",
-    "MAE", "Bias", "Slope", "Mean DIC", "Eligible"
+    "Trait",
+    "Method",
+    "OOF r",
+    "RMSE",
+    "MAE",
+    "Mean DIC"
   )
 )
-# DISPLAY-ONLY END
 ```
 
-### 5.3 Summary of MCMC diagnostics
 
-Diagnostics calculated in Module 03 are summarized here without creating a
-review stage. A chain is counted as not flagged when none of the monitored
-parameters in that fit received `Review_flag` in the source object. The field
-name is preserved for traceability, but its interpretation here is only a
-diagnostic summary.
+### 3.4 MCMC diagnostics and observed-versus-predicted values
+
+Diagnostics calculated in Module 03 are summarized globally. A fit is counted as unflagged when none of its monitored parameters received `Review_flag`.
 
 ```{r convergence-overview}
 fit_convergence <- convergence |>
@@ -536,24 +374,15 @@ format_table(
 )
 ```
 
-The predominance of fits and parameters without flags supports the conclusion
-that most chains showed behavior compatible with convergence according to the
-monitored diagnostics. This summary does not prove convergence of every marker
-effect individually and does not participate in method choice.
+The predominance of fits and parameters without flags indicates that most chains showed behavior compatible with convergence according to the monitored diagnostics. This summary does not prove convergence of every individual marker effect and does not participate in method choice.
 
-### 5.4 Relationship between observed and predicted values
-
-In addition to numerical metrics, observed versus predicted values are shown
-for the selected method in each trait. The dashed line represents the 1:1
-relationship; the fitted line is the linear regression of observed values on
-the OOF predictions. Differences between the two help visualize calibration in
-addition to the association summarized by \(r\).
+Observed-versus-predicted plots complement the numerical metrics. The dashed line represents the 1:1 relationship and the continuous line is the regression of observed values on OOF predictions.
 
 ```{r observed-predicted-figure, fig.width=12, fig.height=10, fig.alt="Faceted scatterplots of observed values against OOF values predicted by the selected method for each trait, with a 1:1 line and fitted linear regression."}
 selected_predictions <- predictions |>
   inner_join(
-    model_selection |>
-      select(Trait, Selected_method, r, Selection_eligible),
+    selected_methods |>
+      select(Trait, Selected_method, r),
     by = "Trait"
   ) |>
   filter(Method == Selected_method) |>
@@ -582,114 +411,26 @@ observed_predicted_plot <- selected_predictions |>
 observed_predicted_plot
 ```
 
-## 6. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR
+## 4. OOF genomic values and relationships among traits
 
-### 6.1 Definition and interpretation limits
+### 4.1 OOF GEBVs on the trait scale
 
-Following Silva et al. [@silva2021brrguava], a marker-based additive-variance
-analogue is obtained from the common marker variance and the \(\sum 2pq\)
-denominator. Fold-level adjusted accuracy is defined as
-\(r_f/\sqrt{H_f^2}\). The resulting \(H^2\) is reported as a model-based
-heritability analogue rather than as an independent classical estimate of
-narrow-sense heritability. The quantity named `Predictive_accuracy` is a derived ratio, `r_f/sqrt(H_f^2)`, rather than an observed correlation between true and predicted genetic values. Because it depends on sample estimates of `r_f` and `H_f^2`, it may be negative or exceed 1; it should therefore be interpreted as an adjusted-accuracy index under this definition, not as a measure necessarily bounded to [0, 1].
+For each trait, the genomic component comes from the selected method and remains cross-fitted: the individual's own phenotype was not used in the fit that produced its OOF score.
 
-### 6.2 Fold-level derivation and across-fold summary
-
-```{r rrblup-heritability}
-# Compute and organize the RR-BLUP/BRR model-based heritability summary.
-rrblup_variance_components <- convergence |>
-  filter(
-    Method == "RRBLUP",
-    Parameter %in% c("Residual_variance", "Marker_variance")
-  ) |>
-  select(Run_id, Trait, Fold, Method, Parameter, Posterior_mean) |>
-  pivot_wider(names_from = Parameter, values_from = Posterior_mean)
-
-rrblup_fold_correlations <- metrics |>
-  filter(Method == "RRBLUP") |>
-  select(Trait, Fold, Correlation)
-
-# Organize the cross-validation and fitting structure.
-rrblup_heritability_by_fold <- rrblup_variance_components |>
-  left_join(rrblup_fold_correlations, by = c("Trait", "Fold")) |>
-  mutate(
-    Marker_variance_denominator = matrices_object$denominator,
-    Additive_variance = Marker_variance * Marker_variance_denominator,
-    H2 = Additive_variance / (Additive_variance + Residual_variance),
-    Predictive_accuracy = Correlation / sqrt(H2)
-  ) |>
-  arrange(match(Trait, traits), Fold)
-
-# Summarize the RR-BLUP/BRR model-based heritability analogue and adjusted accuracy across folds.
-rrblup_heritability_summary <- rrblup_heritability_by_fold |>
-  group_by(Trait) |>
-  summarise(
-    Mean_H2 = mean(H2),
-    SD_H2 = sd(H2),
-    Mean_fold_r = mean(Correlation),
-    SD_fold_r = sd(Correlation),
-    Mean_predictive_accuracy = mean(Predictive_accuracy),
-    SD_predictive_accuracy = sd(Predictive_accuracy),
-    .groups = "drop"
-  ) |>
-  arrange(match(Trait, traits))
-```
-
-`rrblup_heritability_summary` retains, by trait, the model-derived RR-BLUP/BRR heritability analogue and the ratio `Correlation / sqrt(H2)`. This ratio is not a conventional correlation and may lie outside [0, 1].
-
-### 6.3 Trait-level summary
-
-The table presents the quantities just derived. `RRBLUP_H2` is a
-marker-model-based analogue rather than an independent classical estimate of
-narrow-sense heritability, and the adjusted-accuracy ratio is not constrained
-to `[0, 1]`.
-
-```{r rrblup-heritability-table}
-# DISPLAY-ONLY START
-rrblup_table <- rrblup_heritability_summary |>
-  transmute(
-    Trait,
-    RRBLUP_H2 = sprintf("%.3f", Mean_H2),
-    SD_RRBLUP_H2 = sprintf("%.3f", SD_H2),
-    RRBLUP_predictive_accuracy = sprintf("%.3f", Mean_predictive_accuracy),
-    SD_RRBLUP_predictive_accuracy = sprintf("%.3f", SD_predictive_accuracy)
-  )
-
-format_table(
-  rrblup_table,
-  caption = "Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR",
-  col.names = c("Trait", "RR-BLUP H2", "SD RR-BLUP H2", "RR-BLUP predictive accuracy", "SD RR-BLUP predictive accuracy")
-)
-# DISPLAY-ONLY END
-```
-
-## 7. OOF GEBVs and an interpretable phenotypic scale
-
-### 7.1 Cross-fitted genomic component
-
-The genomic component of each individual continues to be obtained in the fold
-in which that individual's phenotype was masked. Therefore, `GEBV_centered` is
-a cross-fitted OOF score and not a final genetic value from refitting all 150
-phenotypes.
-
-To facilitate interpretation in the trait unit, the following quantity is also
-calculated:
+A version in the original trait units is also presented:
 
 \[
 GEBV_{scale} = \bar{y} + GEBV_{centered}.
 \]
 
-Adding the phenotypic mean shifts the scale. It does not change the ordering of
-individuals and should not be confused with the complete phenotypic prediction,
-because other model components may contribute to `Predicted`.
+Adding the phenotypic mean only shifts the scale. It does not change the ranking and does not turn the GEBV into a complete phenotypic prediction.
 
 ```{r selected-oof-genomic-values}
-selected_oof_genomic_values <- predictions |>
+oof_genomic_values <- predictions |>
   inner_join(
-    model_selection |>
+    selected_methods |>
       select(
-        Trait, Selected_method, r, p_value, NRMSE,
-        Selection_eligible, Selection_objective
+        Trait, Selected_method, r, p_value
       ),
     by = "Trait"
   ) |>
@@ -702,11 +443,8 @@ selected_oof_genomic_values <- predictions |>
     Method,
     Observed,
     Predicted,
-    Selection_objective,
-    Selection_eligible,
     OOF_r = r,
     OOF_p_value = p_value,
-    OOF_NRMSE = NRMSE,
     Phenotypic_mean,
     GEBV_centered = Genomic_component,
     GEBV_on_trait_scale = Phenotypic_mean + Genomic_component
@@ -714,18 +452,207 @@ selected_oof_genomic_values <- predictions |>
   arrange(match(Trait, traits), IND)
 ```
 
-## 8. Individual selection in eligible traits
+### 4.2 Correlation among OOF GEBVs for all ten traits
 
-### 8.1 Ranking and selection intensity
+Before any eligibility filter is applied, OOF GEBVs from the selected methods are organized for **all ten traits**. The matrix below describes associations among these cross-fitted scores.
 
-Only traits that simultaneously satisfy $r > 0.30$ and `NRMSE < 1` enter this
-stage. Within each eligible trait, individuals are ordered by the GEBV on the
-trait scale while respecting the breeding objective. For traits to be reduced,
-the sign is reversed only for ranking. The adopted selection intensity remains
-20%, and `IND` is used only as a deterministic tie-breaker for exact ties.
+```{r oof-correlations}
+oof_genomic_wide <- oof_genomic_values |>
+  select(IND, Trait, GEBV_centered) |>
+  pivot_wider(names_from = Trait, values_from = GEBV_centered)
+
+oof_genomic_correlations <- cor(
+  as.matrix(oof_genomic_wide[, traits, drop = FALSE])
+)
+```
+
+These correlations are not estimates of genetic correlation from a multivariate model. They describe only the association among OOF GEBVs produced separately for each trait.
+
+```{r oof-correlation-figure, fig.width=10, fig.height=9, fig.alt="Heatmap of pairwise correlations among cross-fitted OOF genomic-value scores for the traits, representing exploratory associations rather than multivariate genetic correlations."}
+# Reshape the OOF correlation matrix and build the cross-trait heatmap.
+correlation_long <- as.data.frame(
+  as.table(oof_genomic_correlations)
+)
+names(correlation_long) <- c(
+  "Trait_1",
+  "Trait_2",
+  "Correlation"
+)
+
+# Set only the label of |r| < 0.005 to zero; the original correlation still drives analysis and color.
+correlation_long <- correlation_long |>
+  mutate(
+    Correlation_label = replace(
+      Correlation,
+      abs(Correlation) < 0.005,
+      0
+    )
+  )
+
+# Build the heatmap of correlations among OOF genomic values.
+correlation_plot <- ggplot(
+  correlation_long,
+  aes(x = Trait_1, y = Trait_2, fill = Correlation)
+) +
+  geom_tile() +
+  geom_text(
+    aes(label = sprintf("%.2f", Correlation_label)),
+    size = 3
+  ) +
+  scale_fill_distiller(
+    type = "div",
+    palette = "RdBu",
+    direction = 1,
+    limits = c(-1, 1)
+  ) +
+  labs(
+    x = NULL,
+    y = NULL,
+    fill = "r",
+    title = "Correlation among OOF GEBVs of eligible traits"
+  ) +
+  coord_equal() +
+  project_theme +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+correlation_plot
+```
+
+Positive values indicate a tendency to order individuals similarly, whereas negative values indicate opposite ordering directions. The matrix is descriptive and does not create an additional selection criterion.
+
+## 5. Genomic selection in eligible traits
+
+### 5.1 Eligibility criteria
+
+Selection is performed only when the selected method for a trait simultaneously satisfies:
+
+\[
+r_{OOF} > 0.30
+\]
+
+and
+
+\[
+NRMSE = \frac{RMSE}{s_y} < 1,
+\]
+
+where \(s_y\) is the observed phenotypic standard deviation. The first criterion requires a minimum positive predictive association; the second requires prediction error below one phenotypic standard deviation.
+
+```{r selection-parameters}
+CORRELATION_SELECTION_THRESHOLD <- 0.30
+NRMSE_SELECTION_THRESHOLD <- 1.00
+SELECTION_PROPORTION <- 0.20
+
+selection_objective_map <- c(
+  MMCOM = "increase",
+  PRODCOM = "increase",
+  PRODEF = "decrease",
+  CF = "increase",
+  DF = "increase",
+  DCI = "decrease",
+  EP = "increase",
+  FFC = "increase",
+  FFP = "increase",
+  SS = "increase"
+)
+
+selection_objectives <- data.frame(
+  Trait = traits,
+  Selection_objective = unname(selection_objective_map[traits]),
+  stringsAsFactors = FALSE
+)
+
+model_selection <- selected_methods |>
+  left_join(selection_objectives, by = "Trait") |>
+  mutate(
+    NRMSE = RMSE / Phenotypic_SD,
+    Predictive_skill_vs_SD = 1 - NRMSE,
+    Eligible_by_correlation = r > CORRELATION_SELECTION_THRESHOLD,
+    Eligible_by_error = NRMSE < NRMSE_SELECTION_THRESHOLD,
+    Selection_eligible =
+      Eligible_by_correlation & Eligible_by_error
+  ) |>
+  arrange(match(Trait, traits))
+
+eligible_traits <- model_selection |>
+  filter(Selection_eligible) |>
+  pull(Trait)
+
+selection_parameters <- data.frame(
+  Parameter = c(
+    "Method choice",
+    "Minimum OOF correlation",
+    "Maximum NRMSE",
+    "Selected proportion"
+  ),
+  Rule = c(
+    "Highest r; ties by lower RMSE, lower MAE, and lower DIC",
+    "> 0.30",
+    "< 1.00",
+    "20% per eligible trait"
+  ),
+  stringsAsFactors = FALSE
+)
+
+format_table(
+  selection_parameters,
+  caption = "Criteria used for method choice and genomic selection",
+  col.names = c("Parameter", "Rule")
+)
+```
+
+The table below combines the selected method, relevant performance metrics, and the eligibility decision. The correlation p-value remains available in the analytical object but is not used as a filter.
+
+```{r model-selection-table}
+model_selection_display <- model_selection |>
+  mutate(
+    Method_label = unname(method_labels[Selected_method]),
+    Objective = unname(selection_objective_labels[Selection_objective]),
+    Eligible = if_else(Selection_eligible, "Yes", "No")
+  ) |>
+  transmute(
+    Trait,
+    Method_label,
+    Objective,
+    r = sprintf("%.3f", r),
+    RMSE = sprintf("%.3f", RMSE),
+    NRMSE = sprintf("%.3f", NRMSE),
+    MAE = sprintf("%.3f", MAE),
+    Bias = sprintf("%.3f", Bias),
+    Slope = sprintf("%.3f", Slope),
+    DIC = sprintf("%.2f", Mean_DIC),
+    Eligible
+  )
+
+format_table(
+  model_selection_display,
+  caption = "Selected method and eligibility for selection by trait",
+  col.names = c(
+    "Trait", "Method", "Objective", "r", "RMSE", "NRMSE",
+    "MAE", "Bias", "Slope", "Mean DIC", "Eligible"
+  )
+)
+```
+
+### 5.2 Ranking and selected individuals
+
+For eligible traits, individuals are ordered by the GEBV on the trait scale while respecting the breeding objective. For traits to be reduced, the sign is reversed only when constructing the ranking score. The selected proportion is 20%.
 
 ```{r genomic-ranking}
-genomic_ranking <- selected_oof_genomic_values |>
+selection_genomic_values <- oof_genomic_values |>
+  inner_join(
+    model_selection |>
+      select(
+        Trait,
+        Selection_objective,
+        Selection_eligible,
+        NRMSE
+      ),
+    by = "Trait"
+  ) |>
+  mutate(OOF_NRMSE = NRMSE)
+
+genomic_ranking <- selection_genomic_values |>
   filter(Selection_eligible) |>
   mutate(
     Selection_score = case_when(
@@ -768,14 +695,9 @@ selected_individuals_by_trait <- genomic_ranking |>
   arrange(match(Trait, traits), Rank)
 ```
 
-### 8.2 Preview of selected individuals
-
-The table shows the first five individuals for each eligible trait. The
-`selected_individuals_by_trait` object retains the complete set of the selected
-20%.
+The table presents the top five individuals for each eligible trait; the complete object retains all selected individuals.
 
 ```{r proportional-selection-preview}
-# DISPLAY-ONLY START
 selection_preview <- selected_individuals_by_trait |>
   group_by(Trait) |>
   slice_head(n = 5) |>
@@ -804,18 +726,11 @@ format_table(
     "GEBV + mean", "OOF r", "NRMSE"
   )
 )
-# DISPLAY-ONLY END
 ```
 
-## 9. Recurrence across eligible traits
+### 5.3 Recurrence among eligible traits
 
-### 9.1 Definition
-
-Recurrence is descriptive and uses only rankings from traits that passed both
-eligibility thresholds. For each individual, it counts how many of these traits
-include the individual among the selected 20%. Frequency is calculated relative
-to the number of eligible traits; no multi-trait selection index is constructed
-and no weights are assigned across traits.
+Recurrence counts the number of eligible traits in which each individual appears among the selected 20%. Frequency is calculated relative to the number of eligible traits and is not a multi-trait selection index.
 
 ```{r multitrait-recurrence}
 recurrence_counts <- selected_individuals_by_trait |>
@@ -870,10 +785,9 @@ multitrait_candidates <- multitrait_recurrence |>
   arrange(desc(N_traits), FAM, IND)
 ```
 
-### 9.2 Recurrence distribution
+The distribution summarizes how many individuals were selected in zero, one, two, three, or more traits.
 
 ```{r recurrence-distribution-table}
-# DISPLAY-ONLY START
 recurrence_class_labels <- c(
   high_4plus = "High (>=4)",
   intermediate_3 = "Intermediate (3)",
@@ -901,17 +815,11 @@ format_table(
     "Population proportion"
   )
 )
-# DISPLAY-ONLY END
 ```
 
-### 9.3 Recurrent individuals
-
-The table includes individuals selected in at least two eligible traits. An
-additional table with one rank column per trait is not displayed; individual
-positions remain available in `selected_individuals_by_trait`.
+Individuals selected in at least two traits are shown in a single table.
 
 ```{r recurrent-candidates-table}
-# DISPLAY-ONLY START
 recurrent_candidates_display <- multitrait_candidates |>
   mutate(
     Class = unname(recurrence_class_labels[Recurrence_class])
@@ -935,143 +843,127 @@ format_table(
     "Class", "Traits", "Best rank", "Mean rank"
   )
 )
-# DISPLAY-ONLY END
 ```
 
-## 10. Correlations among OOF GEBVs of eligible traits
+## 6. Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR
 
-These correlations describe associations among the OOF genomic values produced by the selected method for each trait. Because different traits may use different methods and the values are cross-fitted, the matrix summarizes associations among predictive scores rather than jointly estimated genetic covariance. It should therefore not be interpreted as a genetic-correlation matrix from a multivariate model.
+Following Silva et al. [@silva2021brrguava], RR-BLUP/BRR allows a marker-based heritability analogue to be derived from marker variance. Fold-level adjusted accuracy is calculated as `Correlation / sqrt(H2)`.
 
+This ratio is a derived quantity rather than a direct correlation between true and predicted genetic values. It may therefore be negative or exceed 1.
 
-```{r oof-correlations}
-selected_genomic_wide <- selected_oof_genomic_values |>
-  filter(Selection_eligible) |>
-  select(IND, Trait, GEBV_centered) |>
-  pivot_wider(names_from = Trait, values_from = GEBV_centered)
+```{r rrblup-heritability}
+# Compute and organize the RR-BLUP/BRR model-based heritability summary.
+rrblup_variance_components <- convergence |>
+  filter(
+    Method == "RRBLUP",
+    Parameter %in% c("Residual_variance", "Marker_variance")
+  ) |>
+  select(Run_id, Trait, Fold, Method, Parameter, Posterior_mean) |>
+  pivot_wider(names_from = Parameter, values_from = Posterior_mean)
 
-selected_oof_correlations <- cor(
-  as.matrix(selected_genomic_wide[, eligible_traits, drop = FALSE])
-)
-```
+rrblup_fold_correlations <- metrics |>
+  filter(Method == "RRBLUP") |>
+  select(Trait, Fold, Correlation)
 
-`selected_oof_correlations` is derived here and visualized immediately below. It should be interpreted only as association among OOF scores, not as joint genetic correlation.
-
-### 10.1 Exploratory heatmap
-
-The heatmap visualizes the matrix just derived. Colors use the original
-unrounded values. These are associations among cross-fitted scores and must
-not be interpreted as genetic correlations from a multivariate model.
-
-```{r oof-correlation-figure, fig.width=10, fig.height=9, fig.alt="Heatmap of pairwise correlations among cross-fitted OOF genomic-value scores for the traits, representing exploratory associations rather than multivariate genetic correlations."}
-# Reshape the OOF correlation matrix and build the cross-trait heatmap.
-correlation_long <- as.data.frame(
-  as.table(selected_oof_correlations)
-)
-names(correlation_long) <- c(
-  "Trait_1",
-  "Trait_2",
-  "Correlation"
-)
-
-# Set only the label of |r| < 0.005 to zero; the original correlation still drives analysis and color.
-correlation_long <- correlation_long |>
+# Organize the cross-validation and fitting structure.
+rrblup_heritability_by_fold <- rrblup_variance_components |>
+  left_join(rrblup_fold_correlations, by = c("Trait", "Fold")) |>
   mutate(
-    Correlation_label = replace(
-      Correlation,
-      abs(Correlation) < 0.005,
-      0
-    )
+    Marker_variance_denominator = matrices_object$denominator,
+    Additive_variance = Marker_variance * Marker_variance_denominator,
+    H2 = Additive_variance / (Additive_variance + Residual_variance),
+    Predictive_accuracy = Correlation / sqrt(H2)
+  ) |>
+  arrange(match(Trait, traits), Fold)
+
+# Summarize the RR-BLUP/BRR model-based heritability analogue and adjusted accuracy across folds.
+rrblup_heritability_summary <- rrblup_heritability_by_fold |>
+  group_by(Trait) |>
+  summarise(
+    Mean_H2 = mean(H2),
+    SD_H2 = sd(H2),
+    Mean_fold_r = mean(Correlation),
+    SD_fold_r = sd(Correlation),
+    Mean_predictive_accuracy = mean(Predictive_accuracy),
+    SD_predictive_accuracy = sd(Predictive_accuracy),
+    .groups = "drop"
+  ) |>
+  arrange(match(Trait, traits))
+```
+
+The trait summary presents the marker-based heritability analogue and adjusted accuracy across folds.
+
+```{r rrblup-heritability-table}
+rrblup_table <- rrblup_heritability_summary |>
+  transmute(
+    Trait,
+    RRBLUP_H2 = sprintf("%.3f", Mean_H2),
+    SD_RRBLUP_H2 = sprintf("%.3f", SD_H2),
+    RRBLUP_predictive_accuracy = sprintf("%.3f", Mean_predictive_accuracy),
+    SD_RRBLUP_predictive_accuracy = sprintf("%.3f", SD_predictive_accuracy)
   )
 
-# Build the heatmap of correlations among OOF genomic values.
-correlation_plot <- ggplot(
-  correlation_long,
-  aes(x = Trait_1, y = Trait_2, fill = Correlation)
-) +
-  geom_tile() +
-  geom_text(
-    aes(label = sprintf("%.2f", Correlation_label)),
-    size = 3
-  ) +
-  scale_fill_distiller(
-    type = "div",
-    palette = "RdBu",
-    direction = 1,
-    limits = c(-1, 1)
-  ) +
-  labs(
-    x = NULL,
-    y = NULL,
-    fill = "r",
-    title = "Correlation among OOF GEBVs of eligible traits"
-  ) +
-  coord_equal() +
-  project_theme +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-correlation_plot
+format_table(
+  rrblup_table,
+  caption = "Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR",
+  col.names = c("Trait", "RR-BLUP H2", "SD RR-BLUP H2", "RR-BLUP predictive accuracy", "SD RR-BLUP predictive accuracy")
+)
 ```
 
+## 7. Exporting the analysis results
 
-Positive values indicate that two score sets tend to order candidates in the
-same direction, while negative values indicate opposing directions. The matrix
-does not create an additional selection criterion.
-
-## 11. Persistence of revised results
-
-The previous results from version `v1.0.5` are not overwritten. This revision
-is saved in its own M04 subdirectory, allowing the previous structure to be
-compared or recovered when needed.
+At the end of the analysis, the main objects and tables are written to a Module 04 results directory. These files allow the results to be inspected later without repeating the derivations shown above.
 
 ```{r save-results}
-threshold_results_dir <- here(
-  "output", "results", "m04", "threshold_selection"
+results_dir <- here(
+  "output", "results", "m04", "genomic_selection"
 )
-dir.create(threshold_results_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
 write.csv(
   model_selection,
-  file.path(threshold_results_dir, "model_selection.csv"),
+  file.path(results_dir, "model_selection.csv"),
   row.names = FALSE
 )
 write.csv(
-  selected_oof_genomic_values,
-  file.path(threshold_results_dir, "selected_oof_genomic_values.csv"),
+  oof_genomic_values,
+  file.path(results_dir, "oof_genomic_values.csv"),
   row.names = FALSE
 )
 write.csv(
   selected_individuals_by_trait,
-  file.path(threshold_results_dir, "selected_individuals_by_trait.csv"),
+  file.path(results_dir, "selected_individuals_by_trait.csv"),
   row.names = FALSE
 )
 write.csv(
   multitrait_recurrence,
-  file.path(threshold_results_dir, "multitrait_recurrence.csv"),
+  file.path(results_dir, "multitrait_recurrence.csv"),
   row.names = FALSE
 )
 write.csv(
   multitrait_candidates,
-  file.path(threshold_results_dir, "multitrait_candidates.csv"),
+  file.path(results_dir, "multitrait_candidates.csv"),
   row.names = FALSE
 )
 write.csv(
-  selected_oof_correlations,
-  file.path(threshold_results_dir, "selected_oof_correlations.csv"),
+  oof_genomic_correlations,
+  file.path(results_dir, "oof_genomic_correlations.csv"),
   row.names = TRUE
 )
 
-module04_threshold_results <- list(
+module04_results <- list(
   model_comparison = model_comparison,
+  selected_methods = selected_methods,
   model_selection = model_selection,
   convergence_overview = convergence_overview,
   rrblup_heritability_by_fold = rrblup_heritability_by_fold,
   rrblup_heritability_summary = rrblup_heritability_summary,
-  selected_oof_genomic_values = selected_oof_genomic_values,
+  oof_genomic_values = oof_genomic_values,
+  oof_genomic_correlations = oof_genomic_correlations,
   genomic_ranking = genomic_ranking,
   selected_individuals_by_trait = selected_individuals_by_trait,
   multitrait_recurrence = multitrait_recurrence,
   multitrait_candidates = multitrait_candidates,
-  selected_oof_correlations = selected_oof_correlations,
   settings = list(
     correlation_threshold = CORRELATION_SELECTION_THRESHOLD,
     nrmse_threshold = NRMSE_SELECTION_THRESHOLD,
@@ -1081,29 +973,19 @@ module04_threshold_results <- list(
 )
 
 saveRDS(
-  module04_threshold_results,
-  here("output", "results", "m04", "threshold_selection", "module04_threshold_results.rds")
+  module04_results,
+  file.path(results_dir, "module04_results.rds")
 )
 ```
 
-## 12. Final interpretation
+## 8. Summary and interpretation
 
-The comparison now clearly separates three decisions. First, the method is
-chosen within each trait using OOF predictive metrics, while DIC is retained as
-complementary information. Second, only traits with $r > 0.30$ and `NRMSE < 1`
-are considered sufficiently predictive for selection. Third, within those
-traits, the most favorable 20% of individuals are prioritized according to the
-breeding objective.
+The seven methods are compared separately for each trait. OOF predictive evidence determines which method is used in subsequent steps, while DIC remains complementary information.
 
-MCMC diagnostics indicate behavior compatible with convergence for the large
-majority of monitored fits and parameters without being used as a decision
-filter. The observed-versus-predicted figure adds a visual assessment of
-association and calibration to the numerical metrics.
+OOF GEBVs from the selected methods are first examined across all ten traits, including their correlations. This step precedes eligibility criteria and allows relationships among traits to be interpreted without restricting the analysis to traits that later enter genomic selection.
 
-OOF GEBVs remain cross-fitted scores. Adding the phenotypic mean places them on
-a more interpretable scale, but does not turn them into complete phenotypic
-predictions and does not change rankings. Recurrence across traits remains
-descriptive and is not equivalent to a multi-trait selection index.
+Genomic selection is then limited to traits with \(r > 0.30\) and `NRMSE < 1`. Within those traits, the most favorable 20% of individuals are prioritized according to the breeding objective, and recurrence summarizes the presence of the same individuals across traits.
 
-Conclusions remain conditional on the represented breeding population, the
-available SSR panel, and the validation design used.
+The GEBVs remain cross-fitted scores. Adding the phenotypic mean improves interpretation in trait units but does not alter rankings or represent a complete phenotypic prediction.
+
+Conclusions remain conditional on the represented breeding population, the available SSR panel, and the validation design.
