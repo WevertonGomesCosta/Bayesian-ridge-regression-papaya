@@ -48,9 +48,17 @@ genotype panel and then held fixed. No validation phenotype enters these
 steps. This corresponds to a transductive candidate-genotype setting and
 should not be interpreted as external validation in a new genotype population.
 
-The module produces four components used directly in Module 03: the fixed-effect matrix `X`, the centered marker matrix `M`, the genomic relationship matrix `G`, and the `cv_folds` table identifying each individual's validation fold. The diagnostics check allele coding, centering, genomic relationships, and family stratification.
+The matrix core of the contract delivered to Module 03 consists of four components: the fixed-effect matrix `X`, the centered marker matrix `M`, the genomic relationship matrix `G`, and the `cv_folds` table identifying each individual's validation fold. The persisted object also preserves identifiers, metadata, aligned phenotypes, the trait dictionary, and auxiliary diagnostics. The diagnostics check allele coding, centering, genomic relationships, and family stratification.
 
-## 2. Packages used
+The functional workflow of the module follows this sequence:
+
+**receive the preprocessed object → code allele dosages → filter allele columns → impute and center `M` → construct `G` → construct `X` → define the folds → audit the matrices → export the contract to Module 03.**
+
+## 2. Analysis preparation
+
+Preparation brings together the packages, helper functions, and object produced in Module 01. Methodological decisions remain close to the stages where they are applied, while this section makes explicit the contract that must remain stable throughout matrix construction.
+
+### 2.1 Packages and helper functions
 
 The packages used in this module have distinct roles:
 
@@ -93,11 +101,16 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-### 2.1 Input object
+### 2.2 Input object and matrix contract
 
 The `preprocessing_object.rds` file produced in Module 01 contains the individuals, phenotypes, families, and SSR-locus information required to construct the matrices. It is read directly from the preprocessing output directory, and the components reused in this module are then recovered explicitly.
 
 Methodological parameters specific to Module 02 are defined only in the sections where they are applied: the allele-frequency threshold beside the dosage-column filter, and the number of folds and random seed beside cross-validation construction. The call-rate threshold was already applied in Module 01; its value remains recorded in the preprocessing object and is only carried forward as provenance in the final object from this module.
+
+
+The contract for this stage preserves all 150 individuals and keeps phenotypes and metadata aligned. Phenotypes do not enter allele-column filtering, frequency calculation, imputation, or construction of `M` and `G`; `FAM` is used to construct `X` and stratify the folds. Under the transductive setting adopted here, `X`, `M`, `G`, and `cv_folds` are constructed once and remain fixed for all traits and methods in Module 03.
+
+The persisted interface consists of `matrices_object.rds`, which gathers the objects required by the next module, and CSV files that record the validation partition and matrix diagnostics for independent inspection.
 
 ```{r input-object}
 preprocessing <- readRDS(
@@ -116,7 +129,7 @@ locus_audit_full <- preprocessing$locus_audit
 trait_dictionary <- preprocessing$trait_dictionary
 ```
 
-### 2.2 Check of the received object
+### 2.3 Check of the received object
 
 Before marker coding, the following table checks the structure received from Module 01: numbers of individuals and traits, loci before and after quality control, and families. The comparison confirms that the input object has the expected structure; no new filter is applied at this stage.
 
@@ -228,13 +241,12 @@ as.data.frame(dosage_full_raw[1:6, 1:8]) |>
 
 The coding produces `r ncol(dosage_full_raw)` dosage columns from the `r ncol(ssr_full)` retained loci. The first table shows how each column maps to the locus and allele it represents; the second shows dosages for the first individuals. Within each column, values 0, 1, and 2 give the number of copies of the allele identified after `__A`, whereas `NA` denotes a missing SSR call. One locus can produce more than two columns when more than two alleles are represented in the panel.
 
-## 4. Allele frequencies and retention of dosage columns
+## 4. Quality control of allele-dosage columns
 
-### 4.1 Computing allele frequencies
+### 4.1 Allele frequencies and retention criteria
 
 The frequency of an allele column is computed as the mean observed dosage divided by 2 because each diploid individual can contribute two copies of the allele. `NA` values are ignored here, so the frequency uses available genotype calls only.
 
-### 4.2 Retention criteria for allele columns
 
 Columns are retained when frequency lies between 0.05 and 0.95 and dosage standard deviation is positive. The lower and upper limits are symmetric: they remove very rare alleles and nearly fixed columns, while `Dosage_sd > 0` guarantees observed variation. The filter acts on allele-dosage columns; it does not remove individuals.
 
@@ -283,7 +295,7 @@ allele_audit_full |>
 
 Of the `r nrow(allele_audit_full)` initially coded allele columns, `r sum(allele_audit_full$Keep_allele)` satisfy both the frequency interval and positive-variation requirement. The table shows how many alleles were observed and retained at each locus.
 
-### 4.3 Distribution of allele frequencies
+### 4.2 Distribution of allele frequencies
 
 The histogram complements the preceding table by showing where allele-column frequencies are concentrated and how that distribution relates to the final filtering decision. The horizontal axis covers the full possible frequency interval from 0 to 1 in classes of width 0.05. Dashed lines mark the 0.05 and 0.95 frequency limits, whereas GDocs colors represent the final retained or removed decision.
 
@@ -333,7 +345,7 @@ ggplot(
 
 Observed allele frequencies range from `r sprintf("%.3f", min(allele_audit_full$Allele_frequency, na.rm = TRUE))` to `r sprintf("%.3f", max(allele_audit_full$Allele_frequency, na.rm = TRUE))`. Bar position shows the frequency range of allele columns, whereas color reports the joint outcome of the retention criteria. The dashed lines are only references for the frequency threshold; a column must also have `Dosage_sd > 0` to remain in `dosage_full`.
 
-## 5. Marker matrix
+## 5. Construction of marker matrix M
 
 ### 5.1 Imputation of missing dosages
 
@@ -413,7 +425,7 @@ data.frame(
 
 Matrix `M` contains `r nrow(M_full)` rows and `r ncol(M_full)` retained dosage columns. Its rank is `r qr(M_full)$rank`, below the number of columns because dosage columns from the same locus can be linearly dependent. The largest absolute column mean is `r format(max(abs(colMeans(M_full))), scientific = TRUE, digits = 3)`, confirming numerical centering after imputation.
 
-## 6. Genomic relationship matrix
+## 6. Construction of genomic relationship matrix G
 
 ### 6.1 Definition and scale of G
 
@@ -502,11 +514,13 @@ data.frame(
 
 Before symmetrization, the maximum asymmetry of the scaled cross-product is `r format(maximum_G_asymmetry_before_symmetrization, scientific = TRUE, digits = 3)`, showing the magnitude of the numerical error removed by averaging with the transpose. The mean diagonal of `G` is `r sprintf("%.3f", mean(diag(G_full)))`, and its smallest eigenvalue is `r format(minimum_eigenvalue_G_full, scientific = TRUE, digits = 3)`. Negative values of very small magnitude are compatible with numerical rounding.
 
-## 7. Fixed-effect matrix
+## 7. Fixed effects and cross-validation design
+
+### 7.1 Fixed-effect matrix X
 
 Family is the only categorical fixed effect. Because `metadata$FAM` is already a factor, `model.matrix(~ FAM)` uses its levels directly to build the design matrix. Under R's default treatment contrasts, `X` contains one intercept column and `nlevels(FAM) - 1` indicator columns, which are sufficient to represent differences among families without treating `FAM` as a numeric variable.
 
-The first diagnostic summarizes only the structure of `X`. A small preview then places `IND` and `FAM` beside the matrix columns so the intercept and family indicators can be seen for the first individuals. The joint comparison of `X`, `M`, and `G` is kept in the final inventory in Section 10, avoiding repetition of diagnostics already presented for `M` and `G`.
+The first diagnostic summarizes only the structure of `X`. A small preview then places `IND` and `FAM` beside the matrix columns so the intercept and family indicators can be seen for the first individuals. The joint comparison of `X`, `M`, and `G` is kept in the consolidated inventory in Section 8, avoiding repetition of diagnostics already presented for `M` and `G`.
 
 In Module 03, the intercept column is removed from `X` because BGLR already fits an intercept automatically; retaining both would duplicate the same constant effect.
 
@@ -548,13 +562,11 @@ data.frame(
 
 Matrix `X` has `r nrow(X)` rows, `r ncol(X)` columns, and rank `r qr(X)$rank`. Because `FAM` has `r nlevels(metadata$FAM)` levels, the coding contains one intercept and `r ncol(X) - 1` family indicators. The preview makes this representation explicit without repeating the diagnostics for `M` and `G`.
 
-## 8. Cross-validation design
-
-### 8.1 Evaluation scenario
+### 7.2 Evaluation scenario
 
 Family stratification targets prediction among individuals from the represented breeding population. It is not a leave-family-out design and therefore does not estimate predictive performance for entirely new families.
 
-### 8.2 Construction of the stratified folds
+### 7.3 Construction of the stratified folds
 
 The 150 individuals are distributed into five validation groups. Allocation proceeds family by family: individuals in the current family are first shuffled; folds are then ordered by their accumulated total load, with a random order used only to break ties between equally loaded folds. Family members are subsequently distributed cyclically along that order. The algorithm therefore combines family representation with balanced total fold sizes.
 
@@ -611,7 +623,7 @@ cv_folds <- data.frame(
 
 After allocation, `cv_folds` contains `r nrow(cv_folds)` rows, one for each candidate, and assigns every individual to exactly one of the five folds. The next subsections separately diagnose fold size and family balance.
 
-### 8.3 Training and validation sizes
+### 7.4 Training and validation sizes
 
 Once the partition is defined, the number of individuals in each fold is counted directly from `cv_folds$Fold`. For each round, this count is the validation set size; all remaining individuals form the training set.
 
@@ -636,7 +648,7 @@ format_table(
 
 All five folds contain `r unique(fold_summary$Validation_n)` validation individuals and `r unique(fold_summary$Training_n)` training individuals. The table makes the constant sample size across the five rounds directly visible.
 
-### 8.4 Family balance across folds
+### 7.5 Family balance across folds
 
 The second diagnostic crosses the family used for stratification with the assigned fold. For each family, `family_balance` calculates the difference between its largest and smallest count across the five folds. Because members of each family are distributed cyclically along the fold order, this difference should be at most one individual.
 
@@ -668,7 +680,7 @@ data.frame(
 
 The largest difference between the maximum and minimum count for the same family across folds is `r max(family_balance)` individual. The table therefore shows both family representation across folds and the quality of the achieved balance.
 
-### 8.5 Using the folds for model fitting
+### 7.6 Using the folds for model fitting
 
 The `cv_folds` table identifies which individuals are masked in each validation round. For fold `k`, the 30 individuals with `Fold == k` have their phenotypes replaced by `NA`, while the other 120 provide training phenotypes. This procedure is repeated for every trait and method.
 
@@ -685,7 +697,9 @@ cv_folds |>
 
 The 15 displayed rows make the allocation structure visible without modifying `cv_folds`, which retains all 150 individuals and is used directly in Module 03.
 
-## 9. Genomic relationship heatmap
+## 8. Integrated matrix diagnostics
+
+### 8.1 Genomic relationship heatmap
 
 The heatmap displays all 22,500 cells of `G` in a single view. The diagonal contains each individual's relationship with itself; off the diagonal, each cell represents relative genomic relationship between a pair of candidates. Values close to zero indicate relationship near the reference defined by allele frequencies in this panel, whereas negative and positive values indicate lower and higher genomic similarity relative to that reference, respectively.
 
@@ -739,15 +753,13 @@ relationship"
 
 The heatmap preserves the complete structure of `G` and the candidates' original order. The diagonal tends to concentrate self-relationship values, while off-diagonal cells show variation in pairwise relationship around the zero reference. Because no reordering is applied, visually similar regions reflect the existing data order and should be interpreted only as descriptive patterns rather than groups inferred by the figure.
 
-## 10. Diagnostics of the constructed matrices
-
-### 10.1 Structural dependence and rank of M
+### 8.2 Structural dependence and rank of M
 
 All allele columns satisfying the declared filters are retained; no category is artificially discarded merely to force full rank. When all alleles at a locus remain represented, their dosages sum to 2 in each diploid individual and an exact linear dependency exists among those columns. Individual allele coefficients are therefore not interpreted in isolation; later modules focus on predictions and genomic values.
 
 The `r ncol(M_full)` dosage columns do not represent `r ncol(M_full)` independent dimensions. For each locus with \(k_l\) retained allele columns, the diploid constraint allows at most \(k_l-1\) independent directions among those columns. The structural rank bound of `M` sums these contributions across loci and is compared with the observed rank to determine whether additional linear dependencies occur.
 
-### 10.2 Consolidated numerical checks
+### 8.3 Consolidated numerical checks
 
 The diploid coding property is checked before allele-column filtering: for every retained SSR locus from Module 01, dosages across all alleles originally coded for an observed genotype must sum to 2. Missing SSR calls are excluded from this check rather than imputed for it.
 
@@ -891,9 +903,11 @@ matrix_inventory |>
 
 The final inventory consolidates the diagnostics presented throughout the module. For the analyzed data, `M` contains `r ncol(M_full)` columns and rank `r qr(M_full)$rank`, compared with the structural rank bound `r structural_rank_bound_M`; the maximum diploid-sum error is `r format(maximum_dosage_sum_error, scientific = TRUE, digits = 3)`, and the maximum difference in the complete reconstruction of `G` is `r format(maximum_G_reconstruction_difference, scientific = TRUE, digits = 3)`. All five folds retain the same training and validation sizes.
 
-## 11. Saving matrices and folds
+## 9. Exporting the matrix contract
 
-The `matrices_object.rds` file gathers the matrices, aligned phenotypes, metadata, frequencies, folds, and parameters required by Module 03. Because PT and EN execute the same scientific workflow, the shared artifacts in this section are kept language-independent: `matrices_object.rds`, `cv_folds.csv`, `fold_summary.csv`, and `allele_audit_full.csv` already use common structures, while `matrix_inventory.csv` now stores stable language-neutral identifiers in its `Item` field. Translated labels exist only in the HTML tables from Section 10. Therefore, PT/EN rendering order no longer changes the scientific content written to `output/matrices/`.
+### 9.1 Matrix object and tabular diagnostics
+
+The `matrices_object.rds` file gathers the matrices, aligned phenotypes, metadata, frequencies, folds, and parameters required by Module 03. Because PT and EN execute the same scientific workflow, the shared artifacts in this section are language-independent: `matrices_object.rds`, `cv_folds.csv`, `fold_summary.csv`, and `allele_audit_full.csv` use common structures, and `matrix_inventory.csv` stores stable language-neutral identifiers in its `Item` field. Translated labels exist only in the HTML tables from Section 8. Therefore, PT/EN rendering order does not change the scientific content written to `output/matrices/`.
 
 ```{r save-matrix-objects}
 dir.create(
@@ -949,9 +963,13 @@ write.csv(
 )
 ```
 
-## 12. Next step
+## 10. Synthesis and transition to Module 03
 
-Module 02 delivers a single reproducible contract to Module 03: `X`, `M`, `G`, and `cv_folds` are stored in `matrices_object.rds` with the same definitions in the PT and EN versions. In Module 03, these objects remain fixed and only the phenotypes of individuals in the validation fold are masked for each fit.
+### 10.1 Contract delivered to Module 03
+
+Module 02 delivers a single reproducible contract to Module 03. Its matrix core contains `X`, `M`, `G`, and `cv_folds`, while `matrices_object.rds` also preserves `ids`, `metadata`, `phenotypes`, and `trait_dictionary` to maintain alignment and analytical context. In Module 03, `X`, `M`, `G`, and `cv_folds` remain fixed and only the phenotypes of individuals in the validation fold are masked for each fit.
+
+### 10.2 Next step
 
 From this contract, the next module fits RR-BLUP, BayesA, BayesB, BayesB2, BayesC, Bayesian Lasso, and GBLUP using exactly the same five folds for all ten traits. Comparisons among methods therefore start from the same genomic representation and the same validation partition constructed in this module.
 
