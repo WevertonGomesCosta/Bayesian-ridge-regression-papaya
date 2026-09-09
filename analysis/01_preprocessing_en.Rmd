@@ -36,11 +36,19 @@ identifiers are organized, SSR missing-value codes are converted to `NA`,
 phenotypes are aligned with genotypes, and SSR loci are subjected to quality
 control.
 
+The module follows this analytical sequence:
+
+**read the sources → recover identifiers → organize SSR data → align phenotypes → assess genotype quality → characterize phenotypes → export validated objects.**
+
 Family (`FAM`) is preserved because it will be used both in the fixed-effect matrix and to stratify the cross-validation folds in Module 02. No individual is removed in this module.
 
 Preprocessing produces three central objects for the following stages: the aligned phenotype matrix, the SSR matrix after locus quality control, and metadata containing individual and family. The diagnostics verify the consistency of these objects before genomic-matrix construction.
 
-## 2. Packages used
+## 2. Analysis preparation
+
+Preparation includes only the resources required to read, organize, visualize, and export the data. Methodological decisions are introduced in the sections where they are actually applied, keeping the module workflow traceable.
+
+### 2.1 Packages and helper functions
 
 The packages used in this module have distinct roles:
 
@@ -85,7 +93,13 @@ format_table <- function(x, caption = NULL, digits = getOption("digits"), col.na
 }
 ```
 
-## 3. Reading the source spreadsheets
+### 2.2 Preprocessing contract
+
+The module preserves all individuals aligned between the two data sources. Quality control acts on SSR loci, `FAM` remains categorical information for subsequent stages, and phenotype observations far from the mean are only flagged for inspection. None of these diagnostics automatically removes individuals or permanently transforms phenotype values.
+
+The primary output is `preprocessing_object.rds`, accompanied by diagnostic CSV files. This interface allows Module 02 to directly reuse the objects produced here.
+
+## 3. Reading and initial audit of the data sources
 
 ### 3.1 Genotype data
 
@@ -139,7 +153,7 @@ head(pheno_raw) |>
 
 The preview shows the phenotype spreadsheet with `IND`, `FAM`, and the ten evaluated traits used throughout the analysis.
 
-### 3.3 Initial check of the data sources
+### 3.3 Initial structural check
 
 Before organization and alignment, the dimensions of the three imported structures are compared. This is a structural check: `Genes` contains genotype codes, `Genealex` preserves GenAlEx metadata, and `pheno_raw` preserves the imported phenotype table.
 
@@ -211,7 +225,7 @@ format_table(
 
 The checks contain `r sum(ssr_identifier_checks$Value)` problematic occurrences, confirming that individual identifiers and locus names can be used to construct the SSR matrix.
 
-### 4.2 Building the SSR matrix
+### 4.2 Building the SSR matrix and representing missing data
 
 After identifiers are recovered, the first column of `Genes` is removed and the 35 marker columns form `ssr_raw`. Codes are stored numerically, and `-9`, used in the original file for missing calls, is converted to `NA`.
 
@@ -240,9 +254,9 @@ The `33` value observed for `P3K3256CC` is not an error or a special category: t
 
 ## 5. Organizing and aligning phenotypes
 
-This stage transforms the raw phenotype table into objects aligned with the SSR matrix. The process is presented in four parts: trait definition, individual checking and correspondence, effective alignment, and separation of metadata from numerical phenotypes.
+This stage transforms the raw phenotype table into objects aligned with the SSR matrix. The process is presented in three parts: definition of the traits and their dictionary, verification of individual correspondence, and finally phenotype alignment followed by construction of the metadata and phenotype matrix.
 
-### 5.1 Traits used in the analysis
+### 5.1 Traits and dictionary
 
 Ten phenotype traits are used, identified by the same codes throughout all modules.
 
@@ -301,7 +315,7 @@ format_table(
 
 The dictionary shows that production and mass are expressed in kg, fruit dimensions in cm, firmness in N, and soluble solids in °Brix. These different units explain why the numerical scales of the traits should not be compared directly.
 
-### 5.2 Analytical columns and correspondence between individuals
+### 5.2 Correspondence between individuals
 
 Before any rows are reordered, the columns required for the analysis are defined. Phenotype identifiers are then checked and the sets of plants represented by both sources are compared.
 
@@ -353,7 +367,7 @@ format_table(
 
 The phenotype checks contain `r sum(phenotype_checks$Value)` problematic occurrences. The alignment table confirms `r length(ids)` genotyped individuals and `r nrow(pheno_raw)` phenotyped individuals, with no plants present in only one source. Alignment can therefore proceed without discarding individuals.
 
-### 5.3 Effective phenotype alignment
+### 5.3 Alignment and analytical objects
 
 Only after the previous checks are phenotypes reordered to exactly follow the individual sequence in the SSR matrix.
 
@@ -365,8 +379,6 @@ pheno <- pheno_raw[
 ]
 
 ```
-
-### 5.4 Metadata and phenotype matrix
 
 After alignment, `metadata` retains `IND` and `FAM`, whereas `phenotypes` contains only the ten numerical traits. Family therefore remains categorical and is not mixed with numerical phenotypes.
 
@@ -393,7 +405,7 @@ data.frame(
 
 After reordering, `FAM` contains `r nlevels(metadata$FAM)` families, with family sizes ranging from `r min(table(metadata$FAM))` to `r max(table(metadata$FAM))` individuals. This distribution is used to stratify the five cross-validation folds in Module 02.
 
-## 6. Marker quality control
+## 6. Genotype quality control and completeness
 
 ### 6.1 Locus-retention criteria
 
@@ -432,11 +444,9 @@ format_table(
 )
 ```
 
-### 6.2 Quality-control result
+### 6.2 Quality-control result and visualization
 
 Of the `r nrow(locus_audit)` loci evaluated, `r sum(locus_audit$Keep_locus)` satisfy both the call-rate and genotype-variation criteria. The removed locus is `r paste(locus_audit$Locus[!locus_audit$Keep_locus], collapse = ", ")`; its exclusion is due to insufficient genotype variation in the panel rather than removal of any individual.
-
-### 6.3 Call-rate visualization
 
 The figure summarizes locus completeness and the final quality-control decision together. Each bar represents the proportion of observed genotypes at one locus, and the dashed line marks the minimum call rate of 0.90. Colors follow the final retention decision: reaching 0.90 is necessary, but each locus must also contain at least two genotype classes.
 
@@ -483,7 +493,7 @@ ggplot(
 
 The figure should be read by combining bar height and color. Height reports locus completeness, whereas color reports the outcome of the two criteria applied together. A locus can therefore reach or exceed the 90% line and still be removed when only one genotype class is represented. The figure does not indicate removal of individuals; filtering acts only on loci.
 
-## 7. Genotype completeness by individual
+### 6.3 Genotype completeness by individual
 
 Genotype completeness is also summarized by individual using the 35 original loci. For each plant, the number and proportion of available SSR calls are recorded. This information is diagnostic only: no completeness threshold is used to exclude individuals, and all 150 aligned individuals remain in subsequent stages.
 
@@ -516,9 +526,9 @@ data.frame(
 
 Individual call rate ranges from `r sprintf("%.1f%%", 100 * min(individual_audit$Call_rate))` to `r sprintf("%.1f%%", 100 * max(individual_audit$Call_rate))`, with a mean of `r sprintf("%.1f%%", 100 * mean(individual_audit$Call_rate))`. Because no individual-exclusion rule is applied, these differences are recorded only as genotype-completeness information.
 
-## 8. Phenotype characterization
+## 7. Phenotype diagnostics
 
-### 8.1 Descriptive statistics
+### 7.1 Descriptive statistics
 
 Descriptive statistics allow direct inspection of the scale, dispersion, and range of the ten traits before prediction models are fitted. `N` also confirms phenotype availability by trait. No permanent transformation or standardization of phenotypes is performed at this stage; original values are preserved for the models.
 
@@ -544,7 +554,7 @@ format_table(
 
 All ten traits contain `r min(phenotype_summary$N)` available observations, confirming that the analyzed phenotype variables have no missing values. The mean locates the center of each distribution, the standard deviation summarizes dispersion, and minimum and maximum delimit the observed range. Because traits use different units, these measures should be interpreted within each trait rather than compared directly across different scales.
 
-### 8.2 Phenotype observations far from the mean
+### 7.2 Phenotype observations far from the mean
 
 Standardized values allow the distance of each observation from the mean of its own trait to be compared independently of the original measurement unit. For each trait,
 
@@ -675,7 +685,7 @@ data.frame(
 
 Most observations should concentrate around zero, whereas highlighted points occur farther from their respective trait means. The lines at -4 and +4 make the criterion used in the preceding table visually explicit. The plot is intended to locate unusual observations on a standardized scale; it is not a normality test and does not define automatic exclusions.
 
-### 8.3 Phenotype distributions
+### 7.3 Phenotype distributions
 
 The histograms complement the preceding table by showing distribution shape. Each panel represents one trait and identifies its measurement unit. Twenty bins are used to keep the same visual resolution across panels. Because units and ranges differ, only the horizontal axis varies freely; the vertical count scale remains common to all ten traits. The dashed line marks the mean reported in `phenotype_summary`.
 
@@ -736,11 +746,11 @@ ggplot(
 
 Interpretation should be made within each panel. The width occupied by values shows observed dispersion, bar concentration indicates where most individuals lie, and the position of the mean relative to the main mass of the distribution helps visualize asymmetry. Because the vertical axis is common, differences in count concentration can also be compared across traits. These shapes are descriptive only: asymmetry or longer tails do not by themselves imply phenotype transformation or removal of observations.
 
-## 9. Saving preprocessing results
+## 8. Exporting results
 
 At the end of the module, analytical objects are collected in a single RDS file and the main diagnostics are exported separately as CSV files. `preprocessing_object.rds` is the primary interface with Module 02; the CSV files provide direct access to the checks performed during preprocessing.
 
-### 9.1 Main preprocessing object
+### 8.1 Main preprocessing object
 
 The output directory is created only now, when results are actually written. Within `preprocessing_object`, components follow the sequence developed throughout the module: identification and aligned phenotypes, SSR matrices, diagnostics, the trait dictionary, and finally the parameters documenting preprocessing decisions.
 
@@ -784,7 +794,7 @@ saveRDS(
 
 The RDS preserves together the objects reused in Module 02. `settings` remains at the end because it records preprocessing decisions; it documents how the objects were produced but does not represent an additional analytical table.
 
-### 9.2 Tabular diagnostics
+### 8.2 Tabular diagnostics
 
 The checks most useful for independent inspection are also written as CSV files. Each command explicitly shows the exported object and its destination. These files do not replace the RDS as input to the next module; they make diagnostics accessible without requiring the complete object to be opened.
 
@@ -828,7 +838,9 @@ write.csv(
 
 Thus, `alignment_summary.csv` documents individual correspondence, `locus_audit.csv` and `individual_audit.csv` record genotype completeness, `phenotype_summary.csv` and `phenotype_extreme_values.csv` summarize phenotype diagnostics, and `trait_dictionary.csv` preserves the description and unit of the ten traits.
 
-### 9.3 Final inventory
+## 9. Synthesis and transition to Module 02
+
+### 9.1 Final inventory
 
 Before proceeding to Module 02, the final inventory collects the dimensions and counts summarizing preprocessing: number of individuals and traits, number of loci before and after quality control, number of families, missing SSR calls, and phenotype observations highlighted only for inspection.
 
@@ -858,7 +870,7 @@ data.frame(
 
 The summary confirms the conditions required for genomic-matrix construction: all 150 individuals remain aligned with phenotypes, quality control acts on SSR loci rather than individuals, and highlighted phenotype observations remain in the data because their identification is diagnostic only.
 
-## 10. Next step
+### 9.2 Next step
 
 Module 02 converts the retained SSR loci into allele-dosage columns, constructs
 the marker and genomic relationship matrices, creates the family fixed-effect
