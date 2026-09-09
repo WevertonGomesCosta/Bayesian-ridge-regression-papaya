@@ -36,11 +36,19 @@ de dados são lidas, os identificadores são organizados, os códigos de ausênc
 dos SSR são convertidos em `NA`, os fenótipos são alinhados aos genótipos e os
 locos SSR são submetidos ao controle de qualidade.
 
+O fluxo do módulo segue a sequência:
+
+**ler as fontes → recuperar identificadores → organizar os SSR → alinhar os fenótipos → avaliar a qualidade genotípica → caracterizar os fenótipos → exportar os objetos validados.**
+
 A família (`FAM`) é preservada porque será utilizada tanto na matriz de efeitos fixos quanto na estratificação dos folds de validação cruzada no Módulo 02. Nenhum indivíduo é removido neste módulo.
 
 O pré-processamento produz três objetos centrais para as etapas seguintes: a matriz fenotípica alinhada, a matriz SSR após o controle de qualidade dos locos e os metadados com indivíduo e família. Os diagnósticos verificam a consistência desses objetos antes da construção das matrizes genômicas.
 
-## 2. Pacotes utilizados
+## 2. Preparação da análise
+
+A preparação reúne apenas os recursos necessários para leitura, organização, visualização e exportação dos dados. As decisões metodológicas são apresentadas nas seções em que efetivamente são aplicadas, mantendo o fluxo do módulo rastreável.
+
+### 2.1 Pacotes e funções auxiliares
 
 Os pacotes utilizados neste módulo têm funções distintas:
 
@@ -85,7 +93,13 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-## 3. Leitura das planilhas-fonte
+### 2.2 Contrato do pré-processamento
+
+O módulo preserva todos os indivíduos alinhados entre as fontes. O controle de qualidade atua sobre os locos SSR, `FAM` permanece como informação categórica para as etapas seguintes e as observações fenotípicas distantes da média são apenas sinalizadas para inspeção. Nenhum desses diagnósticos implica remoção automática de indivíduos ou transformação permanente dos fenótipos.
+
+A saída principal é `preprocessing_object.rds`, acompanhada por arquivos CSV de diagnóstico. Essa interface permite que o Módulo 02 reutilize diretamente os objetos produzidos aqui.
+
+## 3. Leitura e auditoria inicial das fontes
 
 ### 3.1 Dados genotípicos
 
@@ -139,7 +153,7 @@ head(pheno_raw) |>
 
 A prévia mostra a estrutura da planilha fenotípica com `IND`, `FAM` e as dez características avaliadas ao longo da análise.
 
-### 3.3 Verificação inicial das fontes
+### 3.3 Conferência estrutural inicial
 
 Antes de organizar e alinhar os dados, as dimensões das três estruturas importadas são comparadas. Essa verificação é estrutural: `Genes` contém os códigos genotípicos, `Genealex` preserva os metadados do formato GenAlEx e `pheno_raw` preserva a tabela fenotípica importada.
 
@@ -211,7 +225,7 @@ tabela_html(
 
 As verificações apresentam `r sum(ssr_identifier_checks$Valor)` ocorrências problemáticas, confirmando que os identificadores dos indivíduos e os nomes dos locos podem ser usados na construção da matriz SSR.
 
-### 4.2 Construção da matriz SSR
+### 4.2 Construção da matriz SSR e representação de dados ausentes
 
 Com os identificadores recuperados, a primeira coluna de `Genes` é retirada e as 35 colunas de marcadores formam `ssr_raw`. Os códigos são armazenados numericamente e `-9`, usado no arquivo original para representar chamadas ausentes, é convertido em `NA`.
 
@@ -240,9 +254,9 @@ O valor `33` observado em `P3K3256CC` não representa erro ou categoria especial
 
 ## 5. Organização e alinhamento dos fenótipos
 
-Esta etapa transforma a tabela fenotípica bruta em objetos alinhados à matriz SSR. O processo é apresentado em quatro partes: definição das características, verificação e correspondência dos indivíduos, alinhamento efetivo e separação entre metadados e fenótipos numéricos.
+Esta etapa transforma a tabela fenotípica bruta em objetos alinhados à matriz SSR. O processo é apresentado em três partes: definição das características e de seu dicionário, verificação da correspondência entre os indivíduos e, por fim, alinhamento dos fenótipos seguido da construção dos metadados e da matriz fenotípica.
 
-### 5.1 Características utilizadas
+### 5.1 Características e dicionário
 
 São utilizadas dez características fenotípicas, identificadas pelos mesmos códigos ao longo de todos os módulos.
 
@@ -301,7 +315,7 @@ tabela_html(
 
 O dicionário evidencia que produção e massa são expressas em kg, dimensões dos frutos em cm, firmeza em N e sólidos solúveis em °Brix. Essa diferença de unidades explica por que as escalas numéricas das características não devem ser comparadas diretamente.
 
-### 5.2 Colunas analíticas e correspondência entre indivíduos
+### 5.2 Correspondência entre indivíduos
 
 Antes de reordenar qualquer linha, definimos as colunas necessárias para a análise. Em seguida, verificamos os identificadores fenotípicos e comparamos o conjunto de plantas das duas fontes.
 
@@ -353,7 +367,7 @@ tabela_html(
 
 As verificações fenotípicas apresentam `r sum(phenotype_checks$Valor)` ocorrências problemáticas. A tabela de alinhamento confirma `r length(ids)` indivíduos genotipados e `r nrow(pheno_raw)` indivíduos fenotipados, sem plantas presentes em apenas uma das fontes. Assim, o alinhamento pode ser realizado sem descartar indivíduos.
 
-### 5.3 Alinhamento efetivo dos fenótipos
+### 5.3 Alinhamento e objetos analíticos
 
 Somente depois das verificações anteriores os fenótipos são reordenados para seguir exatamente a sequência dos indivíduos na matriz SSR.
 
@@ -365,8 +379,6 @@ pheno <- pheno_raw[
 ]
 
 ```
-
-### 5.4 Metadados e matriz fenotípica
 
 Depois do alinhamento, `metadata` mantém `IND` e `FAM`, enquanto `phenotypes` contém somente as dez características numéricas. Assim, a família permanece categórica e não é misturada aos fenótipos.
 
@@ -393,7 +405,7 @@ data.frame(
 
 Após a reorganização, `FAM` contém `r nlevels(metadata$FAM)` famílias, com tamanhos entre `r min(table(metadata$FAM))` e `r max(table(metadata$FAM))` indivíduos. Essa distribuição será usada para estratificar os cinco folds de validação cruzada no Módulo 02.
 
-## 6. Controle de qualidade dos marcadores
+## 6. Controle de qualidade e completude genotípica
 
 ### 6.1 Critérios de retenção dos locos
 
@@ -432,11 +444,9 @@ tabela_html(
 )
 ```
 
-### 6.2 Resultado do controle de qualidade
+### 6.2 Resultado e visualização do controle de qualidade
 
 Dos `r nrow(locus_audit)` locos avaliados, `r sum(locus_audit$Keep_locus)` atendem simultaneamente aos critérios de taxa de chamada e variabilidade genotípica. O loco removido é `r paste(locus_audit$Locus[!locus_audit$Keep_locus], collapse = ", ")`; sua exclusão decorre da ausência de variação genotípica suficiente no painel, e não de remoção de indivíduos.
-
-### 6.3 Visualização da taxa de chamada
 
 A figura resume simultaneamente a completude dos locos e a decisão final do controle de qualidade. Cada barra representa a proporção de genótipos observados em um loco, e a linha pontilhada marca a taxa mínima de chamada de 0,90. As cores seguem a decisão final de retenção: atingir 0,90 é necessário, mas o loco também precisa apresentar pelo menos duas classes genotípicas.
 
@@ -483,7 +493,7 @@ ggplot(
 
 A leitura da figura deve combinar altura e cor das barras. A altura informa a completude do loco, enquanto a cor informa o resultado dos dois critérios usados em conjunto. Por isso, um loco pode alcançar ou ultrapassar a linha de 90% e ainda assim ser removido se apenas uma classe genotípica estiver representada. A figura não indica exclusão de indivíduos; o filtro atua somente sobre os locos.
 
-## 7. Completude genotípica por indivíduo
+### 6.3 Completude genotípica por indivíduo
 
 A completude genotípica também é resumida por indivíduo usando os 35 locos originais. Para cada planta são registrados o número e a proporção de chamadas SSR disponíveis. Essa informação é apenas diagnóstica: nenhum limiar de completude é usado para excluir indivíduos, e todos os 150 indivíduos alinhados permanecem nas etapas seguintes.
 
@@ -516,9 +526,9 @@ data.frame(
 
 A taxa de chamada por indivíduo varia de `r sprintf("%.1f%%", 100 * min(individual_audit$Call_rate))` a `r sprintf("%.1f%%", 100 * max(individual_audit$Call_rate))`, com média de `r sprintf("%.1f%%", 100 * mean(individual_audit$Call_rate))`. Como não há regra de exclusão por indivíduo, essas diferenças são registradas apenas como informação de completude genotípica.
 
-## 8. Caracterização dos fenótipos
+## 7. Diagnósticos fenotípicos
 
-### 8.1 Estatísticas descritivas
+### 7.1 Estatísticas descritivas
 
 As estatísticas descritivas permitem verificar diretamente a escala, a dispersão e a amplitude das dez características antes de qualquer ajuste de predição. `N` também confirma a disponibilidade de fenótipos por característica. Nenhuma transformação ou padronização permanente dos fenótipos é realizada nesta etapa; os valores originais são preservados para os modelos.
 
@@ -544,7 +554,7 @@ tabela_html(
 
 Todas as dez características apresentam `r min(phenotype_summary$N)` observações disponíveis, confirmando ausência de dados fenotípicos faltantes nas variáveis analisadas. A média localiza o centro de cada distribuição, o desvio-padrão resume sua dispersão e os valores mínimo e máximo delimitam a amplitude observada. Como as características utilizam unidades diferentes, essas medidas devem ser interpretadas dentro de cada característica e não comparadas diretamente entre escalas distintas.
 
-### 8.2 Observações fenotípicas distantes da média
+### 7.2 Observações fenotípicas distantes da média
 
 Os valores padronizados permitem comparar a distância de cada observação em relação à média de sua própria característica, independentemente da unidade original. Para cada característica, calcula-se
 
@@ -675,7 +685,7 @@ data.frame(
 
 A maior parte das observações deve se concentrar em torno de zero, enquanto os pontos destacados aparecem nas regiões mais afastadas das respectivas médias. As linhas em -4 e +4 tornam visualmente explícito o critério usado na tabela anterior. O gráfico serve para localizar observações incomuns em escala padronizada; ele não é um teste de normalidade e não define exclusões automáticas.
 
-### 8.3 Distribuições fenotípicas
+### 7.3 Distribuições fenotípicas
 
 Os histogramas complementam a tabela anterior ao mostrar a forma das distribuições. Cada painel representa uma característica e identifica sua unidade de medida. São usadas 20 classes para manter a mesma resolução visual entre os painéis. Como as unidades e amplitudes diferem, somente o eixo horizontal varia livremente; a escala vertical de contagens permanece comum às dez características. A linha pontilhada marca a média apresentada em `phenotype_summary`.
 
@@ -736,11 +746,11 @@ ggplot(
 
 A interpretação deve ser feita dentro de cada painel. A largura ocupada pelos valores mostra a dispersão observada, a concentração das barras indica onde a maior parte dos indivíduos se encontra e a posição da média em relação à massa principal da distribuição ajuda a visualizar assimetrias. Como o eixo vertical é comum, diferenças na concentração das contagens também podem ser comparadas entre características. Essas formas são apenas descritivas: assimetria ou caudas mais longas não implicam, por si só, transformação dos fenótipos nem exclusão de observações.
 
-## 9. Gravação dos resultados do pré-processamento
+## 8. Exportação dos resultados
 
 Ao final do módulo, os objetos analíticos são reunidos em um único arquivo RDS e os principais diagnósticos são exportados separadamente em CSV. O arquivo `preprocessing_object.rds` é a interface principal com o Módulo 02; os CSVs servem para inspeção direta das verificações realizadas no pré-processamento.
 
-### 9.1 Objeto principal do pré-processamento
+### 8.1 Objeto principal do pré-processamento
 
 A pasta de saída é criada somente agora, quando os resultados efetivamente serão gravados. Dentro de `preprocessing_object`, os componentes seguem a sequência construída ao longo do módulo: identificação e fenótipos alinhados, matrizes SSR, diagnósticos, dicionário das características e, por último, os parâmetros que documentam as decisões do pré-processamento.
 
@@ -784,7 +794,7 @@ saveRDS(
 
 O RDS preserva em conjunto os objetos que serão reutilizados no Módulo 02. `settings` permanece ao final porque registra as decisões metodológicas do pré-processamento; ele documenta como os objetos foram produzidos, mas não representa uma nova tabela analítica.
 
-### 9.2 Diagnósticos tabulares
+### 8.2 Diagnósticos tabulares
 
 As verificações mais úteis para inspeção independente também são gravadas em CSV. Cada comando mostra explicitamente o objeto exportado e seu destino. Esses arquivos não substituem o RDS como entrada do módulo seguinte; eles tornam os diagnósticos acessíveis sem exigir a abertura do objeto completo.
 
@@ -828,7 +838,9 @@ write.csv(
 
 Assim, `alignment_summary.csv` documenta a correspondência entre indivíduos, `locus_audit.csv` e `individual_audit.csv` registram a completude genotípica, `phenotype_summary.csv` e `phenotype_extreme_values.csv` resumem os diagnósticos fenotípicos e `trait_dictionary.csv` preserva a descrição e a unidade das dez características.
 
-### 9.3 Inventário final
+## 9. Síntese e transição para o Módulo 02
+
+### 9.1 Inventário final
 
 Antes de seguir para o Módulo 02, o inventário final reúne as dimensões e contagens que sintetizam o resultado do pré-processamento: número de indivíduos e características, quantidade de locos antes e depois do controle de qualidade, número de famílias, chamadas SSR ausentes e observações fenotípicas apenas destacadas para inspeção.
 
@@ -858,7 +870,7 @@ data.frame(
 
 O resumo confirma as condições necessárias para seguir à construção das matrizes genômicas: os 150 indivíduos permanecem alinhados aos fenótipos, o controle de qualidade atua sobre os locos SSR — não sobre indivíduos — e as observações fenotípicas destacadas continuam nos dados porque sua identificação é apenas diagnóstica.
 
-## 10. Próxima etapa
+### 9.2 Próxima etapa
 
 O Módulo 02 converte os locos SSR mantidos em colunas de dosagem alélica,
 constrói as matrizes de marcadores e de relacionamento genômico, cria a matriz
