@@ -1131,8 +1131,16 @@ venn_intersections <- data.frame(
     Traits
   )
 
-if (length(selection_sets) == 4L) {
-  stopifnot(nrow(venn_intersections) == 15L)
+if (
+  length(selection_sets) == 4L &&
+  nrow(venn_intersections) != 15L
+) {
+  stop(
+    paste(
+      "For four eligible traits, exactly 15 Venn intersections",
+      "distinct from 0000 are expected."
+    )
+  )
 }
 
 all_four_signature <- paste(
@@ -1182,12 +1190,19 @@ venn_trait_order <- c(
   "DF"
 )
 
-stopifnot(
-  identical(
+if (
+  !identical(
     as.character(eligible_traits),
     venn_trait_order
   )
-)
+) {
+  stop(
+    paste(
+      "The eligible-trait order does not match the order",
+      "defined for the Venn diagram."
+    )
+  )
+}
 
 ellipse_polygon <- function(
     cx, cy, rx, ry, angle_deg, trait, n = 501
@@ -1385,12 +1400,19 @@ venn_labels <- venn_intersections |>
     )
   )
 
-stopifnot(
-  nrow(venn_labels) > 0L,
-  !any(is.na(venn_labels$x)),
-  !any(is.na(venn_labels$y)),
-  all(venn_labels$Region_margin > 0)
-)
+if (
+  nrow(venn_labels) == 0L ||
+  any(is.na(venn_labels$x)) ||
+  any(is.na(venn_labels$y)) ||
+  any(venn_labels$Region_margin <= 0)
+) {
+  stop(
+    paste(
+      "Valid anchors could not be defined for every region",
+      "of the Venn diagram."
+    )
+  )
+}
 
 # Garantir que os IDs exibidos são exatamente a união das
 # listas selecionadas, sem duplicação entre os rótulos.
@@ -1411,10 +1433,17 @@ figure_ids <- unlist(
   )
 )
 
-stopifnot(
-  length(figure_ids) == sum(venn_labels$N_individuals),
-  length(figure_ids) == length(unique(figure_ids))
-)
+if (
+  length(figure_ids) != sum(venn_labels$N_individuals) ||
+  length(figure_ids) != length(unique(figure_ids))
+) {
+  stop(
+    paste(
+      "The IDs displayed in the Venn diagram do not map",
+      "uniquely to the region counts."
+    )
+  )
+}
 
 venn_set_labels <- data.frame(
   Trait = venn_trait_order,
