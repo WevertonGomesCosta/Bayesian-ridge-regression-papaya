@@ -32,13 +32,19 @@ knitr::opts_chunk$set(
 
 ## 1. Objetivo
 
-Neste módulo são ajustados sete métodos de predição genômica para dez
+Este módulo documenta o ajuste de sete métodos de predição genômica para dez
 características do mamoeiro, utilizando os cinco folds de validação cruzada
-estratificados por família construídos no Módulo 02.
+estratificados por família construídos no Módulo 02. As saídas persistidas
+correspondem aos 350 ajustes completos; a renderização normal reutiliza essas
+saídas e não reexecuta as cadeias MCMC.
 
-O fluxo segue diretamente das matrizes para o ajuste dos modelos, a obtenção
-das predições out-of-fold (OOF), a decomposição dos valores genômicos, o cálculo
-das métricas por fold e os diagnósticos das cadeias MCMC.
+O fluxo funcional é:
+
+**receber matrizes e folds → definir o modelo estatístico → preservar o desenho
+de validação → configurar cadeias e estruturas a priori → especificar os sete
+métodos → construir a grade de 350 combinações → regenerar os ajustes somente
+quando deliberado → carregar as saídas persistidas → auditar métricas e
+diagnósticos → entregar o contrato ao Módulo 04.**
 
 A análise completa contém
 
@@ -56,7 +62,14 @@ Os métodos avaliados são RR-BLUP/BRR, BayesA, BayesB, BayesB2, BayesC,
 Lasso Bayesiano (BL) e GBLUP. Todos são ajustados com o pacote BGLR
 [@perez2014bglr].
 
-## 2. Pacotes e objeto de entrada
+## 2. Preparação da análise e contrato de entrada
+
+A preparação reúne os pacotes, as funções auxiliares e o objeto matricial
+produzido no Módulo 02. Esta etapa separa o contrato de entrada usado nos
+ajustes das saídas persistidas em `output/models/`, que são reutilizadas na
+renderização normal.
+
+### 2.1 Pacotes e funções auxiliares
 
 Os pacotes utilizados têm funções distintas:
 
@@ -101,9 +114,9 @@ tabela_html <- function(x, caption = NULL, digits = getOption("digits"), col.nam
 }
 ```
 
-### 2.1 Objeto de entrada e saídas persistidas
+### 2.2 Objeto de entrada e saídas persistidas
 
-As matrizes construídas no Módulo 02 são lidas diretamente de `output/matrices/`. Durante a renderização normal, o módulo apenas consulta as saídas já persistidas em `output/models/`; nenhum diretório de cadeias é criado e nenhum ajuste é iniciado. A pasta `output/models/bglr/` é preparada somente dentro do bloco de regeneração integral da Seção 9.
+As matrizes construídas no Módulo 02 são lidas diretamente de `output/matrices/`. Durante a renderização normal, o módulo apenas consulta as saídas já persistidas em `output/models/`; nenhum diretório de cadeias é criado e nenhum ajuste é iniciado. A pasta `output/models/bglr/` é preparada somente dentro do bloco de regeneração integral da Seção 8.
 
 ```{r inputs}
 # Define a pasta das saídas persistidas e carrega diretamente o objeto matricial do Módulo 02.
@@ -126,7 +139,7 @@ traits <- colnames(phenotypes)
 
 ```
 
-### 2.2 Compatibilidade das entradas
+### 2.3 Compatibilidade das entradas
 
 A tabela seguinte confirma que os objetos recebidos do Módulo 02 possuem dimensões compatíveis antes de qualquer ajuste. Nenhum objeto é filtrado ou reconstruído nesta conferência.
 
@@ -146,7 +159,7 @@ data.frame(
 As cinco entradas mantêm os mesmos `r nrow(phenotypes)` indivíduos. A matriz fenotípica contém `r ncol(phenotypes)` características, `X` contém `r ncol(X)` colunas do desenho de família e intercepto, `M` possui `r ncol(M)` colunas de dosagem centralizadas e `G` é quadrada com `r ncol(G)` colunas. Essa compatibilidade permite usar a mesma ordem de indivíduos em todos os ajustes.
 
 
-## 3. Modelo estatístico
+## 3. Modelo estatístico e estrutura comum
 
 As dez características são contínuas e são ajustadas com `response_type = "gaussian"`. Assim, a especificação abaixo descreve a média condicional usada pelo BGLR e um termo residual associado à resposta gaussiana. A mesma estrutura de intercepto e família é mantida para todos os métodos; o que muda é a representação probabilística do componente genômico.
 
@@ -217,7 +230,7 @@ No GBLUP, os valores genômicos são modelados diretamente por
 N\left(\mathbf 0,\mathbf G\sigma_g^2\right).
 \]
 
-## 4. Validação cruzada
+## 4. Desenho da validação cruzada
 
 ### 4.1 Partição fixa e comparação pareada
 
@@ -379,7 +392,7 @@ data.frame(
 
 A configuração resulta em `r formatC(RAW_SAVED_SAMPLES, format = "f", digits = 0, big.mark = ".")` amostras escalares gravadas por cadeia e `r formatC(RETAINED_SAMPLES, format = "f", digits = 0, big.mark = ".")` amostras após a remoção da parcela correspondente ao burn-in. Os mesmos valores de iteração, burn-in, thinning e `R2` são usados em todos os 350 ajustes.
 
-## 6. Métodos de predição genômica
+## 6. Métodos de predição genômica e estruturas a priori
 
 A tabela a seguir relaciona cada método ao componente correspondente do BGLR e à entrada genômica utilizada. Seis métodos operam diretamente sobre `M`; o GBLUP usa `G`. As subseções seguintes explicam o que muda na priori ou na representação do componente genômico.
 
@@ -582,7 +595,9 @@ característica é utilizada para determinar \(\lambda\).
 
 O GBLUP utiliza a matriz de relacionamento genômico `G`. No BGLR, essa estrutura é implementada pelo componente `RKHS` com `K = G`. Embora o componente se chame `RKHS`, neste caso o kernel fornecido é exatamente a matriz de relacionamento genômico; portanto, o termo representa os valores genômicos com covariância proporcional a `G`, conforme o modelo da Seção 3.2.
 
-## 7. Especificação dos modelos no BGLR
+## 7. Especificação no BGLR e desenho dos 350 ajustes
+
+### 7.1 Especificações dos modelos no BGLR
 
 As sete especificações mantêm o mesmo intercepto e o mesmo termo fixo de família. Nos seis métodos de regressão, o componente genômico é definido a partir de `M` com a priori correspondente; o BayesB2 acrescenta sua parametrização de inclusão e o Lasso Bayesiano utiliza o lambda fixo calibrado acima. No GBLUP, o componente genômico é definido diretamente por `G`. Assim, entre métodos muda apenas a especificação genômica.
 
@@ -639,7 +654,7 @@ ETA_models <- list(
 )
 ```
 
-## 8. Combinações de característica, fold e método
+### 7.2 Combinações de característica, fold e método
 
 As mesmas sete especificações são aplicadas às dez características e aos cinco folds, formando 350 combinações — 50 ajustes por método. A grade é organizada de forma determinística e cada ajuste recebe identificador e semente próprios. As sementes controlam a reprodutibilidade das cadeias, sem alterar os folds definidos no Módulo 02.
 
@@ -683,15 +698,15 @@ run_design |>
 
 Cada método aparece em `r nrow(run_design) / length(method_names)` combinações, totalizando `r nrow(run_design)` ajustes. Como a mesma grade de característica × fold é usada para todos os métodos, as comparações posteriores partem do mesmo desenho de validação.
 
-## 9. Ajuste dos 350 modelos
+## 8. Execução controlada dos 350 ajustes
 
-### 9.1 Modos de execução
+### 8.1 Renderização normal e regeneração integral
 
 A renderização normal deste módulo **não reexecuta os 350 ajustes**. Os blocos `fit-models`, `assemble-fit-results` e `save-results` permanecem com `eval=FALSE`; por isso, a página reutiliza as saídas previamente persistidas em `output/models/` em vez de recalcular as cadeias MCMC.
 
-Uma regeneração integral é uma operação deliberada. Ela deve ocorrer de cima para baixo na mesma sessão R: executar `fit-models`, depois `assemble-fit-results`, continuar pelas Seções 10 e 11 — incluindo `combine-results` e a atualização dos diagnósticos — e, por fim, executar `save-results`. Essa sequência substitui as saídas persistidas e deve ser usada somente quando houver intenção explícita de refazer todos os 350 ajustes. A renderização normal do workflow não ativa esse caminho.
+Uma regeneração integral é uma operação deliberada. Ela deve ocorrer de cima para baixo na mesma sessão R: executar `fit-models`, depois `assemble-fit-results`, continuar pelas Seções 9 e 10 — incluindo `combine-results` e a atualização dos diagnósticos — e, por fim, executar `save-results`. Essa sequência substitui as saídas persistidas e deve ser usada somente quando houver intenção explícita de refazer todos os 350 ajustes. A renderização normal do workflow não ativa esse caminho.
 
-### 9.2 Cadeias escalares utilizadas nos diagnósticos
+### 8.2 Cadeias escalares utilizadas nos diagnósticos
 
 Para os diagnósticos MCMC, cada método é associado ao arquivo escalar nativo do BGLR e ao parâmetro representativo correspondente.
 
@@ -740,7 +755,7 @@ diagnostic_trace_parameter <- c(
 )
 ```
 
-### 9.3 Rotina de ajuste e saídas de cada combinação
+### 8.3 Rotina de ajuste e saídas de cada combinação
 
 Os 350 ajustes seguem a mesma rotina. Para cada combinação de característica, fold e método, os fenótipos dos 30 indivíduos de validação são mascarados e os outros 120 fornecem a informação fenotípica do ajuste. As matrizes derivadas dos genótipos permanecem fixas, preservando o desenho de validação descrito no Módulo 02.
 
@@ -983,7 +998,7 @@ for (run_index in seq_len(nrow(run_design))) {
 }
 ```
 
-### 9.4 Consolidação e gravação das saídas primárias
+### 8.4 Consolidação e gravação das saídas primárias
 
 Ao final do laço, as listas preenchidas são reunidas nas quatro tabelas que
 alimentam os diagnósticos e os módulos seguintes. A consolidação abaixo é a
@@ -1028,9 +1043,9 @@ write.csv(
 )
 ```
 
-## 10. Predições, valores genômicos e métricas por fold
+## 9. Saídas persistidas e métricas por fold
 
-### 10.1 Carregamento das saídas persistidas
+### 9.1 Carregamento das saídas persistidas
 
 As tabelas consolidadas produzidas pelos 350 ajustes são carregadas de `output/models/`, permitindo inspecionar predições, valores genômicos, métricas e diagnósticos a partir das saídas persistidas, sem recalcular as cadeias MCMC.
 
@@ -1058,7 +1073,7 @@ convergence_diagnostics <- read.csv(
 )
 ```
 
-### 10.2 Predições OOF e valores genômicos
+### 9.2 Predições OOF e valores genômicos
 
 A relação entre a predição total e o valor genômico pode ser escrita como
 
@@ -1081,7 +1096,7 @@ portanto
 A tabela de predições contém somente os indivíduos do fold que estava mascarado em cada ajuste, de modo que cada linha é uma predição OOF. Já `genomic_values_by_fold` armazena o componente genômico calculado para todos os 150 indivíduos em cada ajuste; nos módulos seguintes, o contexto do fold deve ser respeitado ao construir valores cross-fitted.
 
 
-### 10.3 Métricas preditivas e critérios Bayesianos de ajuste
+### 9.3 Métricas preditivas e critérios Bayesianos de ajuste
 
 As métricas preditivas são calculadas somente nos 30 indivíduos mascarados do fold. `Correlation` é a correlação de Pearson entre observado e predito; RMSE e MAE resumem a magnitude do erro nas unidades da característica; `Prediction_bias = mean(Predicted - Observed)` tem valor ideal 0; e `Regression_slope = cov(Observed, Predicted) / var(Predicted)` é a inclinação da regressão de observado sobre predito, com referência ideal 1.
 
@@ -1089,7 +1104,7 @@ DIC e `Effective_parameters` (`pD`) têm natureza diferente: são critérios der
 
 Cada combinação característica–fold–método reúne métricas OOF de capacidade preditiva e critérios Bayesianos de ajuste. Esses dois grupos de medidas respondem a perguntas diferentes e são comparados separadamente no Módulo 04.
 
-### 10.4 Conferência estrutural das saídas
+### 9.4 Conferência estrutural das saídas
 
 A tabela seguinte é uma checagem estrutural do laço. Esperam-se 350 linhas de métricas, 10.500 predições OOF (350 ajustes × 30 indivíduos), 52.500 valores genômicos por fold (350 × 150) e 700 cadeias escalares avaliadas (duas por ajuste). Divergências nesses totais indicariam uma execução incompleta ou uma consolidação inconsistente.
 
@@ -1113,15 +1128,15 @@ data.frame(
 
 Os totais esperados são confirmados pelas quatro tabelas consolidadas: `r nrow(cv_metrics_by_fold)` ajustes, `r nrow(cv_predictions)` predições OOF, `r nrow(genomic_values_by_fold)` valores genômicos por fold e `r nrow(convergence_diagnostics)` diagnósticos escalares.
 
-## 11. Diagnósticos MCMC
+## 10. Diagnósticos MCMC
 
-### 11.1 Quantidades avaliadas e limiares de revisão
+### 10.1 Quantidades avaliadas e limiares de revisão
 
 Para cada ajuste são examinadas a cadeia da variância residual e uma cadeia escalar representativa da especificação. No BL, como \(\lambda\) é fixo, o segundo diagnóstico utiliza a cadeia do intercepto. Portanto, esta seção avalia 700 cadeias escalares, mas não pretende demonstrar convergência individual de todos os coeficientes de marcador ou demais quantidades latentes.
 
 O tamanho efetivo da amostra (ESS) resume a quantidade de informação aproximadamente independente após considerar autocorrelação; valores maiores são preferíveis. A estatística de Geweke contrasta médias de partes inicial e final da cadeia pós-burn-in; valores próximos de zero são mais compatíveis com estabilidade. `ESS < 1000` e \(|Z_{Geweke}|>2\) são apenas limiares de triagem para inspeção, não testes formais de validade do modelo nem critérios automáticos de exclusão. Diagnósticos gráficos e o contexto da cadeia continuam necessários quando houver sinalização.
 
-### 11.2 Resumo dos diagnósticos por método
+### 10.2 Resumo dos diagnósticos por método
 
 ```{r convergence-summary}
 # Aplica os critérios de revisão e resume os diagnósticos de convergência por método.
@@ -1161,7 +1176,7 @@ convergence_summary |>
 
 O resumo informa quantas cadeias foram avaliadas e quantas ultrapassaram pelo menos um limiar de triagem em cada método. `Minimum_ESS`, `Median_ESS` e `Maximum_absolute_Geweke` descrevem a intensidade dos sinais de autocorrelação ou instabilidade, sem transformar os limiares em testes formais de validade.
 
-### 11.3 Mapa de triagem ESS × Geweke
+### 10.3 Mapa de triagem ESS × Geweke
 
 O gráfico reúne as 700 cadeias escalares em um único diagnóstico visual. O eixo horizontal mostra ESS em escala logarítmica e o eixo vertical mostra \(|Z_{Geweke}|\). As linhas pontilhadas representam exatamente os dois limiares de revisão usados na tabela anterior. A cor identifica o método e a forma distingue cadeias dentro dos limiares daquelas encaminhadas para revisão.
 
@@ -1221,7 +1236,7 @@ convergence_diagnostics |>
   theme(legend.position = "top")
 ```
 
-### 11.4 Cadeias sinalizadas para inspeção
+### 10.4 Cadeias sinalizadas para inspeção
 
 A tabela abaixo lista somente as cadeias que ultrapassam pelo menos um dos limiares de triagem. Uma linha sinalizada identifica a combinação característica–fold–método e o parâmetro que merece inspeção; ela não implica, isoladamente, que todas as predições daquele ajuste sejam inválidas.
 
@@ -1242,7 +1257,9 @@ convergence_diagnostics |>
 
 A tabela detalhada localiza exatamente característica, fold, método e parâmetro associados a cada sinalização. As linhas destacadas orientam inspeção adicional; não determinam exclusão automática de ajustes ou predições.
 
-## 12. Gravação dos diagnósticos e do objeto final
+## 11. Contrato de exportação para o Módulo 04
+
+### 11.1 Diagnósticos finais e objeto de modelos
 
 Após os diagnósticos, a tabela de convergência é atualizada com os indicadores de revisão e o resumo por método é gravado. O objeto canônico `convergence_summary` mantém somente identificadores e quantidades independentes do idioma; os rótulos `Método`/`Method` são acrescentados apenas na tabela HTML. Assim, uma regeneração a partir da versão PT ou EN produz o mesmo `convergence_summary.csv`. O arquivo `models_object.rds` consolida configurações, desenho dos ajustes, catálogo dos métodos, predições, valores genômicos, métricas e diagnósticos para uso nos módulos seguintes.
 
@@ -1296,11 +1313,16 @@ saveRDS(
 )
 ```
 
-## 13. Próxima etapa
+## 12. Síntese e transição para o Módulo 04
 
 Este módulo respondeu **como cada método foi ajustado e o que cada combinação característica–fold–método produziu**. O Módulo 04 muda o nível de análise: em vez de inspecionar ajustes individualmente, reúne as evidências OOF, de ajuste Bayesiano e de diagnóstico para comparar os sete métodos dentro de cada característica e consolidar a decisão utilizada nos rankings genômicos.
 
-Assim, o Módulo 04 utiliza as predições OOF, as métricas por fold, os valores genômicos e os diagnósticos MCMC obtidos aqui; nenhum dos 350 modelos precisa ser reajustado para realizar essa comparação.
+O contrato entregue ao Módulo 04 reúne `settings`, `run_design`,
+`model_catalogue`, `trait_dictionary`, `predictions`,
+`genomic_values_by_fold`, `metrics_by_fold` e
+`convergence_diagnostics` em `models_object.rds`. Assim, o módulo seguinte
+pode comparar os métodos e construir os rankings sem reajustar nenhum dos 350
+modelos.
 
 <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
 <a href="02_matrices_pt.html">← Módulo 02 — Construção das matrizes</a>
