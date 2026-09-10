@@ -100,7 +100,7 @@ convergence <- models_object$convergence_diagnostics
 traits <- colnames(matrices_object$phenotypes)
 methods <- models_object$settings$methods
 
-OOF_R_MAGNITUDE_THRESHOLD <- 0.30
+OOF_R_SELECTION_THRESHOLD <- 0.30
 NRMSE_SELECTION_THRESHOLD <- 1.00
 SELECTION_PROPORTION <- 0.20
 ```
@@ -159,6 +159,18 @@ convergence_overview <- data.frame(
 ) |>
   mutate(
     Proporção_sem_sinalização = Sem_sinalização / Total
+  )
+
+convergence_by_trait_method <- convergence |>
+  group_by(Trait, Method) |>
+  summarise(
+    Runs = n_distinct(Run_id),
+    Parameters_reviewed = n(),
+    Parameters_flagged = sum(Review_flag, na.rm = TRUE),
+    Runs_with_flags = n_distinct(Run_id[Review_flag %in% TRUE]),
+    Minimum_ESS = min(Effective_sample_size, na.rm = TRUE),
+    Maximum_absolute_Geweke = max(abs(Geweke_Z), na.rm = TRUE),
+    .groups = "drop"
   )
 
 tabela_html(
@@ -266,10 +278,7 @@ predictive_plot <- model_comparison |>
   ggplot(aes(x = Method, y = r, fill = Method)) +
   geom_hline(yintercept = 0, linetype = 2, linewidth = 0.4) +
   geom_hline(
-    yintercept = c(
-      -OOF_R_MAGNITUDE_THRESHOLD,
-      OOF_R_MAGNITUDE_THRESHOLD
-    ),
+    yintercept = OOF_R_SELECTION_THRESHOLD,
     linetype = 3,
     linewidth = 0.5
   ) +
@@ -286,9 +295,9 @@ predictive_plot <- model_comparison |>
     fill = "Método",
     title = "Capacidade preditiva dos sete métodos",
     subtitle = paste0(
-      "Linhas pontilhadas indicam |r OOF| = ",
-      sprintf("%.2f", OOF_R_MAGNITUDE_THRESHOLD),
-      "; a elegibilidade exige magnitude superior a esse valor."
+      "A linha pontilhada indica r OOF = ",
+      sprintf("%.2f", OOF_R_SELECTION_THRESHOLD),
+      "; a elegibilidade exige r superior a esse valor."
     )
   ) +
   project_theme +
@@ -370,6 +379,20 @@ selected_methods <- model_comparison |>
   arrange(desc(r), match(Trait, traits))
 
 trait_order_by_prediction <- selected_methods$Trait
+
+model_selection_support <- model_comparison |>
+  left_join(
+    selected_methods |>
+      select(Trait, Selected_method),
+    by = "Trait"
+  ) |>
+  mutate(
+    Is_selected = Method == Selected_method
+  ) |>
+  arrange(
+    match(Trait, traits),
+    match(Method, methods)
+  )
 ```
 
 A tabela abaixo resume o método escolhido para cada característica e as
@@ -559,6 +582,8 @@ oof_genomic_correlations <- cor(
     oof_genomic_wide[, trait_order_by_prediction, drop = FALSE]
   )
 )
+
+selected_oof_correlations <- oof_genomic_correlations
 ```
 
 Essas correlações não são estimativas de correlação genética de um modelo multivariado. Elas descrevem apenas a associação entre os GEBVs OOF produzidos separadamente para cada característica.
@@ -653,7 +678,7 @@ A matriz é **descritiva**: valores positivos indicam tendência de ordenamento 
 A seleção é realizada somente quando o método escolhido para a característica satisfaz simultaneamente:
 
 \[
-|r_{OOF}| > 0{,}30
+r_{OOF} > 0{,}30
 \]
 
 e
@@ -663,7 +688,7 @@ NRMSE =
 \frac{RMSE}{s_y} < 1,
 \]
 
-em que \(s_y\) é o desvio-padrão fenotípico observado. O primeiro critério usa a **magnitude** da correlação OOF observado × predito. O sinal de \(r\) permanece disponível para interpretação; valores negativos de grande magnitude representam ordenamento invertido e devem ser discutidos explicitamente, embora o limiar de elegibilidade seja aplicado a \(|r|\).
+em que \(s_y\) é o desvio-padrão fenotípico observado. O primeiro critério exige correlação OOF observado × predito **positiva** e superior a 0,30. Correlações OOF nulas ou negativas não são elegíveis, mesmo quando apresentam grande magnitude absoluta, porque não preservam o ordenamento preditivo desejado.
 
 ```{r selection-parameters}
 selection_objective_map <- c(
@@ -690,9 +715,13 @@ model_selection <- selected_methods |>
   mutate(
     NRMSE = RMSE / Phenotypic_SD,
     Predictive_skill_vs_SD = 1 - NRMSE,
-    Correlation_direction = if_else(r >= 0, "positive", "negative"),
+    Correlation_direction = case_when(
+      r > 0 ~ "positive",
+      r < 0 ~ "negative",
+      TRUE ~ "zero"
+    ),
     Eligible_by_correlation =
-      Abs_r > OOF_R_MAGNITUDE_THRESHOLD,
+      r > OOF_R_SELECTION_THRESHOLD,
     Eligible_by_error =
       NRMSE < NRMSE_SELECTION_THRESHOLD,
     Selection_eligible =
@@ -706,22 +735,26 @@ model_selection <- selected_methods |>
       TRUE ~ "review"
     )
   ) |>
-  arrange(desc(Abs_r), NRMSE, match(Trait, traits))
+  arrange(desc(r), NRMSE, match(Trait, traits))
 
 eligible_traits <- model_selection |>
   filter(Selection_eligible) |>
   pull(Trait)
 
+oof_direction_summary <- model_selection |>
+  count(Correlation_direction, name = "Traits") |>
+  arrange(Correlation_direction)
+
 selection_parameters <- data.frame(
   Parâmetro = c(
     "Escolha do método",
-    "Magnitude mínima da correlação OOF",
+    "Correlação OOF mínima",
     "NRMSE máximo",
     "Proporção selecionada"
   ),
   Regra = c(
     "Maior r; desempates por menor RMSE, menor MAE e menor DIC",
-    "|r| > 0,30",
+    "r > 0,30",
     "< 1,00",
     "20% por característica elegível"
   ),
@@ -735,23 +768,24 @@ tabela_html(
 )
 ```
 
-O limiar de elegibilidade é aplicado à magnitude da correlação preditiva OOF: \(|r_{OOF}| > 0{,}30\). A decisão é apresentada do maior para o menor `|r|`. A matriz de correlações entre GEBVs OOF das dez características permanece exclusivamente descritiva e não usa esse limiar.
+O limiar de elegibilidade exige correlação preditiva OOF positiva: \(r_{OOF} > 0{,}30\). A decisão é apresentada do maior para o menor `r`. A matriz de correlações entre GEBVs OOF das dez características permanece exclusivamente descritiva e não usa esse limiar.
 
 ### 6.2 Características elegíveis e justificativa
 
 ```{r model-selection-table}
 eligibility_reason_labels <- c(
-  eligible = "Selecionada: |r| > 0,30 e NRMSE < 1",
-  fails_correlation = "Não selecionada: |r| <= 0,30",
+  eligible = "Selecionada: r > 0,30 e NRMSE < 1",
+  fails_correlation = "Não selecionada: r <= 0,30",
   fails_error = "Não selecionada: NRMSE >= 1",
   fails_correlation_and_error =
-    "Não selecionada: |r| <= 0,30 e NRMSE >= 1",
+    "Não selecionada: r <= 0,30 e NRMSE >= 1",
   review = "Revisar"
 )
 
 correlation_direction_labels <- c(
   positive = "Positiva",
-  negative = "Negativa"
+  negative = "Negativa",
+  zero = "Nula"
 )
 
 model_selection_display <- model_selection |>
@@ -780,7 +814,7 @@ model_selection_display <- model_selection |>
 
 tabela_html(
   model_selection_display,
-  caption = "Elegibilidade para seleção genômica, ordenada pela magnitude da correlação OOF",
+  caption = "Elegibilidade para seleção genômica, ordenada pela correlação OOF",
   col.names = c(
     "Característica", "Método", "Objetivo", "r", "|r|",
     "Direção", "NRMSE", "Elegível", "Justificativa"
@@ -788,7 +822,7 @@ tabela_html(
 )
 ```
 
-Com \(|r| > 0{,}30\) e `NRMSE < 1`, permanecem elegíveis **MMCOM**, **CF**, **PRODCOM** e **DF**. DCI falha apenas no critério de magnitude da correlação preditiva. FFC, SS, FFP, PRODEF e EP apresentam `|r| <= 0,30` e também `NRMSE >= 1` nos valores não arredondados. A tabela explicita separadamente magnitude, sinal, erro e motivo da decisão.
+Com \(r > 0{,}30\) e `NRMSE < 1`, permanecem elegíveis **MMCOM**, **CF**, **PRODCOM** e **DF**. DCI falha apenas no limiar positivo de correlação OOF. FFC, SS, FFP, PRODEF e EP apresentam \(r \le 0{,}30\) e também `NRMSE >= 1` nos valores não arredondados. A tabela explicita separadamente correlação, sinal, erro e motivo da decisão.
 
 ### 6.3 Ranking e indivíduos selecionados
 
@@ -833,6 +867,29 @@ selection_sizes <- genomic_ranking |>
     )
   ) |>
   arrange(match(Trait, traits))
+
+selection_cutoff_summary <- genomic_ranking |>
+  inner_join(
+    selection_sizes |>
+      select(Trait, N_available, N_selected),
+    by = "Trait"
+  ) |>
+  arrange(match(Trait, eligible_traits), Rank) |>
+  group_by(Trait) |>
+  mutate(
+    Next_score = lead(Selection_score)
+  ) |>
+  summarise(
+    N_available = first(N_available),
+    N_selected = first(N_selected),
+    Score_last_selected = Selection_score[first(N_selected)],
+    Score_first_not_selected = Next_score[first(N_selected)],
+    Exact_boundary_tie =
+      !is.na(Score_first_not_selected) &
+      Score_last_selected == Score_first_not_selected,
+    .groups = "drop"
+  ) |>
+  arrange(match(Trait, eligible_traits))
 
 selected_individuals_by_trait <- genomic_ranking |>
   inner_join(selection_sizes, by = "Trait") |>
@@ -1553,67 +1610,149 @@ O centro do diagrama confirma `r all_four_count` indivíduo selecionado simultan
 
 ## 7. Exportação dos resultados da análise
 
-Ao final da análise, os principais objetos e tabelas são gravados em um diretório próprio do Módulo 04. Esses arquivos permitem consultar os resultados sem repetir as etapas de derivação apresentadas acima.
+O módulo grava exatamente onze tabelas canônicas em formato legível por máquina diretamente em `output/results/m04/`. Esses arquivos formam o contrato público de resultados rastreado pelo Git. Tabelas detalhadas adicionais e o objeto RDS consolidado são armazenados em `output/results/m04/details/` e permanecem como artefatos gerados localmente e não rastreados pelo Git.
+
+As exportações públicas são independentes do idioma: as fontes PT e EN utilizam os mesmos nomes de objetos analíticos e arquivos, enquanto os rótulos traduzidos permanecem restritos à apresentação nas páginas HTML.
 
 ```{r save-results}
-results_dir <- here(
-  "output", "results", "m04", "genomic_selection"
+RESULTS_DIR <- here("output", "results", "m04")
+DETAILS_DIR <- file.path(RESULTS_DIR, "details")
+
+dir.create(RESULTS_DIR, recursive = TRUE, showWarnings = FALSE)
+dir.create(DETAILS_DIR, recursive = TRUE, showWarnings = FALSE)
+
+public_output_contract <- data.frame(
+  File = c(
+      "convergence_by_trait_method.csv",
+      "model_comparison.csv",
+      "model_selection.csv",
+      "model_selection_support.csv",
+      "multitrait_candidates.csv",
+      "oof_direction_summary.csv",
+      "recurrence_distribution.csv",
+      "rrblup_heritability_summary.csv",
+      "selected_individuals_by_trait.csv",
+      "selected_oof_correlations.csv",
+      "selection_cutoff_summary.csv"
+    ),
+  Object = c(
+      "convergence_by_trait_method",
+      "model_comparison",
+      "model_selection",
+      "model_selection_support",
+      "multitrait_candidates",
+      "oof_direction_summary",
+      "recurrence_distribution",
+      "rrblup_heritability_summary",
+      "selected_individuals_by_trait",
+      "selected_oof_correlations",
+      "selection_cutoff_summary"
+    ),
+  stringsAsFactors = FALSE
 )
-dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
 
 write.csv(
+  convergence_by_trait_method,
+  file.path(RESULTS_DIR, "convergence_by_trait_method.csv"),
+  row.names = FALSE
+)
+write.csv(
+  model_comparison,
+  file.path(RESULTS_DIR, "model_comparison.csv"),
+  row.names = FALSE
+)
+write.csv(
   model_selection,
-  file.path(results_dir, "model_selection.csv"),
+  file.path(RESULTS_DIR, "model_selection.csv"),
   row.names = FALSE
 )
 write.csv(
-  oof_genomic_values,
-  file.path(results_dir, "oof_genomic_values.csv"),
-  row.names = FALSE
-)
-write.csv(
-  selected_individuals_by_trait,
-  file.path(results_dir, "selected_individuals_by_trait.csv"),
-  row.names = FALSE
-)
-write.csv(
-  multitrait_recurrence,
-  file.path(results_dir, "multitrait_recurrence.csv"),
+  model_selection_support,
+  file.path(RESULTS_DIR, "model_selection_support.csv"),
   row.names = FALSE
 )
 write.csv(
   multitrait_candidates,
-  file.path(results_dir, "multitrait_candidates.csv"),
+  file.path(RESULTS_DIR, "multitrait_candidates.csv"),
   row.names = FALSE
 )
 write.csv(
-  oof_genomic_correlations,
-  file.path(results_dir, "oof_genomic_correlations.csv"),
+  oof_direction_summary,
+  file.path(RESULTS_DIR, "oof_direction_summary.csv"),
+  row.names = FALSE
+)
+write.csv(
+  recurrence_distribution,
+  file.path(RESULTS_DIR, "recurrence_distribution.csv"),
+  row.names = FALSE
+)
+write.csv(
+  rrblup_heritability_summary,
+  file.path(RESULTS_DIR, "rrblup_heritability_summary.csv"),
+  row.names = FALSE
+)
+write.csv(
+  selected_individuals_by_trait,
+  file.path(RESULTS_DIR, "selected_individuals_by_trait.csv"),
+  row.names = FALSE
+)
+write.csv(
+  as.data.frame(selected_oof_correlations),
+  file.path(RESULTS_DIR, "selected_oof_correlations.csv"),
   row.names = TRUE
 )
 write.csv(
+  selection_cutoff_summary,
+  file.path(RESULTS_DIR, "selection_cutoff_summary.csv"),
+  row.names = FALSE
+)
+
+# Mantém tabelas detalhadas e não públicas separadas do contrato público rastreado pelo Git.
+write.csv(
+  oof_genomic_values,
+  file.path(DETAILS_DIR, "oof_genomic_values.csv"),
+  row.names = FALSE
+)
+write.csv(
+  genomic_ranking,
+  file.path(DETAILS_DIR, "genomic_ranking.csv"),
+  row.names = FALSE
+)
+write.csv(
+  multitrait_recurrence,
+  file.path(DETAILS_DIR, "multitrait_recurrence.csv"),
+  row.names = FALSE
+)
+write.csv(
   venn_intersections,
-  file.path(results_dir, "venn_intersections.csv"),
+  file.path(DETAILS_DIR, "venn_intersections.csv"),
   row.names = FALSE
 )
 
 module04_results <- list(
   model_comparison = model_comparison,
+  model_selection_support = model_selection_support,
   selected_methods = selected_methods,
   model_selection = model_selection,
+  oof_direction_summary = oof_direction_summary,
   convergence_overview = convergence_overview,
+  convergence_by_trait_method = convergence_by_trait_method,
   rrblup_heritability_by_fold = rrblup_heritability_by_fold,
   rrblup_heritability_summary = rrblup_heritability_summary,
   oof_genomic_values = oof_genomic_values,
   oof_genomic_correlations = oof_genomic_correlations,
+  selected_oof_correlations = selected_oof_correlations,
   genomic_ranking = genomic_ranking,
+  selection_cutoff_summary = selection_cutoff_summary,
   selected_individuals_by_trait = selected_individuals_by_trait,
   multitrait_recurrence = multitrait_recurrence,
+  recurrence_distribution = recurrence_distribution,
   multitrait_candidates = multitrait_candidates,
   venn_intersections = venn_intersections,
+  public_output_contract = public_output_contract,
   settings = list(
-    oof_r_magnitude_threshold = OOF_R_MAGNITUDE_THRESHOLD,
-    correlation_rule = "absolute_magnitude",
+    oof_r_selection_threshold = OOF_R_SELECTION_THRESHOLD,
+    correlation_rule = "positive_threshold",
     nrmse_threshold = NRMSE_SELECTION_THRESHOLD,
     selection_proportion = SELECTION_PROPORTION,
     eligible_traits = eligible_traits
@@ -1622,18 +1761,29 @@ module04_results <- list(
 
 saveRDS(
   module04_results,
-  file.path(results_dir, "module04_results.rds")
+  file.path(DETAILS_DIR, "module04_results.rds")
+)
+
+tabela_html(
+  public_output_contract,
+  caption = "Saídas públicas canônicas gravadas pelo Módulo 04",
+  col.names = c("Arquivo", "Objeto analítico")
 )
 ```
-
 ## 8. Síntese e interpretação dos resultados
 
 A comparação dos sete métodos é realizada separadamente para cada característica. A evidência preditiva OOF determina o método usado nas etapas seguintes, enquanto o DIC permanece como informação complementar.
 
 Os GEBVs OOF dos métodos escolhidos são inicialmente examinados nas dez características, incluindo suas correlações. Essa etapa precede os critérios de elegibilidade e permite interpretar as relações entre características sem restringir a análise apenas àquelas que posteriormente entram na seleção.
 
-A seleção genômica é então limitada às características com \(|r_{OOF}| > 0{,}30\) e `NRMSE < 1`. No conjunto atual, MMCOM, CF, PRODCOM e DF satisfazem simultaneamente os dois critérios. A matriz de correlações entre GEBVs OOF é usada apenas para descrever relações entre características; ela não define elegibilidade.
+A seleção genômica é então limitada às características com \(r_{OOF} > 0{,}30\) e `NRMSE < 1`. No conjunto atual, MMCOM, CF, PRODCOM e DF satisfazem simultaneamente os dois critérios. A matriz de correlações entre GEBVs OOF é usada apenas para descrever relações entre características; ela não define elegibilidade.
 
 Os GEBVs permanecem escores cross-fitted. A soma da média fenotípica melhora a interpretação na unidade da característica, mas não altera os rankings nem representa uma predição fenotípica completa.
 
 As conclusões permanecem condicionadas à população de melhoramento representada, ao painel SSR disponível e ao desenho de validação utilizado.
+
+<div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:1rem; margin-top:2rem; padding-top:1rem; border-top:1px solid #ddd;">
+<a href="03_models_pt.html">← Módulo 03 — Ajuste dos modelos</a>
+<a href="04_results_en.html" style="text-align:center;">English</a>
+<a href="index.html" style="text-align:right;">Início →</a>
+</div>

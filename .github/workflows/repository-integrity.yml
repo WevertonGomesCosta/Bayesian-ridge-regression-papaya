@@ -33,7 +33,9 @@ jobs:
         shell: bash
         run: |
           python - <<'PY'
+          from collections import Counter, defaultdict
           from pathlib import Path
+          import csv
           import re
           import subprocess
 
@@ -167,13 +169,460 @@ jobs:
 
           m04_en = Path('analysis/04_results_en.Rmd').read_text(encoding='utf-8')
           m04_pt = Path('analysis/04_results_pt.Rmd').read_text(encoding='utf-8')
-          for text in (m04_en, m04_pt):
+          public_m04_names = {Path(p).name for p in public_m04}
+
+          for path_str, text in (
+              ('analysis/04_results_en.Rmd', m04_en),
+              ('analysis/04_results_pt.Rmd', m04_pt),
+          ):
               assert 'ggsave(' not in text
               assert 'filter(N_traits >= 2L)' in text
-              assert 'Abs_r > OOF_R_MAGNITUDE_THRESHOLD' in text
-              assert 'correlation_rule = "absolute_magnitude"' in text
+              assert 'OOF_R_SELECTION_THRESHOLD <- 0.30' in text
+              assert 'NRMSE_SELECTION_THRESHOLD <- 1.00' in text
+              assert 'r > OOF_R_SELECTION_THRESHOLD' in text
+              assert 'correlation_rule = "positive_threshold"' in text
+              assert 'OOF_R_MAGNITUDE_THRESHOLD' not in text
+              assert 'absolute_magnitude' not in text
+              assert 'Abs_r > OOF_R_MAGNITUDE_THRESHOLD' not in text
+              assert 'genomic_selection' not in text
               assert 'bglr_mu.dat' not in text
               assert '05_results_' not in text
+              for filename in public_m04_names:
+                  assert filename in text, (
+                      f'M04 public output missing from source contract '
+                      f'{path_str}: {filename}'
+                  )
+
+          def read_csv_dict(path_str):
+              with Path(path_str).open(
+                  'r', encoding='utf-8-sig', newline=''
+              ) as handle:
+                  return list(csv.DictReader(handle))
+
+          def csv_bool(value):
+              normalized = str(value).strip().lower()
+              if normalized in {'true', 't', '1'}:
+                  return True
+              if normalized in {'false', 'f', '0'}:
+                  return False
+              raise AssertionError(f'invalid boolean value: {value!r}')
+
+          model_comparison = read_csv_dict(
+              'output/results/m04/model_comparison.csv'
+          )
+          assert len(model_comparison) == 70
+          comparison_keys = {
+              (row['Trait'], row['Method'])
+              for row in model_comparison
+          }
+          assert len(comparison_keys) == 70
+
+          traits = sorted({row['Trait'] for row in model_comparison})
+          methods = sorted({row['Method'] for row in model_comparison})
+
+          expected_traits = {
+              'MMCOM', 'PRODCOM', 'PRODEF', 'CF', 'DF',
+              'DCI', 'EP', 'FFC', 'FFP', 'SS',
+          }
+          expected_methods = {
+              'RRBLUP', 'BayesA', 'BayesB', 'BayesB2',
+              'BayesC', 'BL', 'GBLUP',
+          }
+          assert len(traits) == 10
+          assert len(methods) == 7
+          assert set(traits) == expected_traits
+          assert set(methods) == expected_methods
+
+          comparison_lookup = {
+              (row['Trait'], row['Method']): row
+              for row in model_comparison
+          }
+          assert set(comparison_lookup) == comparison_keys
+
+          comparison_by_trait = defaultdict(list)
+          for row in model_comparison:
+              comparison_by_trait[row['Trait']].append(row)
+
+          expected_method = {}
+          for trait in traits:
+              ordered = sorted(
+                  comparison_by_trait[trait],
+                  key=lambda row: (
+                      -float(row['r']),
+                      float(row['RMSE']),
+                      float(row['MAE']),
+                      float(row['Mean_DIC']),
+                  ),
+              )
+              expected_method[trait] = ordered[0]['Method']
+
+          model_selection = read_csv_dict(
+              'output/results/m04/model_selection.csv'
+          )
+          assert len(model_selection) == 10
+          assert len({row['Trait'] for row in model_selection}) == 10
+
+          legacy_selection_columns = {
+              'Automatic_selection_available',
+              'Automatic_candidate_n',
+              'Competitive_set_n',
+              'RRBLUP_competitive',
+              'RRBLUP_automatic_candidate',
+              'RRBLUP_preference_applied',
+              'Selection_requires_review',
+              'Selection_status',
+              'Decision_code',
+              'Operational_competitive_set_rule',
+              'Within_one_SE_r',
+              'Within_one_SE_RMSE',
+              'Predictively_competitive',
+              'DIC_competitive',
+              'Competitive_for_selection',
+              'Automatic_candidate',
+          }
+          assert not (
+              legacy_selection_columns & set(model_selection[0])
+          ), 'legacy M04 selection columns are still public'
+
+          selection_by_trait = {
+              row['Trait']: row for row in model_selection
+          }
+          eligible_traits = set()
+
+          for trait in traits:
+              row = selection_by_trait[trait]
+              assert row['Selected_method'] == expected_method[trait]
+
+              winner = comparison_lookup[
+                  (trait, row['Selected_method'])
+              ]
+              selected_metric_fields = (
+                  'r', 'RMSE', 'MAE', 'Bias', 'Slope', 'Mean_DIC'
+              )
+              for field in selected_metric_fields:
+                  assert field in row
+                  assert field in winner
+                  assert abs(
+                      float(row[field]) - float(winner[field])
+                  ) <= 1e-12
+
+              r_value = float(row['r'])
+              nrmse = float(row['NRMSE'])
+              eligible_by_correlation = r_value > 0.30
+              eligible_by_error = nrmse < 1.00
+              selection_eligible = (
+                  eligible_by_correlation and eligible_by_error
+              )
+
+              assert (
+                  csv_bool(row['Eligible_by_correlation'])
+                  == eligible_by_correlation
+              )
+              assert (
+                  csv_bool(row['Eligible_by_error'])
+                  == eligible_by_error
+              )
+              assert (
+                  csv_bool(row['Selection_eligible'])
+                  == selection_eligible
+              )
+
+              expected_direction = (
+                  'positive' if r_value > 0
+                  else 'negative' if r_value < 0
+                  else 'zero'
+              )
+              assert row['Correlation_direction'] == expected_direction
+
+              if selection_eligible:
+                  eligible_traits.add(trait)
+
+          assert eligible_traits == {
+              'MMCOM', 'CF', 'PRODCOM', 'DF'
+          }
+          assert Counter(
+              row['Selected_method'] for row in model_selection
+          ) == Counter({
+              'GBLUP': 5,
+              'BL': 4,
+              'BayesB': 1,
+          })
+
+          selection_support = read_csv_dict(
+              'output/results/m04/model_selection_support.csv'
+          )
+          assert len(selection_support) == 70
+          support_keys = {
+              (row['Trait'], row['Method'])
+              for row in selection_support
+          }
+          assert len(support_keys) == 70
+          assert support_keys == comparison_keys
+
+          support_metric_fields = (
+              'r', 'RMSE', 'MAE', 'Bias', 'Slope', 'Mean_DIC'
+          )
+          for row in selection_support:
+              reference = comparison_lookup[
+                  (row['Trait'], row['Method'])
+              ]
+              for field in support_metric_fields:
+                  assert field in row
+                  assert field in reference
+                  assert abs(
+                      float(row[field]) - float(reference[field])
+                  ) <= 1e-12
+
+          for trait in traits:
+              selected_support = [
+                  row for row in selection_support
+                  if row['Trait'] == trait
+                  and csv_bool(row['Is_selected'])
+              ]
+              assert len(selected_support) == 1
+              assert (
+                  selected_support[0]['Method']
+                  == expected_method[trait]
+              )
+
+          convergence_summary = read_csv_dict(
+              'output/results/m04/convergence_by_trait_method.csv'
+          )
+          assert len(convergence_summary) == 70
+          convergence_keys = {
+              (row['Trait'], row['Method'])
+              for row in convergence_summary
+          }
+          assert len(convergence_keys) == 70
+          assert convergence_keys == comparison_keys
+
+          direction_summary = read_csv_dict(
+              'output/results/m04/oof_direction_summary.csv'
+          )
+          assert len(direction_summary) == len({
+              row['Correlation_direction']
+              for row in direction_summary
+          })
+          expected_direction_counts = Counter(
+              row['Correlation_direction']
+              for row in model_selection
+          )
+          observed_direction_counts = Counter({
+              row['Correlation_direction']: int(float(row['Traits']))
+              for row in direction_summary
+          })
+          assert observed_direction_counts == expected_direction_counts
+          assert sum(observed_direction_counts.values()) == 10
+
+          heritability_summary = read_csv_dict(
+              'output/results/m04/rrblup_heritability_summary.csv'
+          )
+          assert len(heritability_summary) == 10
+          heritability_traits = {
+              row['Trait'] for row in heritability_summary
+          }
+          assert len(heritability_traits) == 10
+          assert heritability_traits == set(traits)
+
+          cutoff_summary = read_csv_dict(
+              'output/results/m04/selection_cutoff_summary.csv'
+          )
+          assert len(cutoff_summary) == 4
+          assert {
+              row['Trait'] for row in cutoff_summary
+          } == eligible_traits
+          for row in cutoff_summary:
+              assert int(float(row['N_available'])) == 150
+              assert int(float(row['N_selected'])) == 30
+
+          selected_individuals = read_csv_dict(
+              'output/results/m04/selected_individuals_by_trait.csv'
+          )
+          assert len(selected_individuals) == 120
+          assert len({
+              (row['Trait'], row['IND'])
+              for row in selected_individuals
+          }) == 120
+          selected_counts = Counter(
+              row['Trait'] for row in selected_individuals
+          )
+          assert set(selected_counts) == eligible_traits
+          assert all(value == 30 for value in selected_counts.values())
+
+          for trait in eligible_traits:
+              ranks = {
+                  int(float(row['Rank']))
+                  for row in selected_individuals
+                  if row['Trait'] == trait
+              }
+              assert ranks == set(range(1, 31))
+
+          for row in selected_individuals:
+              assert (
+                  row['Method']
+                  == selection_by_trait[row['Trait']]['Selected_method']
+              )
+
+          selected_trait_counts_by_individual = Counter(
+              row['IND'] for row in selected_individuals
+          )
+          assert all(
+              1 <= count <= 4
+              for count in selected_trait_counts_by_individual.values()
+          )
+
+          expected_recurrence_distribution = Counter(
+              selected_trait_counts_by_individual.values()
+          )
+          expected_recurrence_distribution[0] = (
+              150 - len(selected_trait_counts_by_individual)
+          )
+
+          recurrence_distribution = read_csv_dict(
+              'output/results/m04/recurrence_distribution.csv'
+          )
+          assert len(recurrence_distribution) == 5
+          recurrence_levels = {
+              int(float(row['N_traits']))
+              for row in recurrence_distribution
+          }
+          assert recurrence_levels == set(range(5))
+
+          observed_recurrence_distribution = {
+              int(float(row['N_traits'])):
+                  int(float(row['N_individuals']))
+              for row in recurrence_distribution
+          }
+          assert observed_recurrence_distribution == {
+              n_traits: expected_recurrence_distribution.get(n_traits, 0)
+              for n_traits in range(5)
+          }
+          assert sum(observed_recurrence_distribution.values()) == 150
+          assert sum(
+              n_traits * n_individuals
+              for n_traits, n_individuals
+              in observed_recurrence_distribution.items()
+          ) == 120
+
+          expected_recurrence_class = {
+              4: 'high_4plus',
+              3: 'intermediate_3',
+              2: 'broad_2',
+              1: 'specific_1',
+              0: 'none_0',
+          }
+          for row in recurrence_distribution:
+              n_traits = int(float(row['N_traits']))
+              n_individuals = int(float(row['N_individuals']))
+              assert row['Recurrence_class'] == (
+                  expected_recurrence_class[n_traits]
+              )
+              assert abs(
+                  float(row['Proportion_of_population'])
+                  - n_individuals / 150.0
+              ) <= 1e-12
+
+          selected_rows_by_individual = defaultdict(list)
+          for row in selected_individuals:
+              selected_rows_by_individual[row['IND']].append(row)
+
+          expected_multitrait_candidates = {
+              ind: rows
+              for ind, rows in selected_rows_by_individual.items()
+              if len(rows) >= 2
+          }
+
+          multitrait_candidates = read_csv_dict(
+              'output/results/m04/multitrait_candidates.csv'
+          )
+          multitrait_by_individual = {
+              row['IND']: row for row in multitrait_candidates
+          }
+          assert len(multitrait_by_individual) == len(multitrait_candidates)
+          assert set(multitrait_by_individual) == set(
+              expected_multitrait_candidates
+          )
+
+          for ind, rows in expected_multitrait_candidates.items():
+              row = multitrait_by_individual[ind]
+              n_traits = len(rows)
+              expected_traits = {item['Trait'] for item in rows}
+              observed_traits = {
+                  value.strip()
+                  for value in row['Traits'].split(',')
+                  if value.strip()
+              }
+              families = {item['FAM'] for item in rows}
+              ranks = [int(float(item['Rank'])) for item in rows]
+
+              assert len(families) == 1
+              assert row['FAM'] == next(iter(families))
+              assert int(float(row['N_traits'])) == n_traits
+              assert observed_traits == expected_traits
+              assert int(float(row['Best_rank'])) == min(ranks)
+              assert abs(
+                  float(row['Mean_rank_present'])
+                  - sum(ranks) / len(ranks)
+              ) <= 1e-12
+              assert abs(
+                  float(row['Selection_frequency'])
+                  - n_traits / 4.0
+              ) <= 1e-12
+              assert row['Recurrence_class'] == (
+                  expected_recurrence_class[n_traits]
+              )
+
+          correlation_path = Path(
+              'output/results/m04/selected_oof_correlations.csv'
+          )
+          with correlation_path.open(
+              'r', encoding='utf-8-sig', newline=''
+          ) as handle:
+              correlation_rows = list(csv.reader(handle))
+
+          assert len(correlation_rows) == 11
+          assert all(len(row) == 11 for row in correlation_rows)
+
+          correlation_columns = correlation_rows[0][1:]
+          correlation_traits = [
+              row[0] for row in correlation_rows[1:]
+          ]
+          assert len(set(correlation_columns)) == 10
+          assert len(set(correlation_traits)) == 10
+          assert set(correlation_columns) == set(traits)
+          assert set(correlation_traits) == set(traits)
+          assert set(correlation_columns) == set(correlation_traits)
+
+          correlation_matrix = {
+              correlation_traits[i]: {
+                  correlation_columns[j]:
+                      float(correlation_rows[i + 1][j + 1])
+                  for j in range(10)
+              }
+              for i in range(10)
+          }
+
+          for trait_a in correlation_traits:
+              assert abs(
+                  correlation_matrix[trait_a][trait_a] - 1.0
+              ) <= 1e-10
+              for trait_b in correlation_traits:
+                  assert abs(
+                      correlation_matrix[trait_a][trait_b]
+                      - correlation_matrix[trait_b][trait_a]
+                  ) <= 1e-10
+
+          for html_path in (
+              Path('docs/04_results_en.html'),
+              Path('docs/04_results_pt.html'),
+          ):
+              html = html_path.read_text(
+                  encoding='utf-8', errors='replace'
+              )
+              assert 'OOF_R_SELECTION_THRESHOLD' in html
+              assert 'positive_threshold' in html
+              assert 'OOF_R_MAGNITUDE_THRESHOLD' not in html
+              assert 'absolute_magnitude' not in html
 
           readme = Path('README.md').read_text(encoding='utf-8')
           assert 'A fresh clone **cannot by itself rerun the complete analysis from raw inputs**' in readme
