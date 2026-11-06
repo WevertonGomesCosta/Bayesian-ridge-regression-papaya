@@ -58,7 +58,7 @@ A fresh clone **cannot by itself rerun the complete analysis from raw inputs**. 
 
 To reconstruct the analysis:
 
-1. obtain the two canonical workbooks from the project data provider/author;
+1. prepare local copies of the two canonical workbooks;
 2. place them in `data/` using the canonical filenames documented in [`data/README.md`](data/README.md);
 3. verify their SHA-256 hashes;
 4. restore the recorded R environment with `renv::restore()` and inspect it with `renv::status()`;
@@ -70,7 +70,7 @@ Routine `workflowr` rendering is not a substitute for full computational reconst
 
 ### Data and methodological reference
 
-The canonical source workbooks are kept locally in `data/`. Their provenance, original filenames, canonical project filenames, SHA-256 hashes, expected layout, and alignment invariants are documented in [`data/README.md`](data/README.md). The repository does not currently provide a public download URL for those workbooks.
+The canonical source workbooks are kept locally in `data/`. Their provenance, original filenames, canonical project filenames, SHA-256 hashes, expected layout, and alignment invariants are documented in [`data/README.md`](data/README.md).
 
 The comparative analytical structure was informed by:
 
@@ -78,7 +78,7 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR
 
 ### Citation and license
 
-Project citation metadata are provided in [`CITATION.cff`](CITATION.cff). Except where otherwise indicated, original project materials are distributed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International license; see [`LICENSE.md`](LICENSE.md) and the tutorial [License](https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/license.html) page. Source datasets and third-party materials are not relicensed by this project.
+Project citation metadata are provided in [`CITATION.cff`](CITATION.cff). Except where otherwise indicated, original project materials are distributed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International license; see [`LICENSE.md`](LICENSE.md) and the tutorial [License](https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/license.html) page.
 
 ---
 
@@ -134,7 +134,7 @@ Um clone novo **não consegue, sozinho, refazer toda a análise a partir dos dad
 
 Para reconstruir a análise:
 
-1. obtenha as duas planilhas canônicas com o responsável/provedor dos dados do projeto;
+1. prepare cópias locais das duas planilhas canônicas;
 2. coloque-as em `data/` com os nomes canônicos documentados em [`data/README.md`](data/README.md);
 3. valide seus hashes SHA-256;
 4. restaure o ambiente R registrado com `renv::restore()` e inspecione-o com `renv::status()`;
@@ -146,7 +146,7 @@ A renderização rotineira com `workflowr` não substitui a reconstrução compu
 
 ### Dados e referência metodológica
 
-As planilhas-fonte canônicas são mantidas localmente em `data/`. Sua proveniência, nomes originais, nomes canônicos no projeto, hashes SHA-256, estrutura esperada e invariantes de alinhamento estão documentados em [`data/README.md`](data/README.md). O repositório não disponibiliza atualmente uma URL pública para download dessas planilhas.
+As planilhas-fonte canônicas são mantidas localmente em `data/`. Sua proveniência, nomes originais, nomes canônicos no projeto, hashes SHA-256, estrutura esperada e invariantes de alinhamento estão documentados em [`data/README.md`](data/README.md).
 
 A estrutura comparativa das análises foi orientada por:
 
@@ -154,7 +154,7 @@ Silva, F. A. et al. (2021). Bayesian ridge regression shows the best fit for SSR
 
 ### Citação e licença
 
-Os metadados para citação do projeto estão em [`CITATION.cff`](CITATION.cff). Salvo indicação diferente, os materiais originais do projeto são distribuídos sob a licença Creative Commons Atribuição-NãoComercial-CompartilhaIgual 4.0 Internacional; consulte [`LICENSE.md`](LICENSE.md) e a página [Licença](https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/license.html) do tutorial. Os dados-fonte e materiais de terceiros não são relicenciados por este projeto.
+Os metadados para citação do projeto estão em [`CITATION.cff`](CITATION.cff). Salvo indicação diferente, os materiais originais do projeto são distribuídos sob a licença Creative Commons Atribuição-NãoComercial-CompartilhaIgual 4.0 Internacional; consulte [`LICENSE.md`](LICENSE.md) e a página [Licença](https://wevertongomescosta.github.io/Bayesian-ridge-regression-papaya/license.html) do tutorial.
 
 ---
 

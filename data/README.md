@@ -4,11 +4,11 @@
 
 ## English
 
-### Purpose and availability
+### Purpose and technical specifications
 
 The project uses two canonical source workbooks. Their filenames were normalized to make paths portable across operating systems. The workbooks are required locally for a full reconstruction of the analysis but are intentionally excluded from Git; this versioned file preserves their provenance, expected placement, and SHA-256 validation hashes.
 
-The repository does **not** currently provide a public download URL for these workbooks. To reproduce the analysis from raw inputs, obtain the original files from the project data provider/author, verify that they correspond to the hashes below, and place them in the repository `data/` directory using the canonical project filenames.
+For computational reconstruction from source inputs, local copies must match the SHA-256 values below and be placed in the `data/` directory using the canonical project filenames.
 
 ### Canonical files
 
@@ -86,11 +86,11 @@ Git preserves this contract, the analytical source code, the rendered site, and 
 
 ## Português
 
-### Objetivo e disponibilidade
+### Objetivo e especificações técnicas
 
 O projeto utiliza duas planilhas-fonte canônicas. Seus nomes foram normalizados para tornar os caminhos portáveis entre sistemas operacionais. As planilhas são necessárias localmente para uma reconstrução completa da análise, mas são intencionalmente excluídas do Git; este arquivo versionado preserva sua proveniência, localização esperada e hashes SHA-256 de validação.
 
-O repositório **não disponibiliza atualmente uma URL pública de download** dessas planilhas. Para reproduzir a análise a partir dos dados brutos, obtenha os arquivos originais com o responsável/provedor dos dados do projeto, confirme que correspondem aos hashes abaixo e coloque-os no diretório `data/` usando os nomes canônicos do projeto.
+Para a reconstrução computacional a partir dos dados-fonte, as cópias locais devem corresponder aos valores SHA-256 abaixo e estar no diretório `data/` com os nomes canônicos do projeto.
 
 ### Arquivos canônicos
 

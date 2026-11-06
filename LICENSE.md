@@ -17,9 +17,6 @@ You may share and adapt the material provided that you:
 The legal code is available at
 <https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode>.
 
-Source datasets and third-party materials are not relicensed by this project.
-They remain subject to the provenance, authorization, agreements, ethical
-restrictions, and licensing conditions established by their original owners,
-providers, or research programs.
+This notice applies only to the original project materials identified above.
 
 Project citation metadata are provided in `CITATION.cff`.
