@@ -1164,44 +1164,32 @@ convergence_summary |>
 
 The summary reports how many chains were evaluated and how many crossed at least one screening threshold for each method. `Minimum_ESS`, `Median_ESS`, and `Maximum_absolute_Geweke` describe the strength of autocorrelation or stability signals without treating the thresholds as formal validity tests.
 
-### 10.3 ESS × Geweke screening map
+### 10.3 MCMC diagnostics: ESS and Geweke
 
-The figure places all 700 scalar chains in one visual diagnostic. The horizontal axis shows ESS on a logarithmic scale and the vertical axis shows \(|Z_{Geweke}|\). Dashed lines reproduce the two review thresholds used in the preceding table. Color identifies the method, while point shape distinguishes chains within the thresholds from those flagged for review.
+The MCMC diagnostics are displayed using the effective sample size (ESS) and the absolute value of the Geweke Z statistic. The figure presents the 700 scalar chains evaluated across model fits, with ESS shown on a logarithmic scale.
 
-The figure is a screening map: points to the left of ESS = 1,000 or above \(|Z| = 2\) deserve additional inspection, but their location is not an automatic rule for excluding fits or predictions.
+Colors identify the seven genomic prediction methods. This representation allows the distribution of the diagnostic statistics to be examined across methods, complementing their numerical summaries.
 
-```{r convergence-map, fig.width=8, fig.height=5.5, fig.alt="Scatter plot of the 700 scalar chains reviewed, with ESS on a logarithmic scale, absolute Geweke statistic, review lines at ESS 1000 and Geweke 2, GDocs colors by method, and point shape indicating review status."}
-convergence_diagnostics |>
+```{r convergence-map, fig.width=9, fig.height=5.5, fig.alt="MCMC diagnostics showing effective sample size on a logarithmic scale and the absolute Geweke Z statistic, with colors identifying the seven methods."}
+figure2_mcmc <- convergence_diagnostics |>
   mutate(
     Method_label = factor(
       unname(method_labels[Method]),
       levels = unname(method_labels[method_names])
     ),
-    Absolute_Geweke = abs(Geweke_Z),
-    Review = factor(
-      Review_flag,
-      levels = c(FALSE, TRUE),
-      labels = c("Within thresholds", "Review")
-    )
+    Absolute_Geweke = abs(Geweke_Z)
   ) |>
   ggplot(
     aes(
       x = Effective_sample_size,
       y = Absolute_Geweke,
-      color = Method_label,
-      shape = Review
+      color = Method_label
     )
   ) +
-  geom_point(alpha = 0.65, size = 1.8) +
-  geom_vline(
-    xintercept = ESS_REVIEW_THRESHOLD,
-    linetype = 2,
-    linewidth = 0.5
-  ) +
-  geom_hline(
-    yintercept = GEWEKE_REVIEW_THRESHOLD,
-    linetype = 2,
-    linewidth = 0.5
+  geom_point(
+    shape = 16,
+    alpha = 0.65,
+    size = 1.8
   ) +
   scale_x_log10(
     labels = function(x) format(
@@ -1215,13 +1203,19 @@ convergence_diagnostics |>
   labs(
     x = "Effective sample size (log10 scale)",
     y = "|Geweke Z|",
-    shape = "Screening",
-    title = "Joint screening of MCMC diagnostics",
-    subtitle = "Dashed lines mark ESS = 1,000 and |Geweke Z| = 2",
-    caption = "Each point represents one of the two scalar chains reviewed per fit; a flag guides inspection and does not imply automatic exclusion."
+    title = "MCMC diagnostics: ESS and Geweke"
+  ) +
+  guides(
+    color = guide_legend(ncol = 1, byrow = FALSE)
   ) +
   theme_gdocs() +
-  theme(legend.position = "top")
+  theme(
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.box = "vertical"
+  )
+
+figure2_mcmc
 ```
 
 ### 10.4 Chains flagged for inspection

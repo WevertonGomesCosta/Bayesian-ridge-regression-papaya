@@ -1176,44 +1176,35 @@ convergence_summary |>
 
 O resumo informa quantas cadeias foram avaliadas e quantas ultrapassaram pelo menos um limiar de triagem em cada método. `Minimum_ESS`, `Median_ESS` e `Maximum_absolute_Geweke` descrevem a intensidade dos sinais de autocorrelação ou instabilidade, sem transformar os limiares em testes formais de validade.
 
-### 10.3 Mapa de triagem ESS × Geweke
 
-O gráfico reúne as 700 cadeias escalares em um único diagnóstico visual. O eixo horizontal mostra ESS em escala logarítmica e o eixo vertical mostra \(|Z_{Geweke}|\). As linhas pontilhadas representam exatamente os dois limiares de revisão usados na tabela anterior. A cor identifica o método e a forma distingue cadeias dentro dos limiares daquelas encaminhadas para revisão.
+### 10.3 Diagnósticos MCMC: ESS e Geweke
 
-A figura serve como mapa de triagem: pontos à esquerda de ESS = 1.000 ou acima de \(|Z| = 2\) merecem inspeção adicional, mas a posição no gráfico não funciona como regra automática de exclusão de ajustes ou predições.
+Os diagnósticos MCMC foram apresentados graficamente por meio do tamanho efetivo da amostra (ESS) e do valor absoluto da estatística Z de Geweke. O gráfico reúne as 700 cadeias escalares avaliadas nos ajustes dos modelos, com ESS representado em escala logarítmica.
 
-```{r convergence-map, fig.width=8, fig.height=5.5, fig.alt="Dispersão das 700 cadeias escalares avaliadas, com ESS em escala logarítmica, valor absoluto de Geweke, linhas de revisão em ESS igual a 1000 e Geweke igual a 2, cores GDocs por método e forma indicando a sinalização."}
-convergence_diagnostics |>
+As cores identificam os sete métodos de predição genômica. Essa representação permite examinar a distribuição dos indicadores entre os métodos, complementando os resultados numéricos dos diagnósticos.
+
+
+```{r convergence-map, fig.width=9, fig.height=5.5, fig.alt="Gráfico dos diagnósticos MCMC, com tamanho efetivo da amostra em escala logarítmica e valor absoluto da estatística Z de Geweke. As cores identificam os sete métodos."}
+
+figura2_mcmc <- convergence_diagnostics |>
   mutate(
     Metodo = factor(
       unname(method_labels[Method]),
       levels = unname(method_labels[method_names])
     ),
-    Geweke_absoluto = abs(Geweke_Z),
-    Revisao = factor(
-      Review_flag,
-      levels = c(FALSE, TRUE),
-      labels = c("Dentro dos limiares", "Revisar")
-    )
+    Geweke_absoluto = abs(Geweke_Z)
   ) |>
   ggplot(
     aes(
       x = Effective_sample_size,
       y = Geweke_absoluto,
-      color = Metodo,
-      shape = Revisao
+      color = Metodo
     )
   ) +
-  geom_point(alpha = 0.65, size = 1.8) +
-  geom_vline(
-    xintercept = ESS_REVIEW_THRESHOLD,
-    linetype = 2,
-    linewidth = 0.5
-  ) +
-  geom_hline(
-    yintercept = GEWEKE_REVIEW_THRESHOLD,
-    linetype = 2,
-    linewidth = 0.5
+  geom_point(
+    shape = 16,
+    alpha = 0.65,
+    size = 1.8
   ) +
   scale_x_log10(
     labels = function(x) format(
@@ -1227,14 +1218,21 @@ convergence_diagnostics |>
   labs(
     x = "Tamanho efetivo da amostra (escala log10)",
     y = "|Geweke Z|",
-    shape = "Triagem",
-    title = "Triagem conjunta dos diagnósticos MCMC",
-    subtitle = "Linhas pontilhadas marcam ESS = 1.000 e |Geweke Z| = 2",
-    caption = "Cada ponto representa uma das duas cadeias escalares avaliadas por ajuste; a sinalização orienta revisão e não implica exclusão automática."
+    title = "Diagnósticos MCMC: ESS e Geweke"
+  ) +
+  guides(
+    color = guide_legend(ncol = 1, byrow = FALSE)
   ) +
   theme_gdocs() +
-  theme(legend.position = "top")
+  theme(
+    legend.position = "right",
+    legend.direction = "vertical",
+    legend.box = "vertical"
+  )
+
+figura2_mcmc
 ```
+
 
 ### 10.4 Cadeias sinalizadas para inspeção
 
