@@ -460,14 +460,14 @@ observed_predicted_plot
 
 A figura confirma visualmente a heterogeneidade das métricas: MMCOM apresenta a associação observado × predito mais nítida, enquanto características com correlação próxima de zero exibem nuvens mais dispersas. As linhas 1:1 e de regressão servem como referências de calibração e não alteram os critérios de seleção.
 
-### 4.5 Análogo de herdabilidade baseado em marcadores e acurácia ajustada no RR-BLUP/BRR
+### 4.5 Proporção de variância genômica de referência e correlação preditiva OOF normalizada no RR-BLUP/BRR
 
-Seguindo Silva et al. [@silva2021brrguava], o RR-BLUP/BRR permite derivar um análogo de herdabilidade baseado na variância dos marcadores. A acurácia ajustada por fold é calculada como `Correlation / sqrt(H2)`.
+Para cada característica e fold, o RR-BLUP/BRR permite calcular a **proporção de variância genômica de referência** a partir da variância dos efeitos dos marcadores, do denominador da matriz genômica e da variância residual. A **correlação preditiva OOF normalizada** é calculada como `Correlation / sqrt(H2)`, utilizando a correlação entre os fenótipos observados e as predições fenotípicas totais OOF no respectivo fold, seguindo a forma de normalização empregada por Silva et al. [@silva2021brrguava].
 
-Essa razão é uma quantidade derivada e não uma correlação observada diretamente entre valor genético verdadeiro e predito. Por isso, pode ser negativa ou exceder 1.
+A primeira quantidade depende da escala de referência do componente genômico e não equivale automaticamente à herdabilidade fenotípica convencional. A segunda é uma razão derivada, não uma correlação diretamente observada entre valores genéticos verdadeiros e preditos; por isso, pode assumir valores negativos ou superiores a 1.
 
 ```{r rrblup-heritability}
-# Calcula e organiza o resumo de herdabilidade baseado no modelo RR-BLUP/BRR.
+# Organiza os componentes de variância e as correlações OOF do RR-BLUP/BRR.
 rrblup_variance_components <- convergence |>
   filter(
     Method == "RRBLUP",
@@ -491,7 +491,7 @@ rrblup_heritability_by_fold <- rrblup_variance_components |>
   ) |>
   arrange(match(Trait, traits), Fold)
 
-# Resume entre folds o análogo de herdabilidade e a acurácia ajustada do RR-BLUP/BRR.
+# Resume a proporção genômica de referência e a correlação OOF normalizada entre folds.
 rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   group_by(Trait) |>
   summarise(
@@ -506,7 +506,7 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   arrange(match(Trait, traits))
 ```
 
-O resumo por característica apresenta o análogo de herdabilidade e a acurácia ajustada entre folds.
+O resumo por característica apresenta as médias e os desvios-padrão das duas quantidades nos cinco folds.
 
 ```{r rrblup-heritability-table}
 rrblup_table <- rrblup_heritability_summary |>
@@ -520,12 +520,12 @@ rrblup_table <- rrblup_heritability_summary |>
 
 tabela_html(
   rrblup_table,
-  caption = "Análogo de herdabilidade baseado em marcadores e acurácia preditiva ajustada no RR-BLUP/BRR",
-  col.names = c("Característica", "RR-BLUP H2", "DP RR-BLUP H2", "Acurácia preditiva RR-BLUP", "DP da acurácia preditiva RR-BLUP")
+  caption = "Proporção de variância genômica de referência e correlação preditiva OOF normalizada no RR-BLUP/BRR",
+  col.names = c("Característica", "Proporção genômica (ref.)", "DP da proporção", "Correlação OOF normalizada", "DP da correlação normalizada")
 )
 ```
 
-A tabela mostra que o análogo de herdabilidade e a acurácia ajustada variam entre características, refletindo diferenças na contribuição relativa do componente genômico e na capacidade preditiva entre folds. A acurácia ajustada deve ser interpretada como razão derivada de `Correlation / sqrt(H2)`, e não como uma correlação observada diretamente com o valor genético verdadeiro; por isso, valores negativos ou superiores a 1 não devem ser lidos como correlações convencionais.
+As estimativas variam entre características e devem ser interpretadas na escala de referência do RR-BLUP/BRR. A correlação preditiva OOF normalizada é uma razão derivada e não representa uma correlação diretamente observada com valores genéticos verdadeiros.
 
 ## 5. Valores genômicos OOF e relações entre características
 

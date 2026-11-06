@@ -460,14 +460,14 @@ observed_predicted_plot
 
 The figure visually confirms the heterogeneity in the numerical metrics: MMCOM shows the clearest observed-versus-predicted association, whereas traits with correlations close to zero show more dispersed point clouds. The 1:1 and regression lines are calibration references and do not alter the selection criteria.
 
-### 4.5 Marker-based heritability analogue and adjusted accuracy in RR-BLUP/BRR
+### 4.5 Reference genomic variance proportion and normalized OOF predictive correlation in RR-BLUP/BRR
 
-Following Silva et al. [@silva2021brrguava], RR-BLUP/BRR allows a marker-based heritability analogue to be derived from marker variance. Fold-level adjusted accuracy is calculated as `Correlation / sqrt(H2)`.
+For each trait and fold, RR-BLUP/BRR provides a **reference genomic variance proportion** derived from marker-effect variance, the genomic-matrix denominator, and residual variance. The **normalized OOF predictive correlation** is calculated as `Correlation / sqrt(H2)`, using the correlation between observed phenotypes and total OOF phenotypic predictions within the corresponding fold, following the normalization form used by Silva et al. [@silva2021brrguava].
 
-This ratio is a derived quantity rather than a direct correlation between true and predicted genetic values. It may therefore be negative or exceed 1.
+The first quantity depends on the reference scale of the genomic component and is not automatically equivalent to conventional phenotypic heritability. The second is a derived ratio, not a directly observed correlation between true and predicted genetic values; therefore, it may be negative or exceed 1.
 
 ```{r rrblup-heritability}
-# Compute and organize the RR-BLUP/BRR model-based heritability summary.
+# Organize RR-BLUP/BRR variance components and OOF correlations.
 rrblup_variance_components <- convergence |>
   filter(
     Method == "RRBLUP",
@@ -491,7 +491,7 @@ rrblup_heritability_by_fold <- rrblup_variance_components |>
   ) |>
   arrange(match(Trait, traits), Fold)
 
-# Summarize the RR-BLUP/BRR model-based heritability analogue and adjusted accuracy across folds.
+# Summarize reference genomic variance proportions and normalized OOF correlations across folds.
 rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   group_by(Trait) |>
   summarise(
@@ -506,7 +506,7 @@ rrblup_heritability_summary <- rrblup_heritability_by_fold |>
   arrange(match(Trait, traits))
 ```
 
-The trait summary presents the marker-based heritability analogue and adjusted accuracy across folds.
+The trait-level summary reports the means and standard deviations of both quantities across the five folds.
 
 ```{r rrblup-heritability-table}
 rrblup_table <- rrblup_heritability_summary |>
@@ -520,12 +520,12 @@ rrblup_table <- rrblup_heritability_summary |>
 
 format_table(
   rrblup_table,
-  caption = "Marker-based heritability analogue and adjusted predictive accuracy in RR-BLUP/BRR",
-  col.names = c("Trait", "RR-BLUP H2", "SD RR-BLUP H2", "RR-BLUP predictive accuracy", "SD RR-BLUP predictive accuracy")
+  caption = "Reference genomic variance proportion and normalized OOF predictive correlation in RR-BLUP/BRR",
+  col.names = c("Trait", "Genomic variance proportion (ref.)", "SD of proportion", "Normalized OOF correlation", "SD of normalized correlation")
 )
 ```
 
-The table shows that the marker-based heritability analogue and adjusted accuracy vary across traits, reflecting differences in the relative genomic contribution and predictive performance across folds. Adjusted accuracy must be interpreted as the derived ratio `Correlation / sqrt(H2)`, not as a correlation observed directly with true genetic value; negative values or values above 1 should therefore not be read as conventional correlations.
+The estimates vary among traits and should be interpreted on the RR-BLUP/BRR reference scale. Normalized OOF predictive correlation is a derived ratio and does not represent a directly observed correlation with true genetic values.
 
 ## 5. OOF genomic values and relationships among traits
 
